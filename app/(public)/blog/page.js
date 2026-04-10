@@ -29,18 +29,14 @@ export default async function BlogPage() {
           <p className={styles.noPosts}>Chưa có bài viết nào được xuất bản.</p>
         ) : (
           posts.map(post => (
-            <Link key={post.id} href={`/blog/${post.slug || post.id}`} className={styles.postCard}>
-              {post.thumbnail && (
-                <div className={styles.postImageWrapper}>
-                  <img src={post.thumbnail} alt={post.title} className={styles.postImage} />
-                </div>
-              )}
-              <div className={styles.postContent}>
-                <h2 className={styles.postTitle}>{post.title}</h2>
-                <p className={styles.postExcerpt}>
-                  {post.content ? post.content.substring(0, 100) + '...' : 'Không có đoạn trích'}
+            <Link key={post.id} href={`/blog/${post.slug || post.id}`} className={styles.postCard} style={{ display: 'flex', flexDirection: 'column', height: '100%', textDecoration: 'none', color: 'inherit', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', overflow: 'hidden' }}>
+              <div className={styles.postImageWrapper} style={{ width: '100%', height: '200px', backgroundImage: `url(${post.coverImage || post.thumbnail || 'https://via.placeholder.com/600x300?text=News'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
+              <div className={styles.postContent} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <h2 className={styles.postTitle} style={{ fontSize: '1.2rem', marginBottom: '0.8rem' }}>{post.title}</h2>
+                <p className={styles.postExcerpt} style={{ color: 'rgba(255,255,255,0.6)', flex: 1, marginBottom: '1rem', lineHeight: 1.5 }}>
+                  {post.excerpt || (post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 100) + '...' : 'Không có nội dung')}
                 </p>
-                <div className={styles.readMore}>Đọc tiếp bài viết →</div>
+                <div className={styles.readMore} style={{ color: 'var(--primary)', fontWeight: '500' }}>Đọc tiếp bài viết →</div>
               </div>
             </Link>
           ))

@@ -27,9 +27,9 @@ export async function generateMetadata({ params }) {
 
   return {
     title: `${post.title} - Tạp chí LibraryFlow`,
-    description: post.content ? post.content.substring(0, 150) : "Thông tin quản lý thư viện.",
+    description: post.excerpt || (post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 150) : "Thông tin quản lý thư viện."),
     openGraph: {
-      images: post.thumbnail ? [post.thumbnail] : [],
+      images: post.coverImage ? [post.coverImage] : (post.thumbnail ? [post.thumbnail] : []),
     },
   };
 }
@@ -55,18 +55,16 @@ export default async function BlogPost({ params }) {
         </div>
       </header>
 
-      {post.thumbnail && (
+      {(post.coverImage || post.thumbnail) && (
         <div className={styles.articleHeroImage}>
-          <img src={post.thumbnail} alt={post.title} />
+          <img src={post.coverImage || post.thumbnail} alt={post.title} />
         </div>
       )}
 
-      <div className={styles.articleContent}>
-        {/* Realistically we would use a Markdown parser here, but rendering raw for demo */}
-        {post.content.split('\n').map((paragraph, index) => (
-          <p key={index}>{paragraph}</p>
-        ))}
-      </div>
+      <div 
+        className={styles.articleContent}
+        dangerouslySetInnerHTML={{ __html: post.content }}
+      />
     </article>
   );
 }
