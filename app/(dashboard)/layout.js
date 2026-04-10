@@ -70,6 +70,14 @@ export default function DashboardLayout({ children }) {
           ))}
         </nav>
         <div className={styles.sidebarFooter}>
+          <Link
+            href="/"
+            className={styles.navItem}
+            onClick={() => setIsMobileOpen(false)}
+            style={{ textAlign: 'center', marginBottom: '0.5rem', opacity: 0.7 }}
+          >
+            ← Trang Chủ
+          </Link>
           <button onClick={handleLogout} className={styles.logoutBtn}>Đăng Xuất</button>
         </div>
       </aside>

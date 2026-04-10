@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
+import { slugify } from "@/lib/utils";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 
 export default function ManagePosts() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -15,7 +19,8 @@ export default function ManagePosts() {
     excerpt: '',
     content: '',
     coverImage: '',
-    author: 'Admin'
+    author: 'Admin',
+    tags: ''
   });
 
   useEffect(() => {
@@ -26,11 +31,35 @@ export default function ManagePosts() {
     try {
       const res = await fetch('/api/posts');
       const data = await res.json();
-      setPosts(data);
+      setPosts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTitleChange = (e) => {
+    const title = e.target.value;
+    setFormData({
+      ...formData,
+      title,
+      slug: editingId ? formData.slug : slugify(title)
+    });
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const imageUrl = await uploadToCloudinary(file);
+      setFormData({ ...formData, coverImage: imageUrl });
+    } catch (error) {
+      alert("Lỗi tải ảnh lên. Vui lòng thử lại.");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -39,31 +68,44 @@ export default function ManagePosts() {
     const url = editingId ? `/api/posts/${editingId}` : '/api/posts';
     const method = editingId ? 'PATCH' : 'POST';
 
+    // Process tags string to array
+    const postData = {
+      ...formData,
+      tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+    };
+
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData)
+      body: JSON.stringify(postData)
     });
 
     if (res.ok) {
-      setFormData({ title: '', slug: '', excerpt: '', content: '', coverImage: '', author: 'Admin' });
-      setShowForm(false);
-      setEditingId(null);
+      resetForm();
       fetchPosts();
     }
+  };
+
+  const resetForm = () => {
+    setFormData({ title: '', slug: '', excerpt: '', content: '', coverImage: '', author: 'Admin', tags: '' });
+    setShowForm(false);
+    setEditingId(null);
+    setPreviewMode(false);
   };
 
   const handleEdit = (post) => {
     setFormData({
       title: post.title,
       slug: post.slug,
-      excerpt: post.excerpt,
-      content: post.content,
+      excerpt: post.excerpt || '',
+      content: post.content || '',
       coverImage: post.coverImage || '',
-      author: post.author || 'Admin'
+      author: post.author || 'Admin',
+      tags: Array.isArray(post.tags) ? post.tags.join(', ') : ''
     });
     setEditingId(post.id);
     setShowForm(true);
+    setPreviewMode(false);
   };
 
   const handleDelete = async (id) => {
@@ -80,8 +122,8 @@ export default function ManagePosts() {
         <button 
           className="btn-primary" 
           onClick={() => {
-            setShowForm(!showForm);
-            if (showForm) setEditingId(null);
+            if (showForm) resetForm();
+            else setShowForm(true);
           }}
         >
           {showForm ? "Đóng Form" : "Viết Bài Mới"}
@@ -90,64 +132,137 @@ export default function ManagePosts() {
 
       {showForm && (
         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '2rem', borderRadius: '16px', marginBottom: '2.5rem', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingId ? "Chỉnh Sửa Bài Viết" : "Tạo Bài Viết Mới"}</h2>
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1.2rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.2rem' }}>
-              <input 
-                type="text" 
-                placeholder="Tiêu đề bài viết" 
-                value={formData.title}
-                onChange={(e) => setFormData({...formData, title: e.target.value})}
-                style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                required
-              />
-              <input 
-                type="text" 
-                placeholder="Slug (ví dụ: bai-viet-moi)" 
-                value={formData.slug}
-                onChange={(e) => setFormData({...formData, slug: e.target.value})}
-                style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                required
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <h2 style={{ fontSize: '1.5rem' }}>{editingId ? "Chỉnh Sửa Bài Viết" : "Tạo Bài Viết Mới"}</h2>
+            <button 
+              type="button" 
+              onClick={() => setPreviewMode(!previewMode)}
+              style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer' }}
+            >
+              {previewMode ? "Quay lại Sửa" : "Xem Trước"}
+            </button>
+          </div>
+
+          {!previewMode ? (
+            <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1.5rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Tiêu đề</label>
+                  <input 
+                    type="text" 
+                    placeholder="Nhập tiêu đề bài viết..." 
+                    value={formData.title}
+                    onChange={handleTitleChange}
+                    style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Đường dẫn (Slug)</label>
+                  <input 
+                    type="text" 
+                    placeholder="slug-bai-viet" 
+                    value={formData.slug}
+                    onChange={(e) => setFormData({...formData, slug: e.target.value})}
+                    style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
+                    required
+                  />
+                </div>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Ảnh bìa</label>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleImageUpload}
+                      id="image-upload"
+                      style={{ display: 'none' }}
+                    />
+                    <label 
+                      htmlFor="image-upload" 
+                      style={{ padding: '0.8rem 1.2rem', background: '#bb86fc', color: '#000', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
+                    >
+                      {uploading ? "Đang tải..." : "Tải ảnh lên"}
+                    </label>
+                    {formData.coverImage && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.8rem', opacity: 0.6, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formData.coverImage}</span>
+                        <button type="button" onClick={() => setFormData({...formData, coverImage: ''})} style={{ background: 'none', border: 'none', color: '#ff5f56', cursor: 'pointer' }}>×</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Thẻ (Tags) - Phân cách bằng dấu phẩy</label>
+                  <input 
+                    type="text" 
+                    placeholder="tin tuc, su kien, sach moi" 
+                    value={formData.tags}
+                    onChange={(e) => setFormData({...formData, tags: e.target.value})}
+                    style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Đoạn trích (Excerpt)</label>
+                <textarea 
+                  placeholder="Mô tả ngắn gọn về bài viết..." 
+                  value={formData.excerpt}
+                  onChange={(e) => setFormData({...formData, excerpt: e.target.value})}
+                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', minHeight: '80px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Nội dung chi tiết</label>
+                <textarea 
+                  placeholder="Nhập nội dung bài bài viết... (Có thể sử dụng thẻ HTML)" 
+                  value={formData.content}
+                  onChange={(e) => setFormData({...formData, content: e.target.value})}
+                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', minHeight: '350px', fontFamily: 'monospace', lineHeight: '1.6' }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                <button type="submit" className="btn-primary" style={{ padding: '1rem 2.5rem' }}>
+                  {editingId ? "Lưu Thay Đổi" : "Xuất Bản Ngay"}
+                </button>
+                <button 
+                  type="button" 
+                  className="btn-outline" 
+                  onClick={resetForm}
+                  style={{ padding: '1rem 2.5rem' }}
+                >
+                  Hủy bỏ
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ background: '#1a1a1c', padding: '2rem', borderRadius: '12px' }}>
+              {formData.coverImage && (
+                <img src={formData.coverImage} alt="Preview" style={{ width: '100%', maxHeight: '400px', objectFit: 'cover', borderRadius: '8px', marginBottom: '2rem' }} />
+              )}
+              <h1 style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>{formData.title || "Chưa có tiêu đề"}</h1>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', opacity: 0.6 }}>
+                <span>Tác giả: {formData.author}</span>
+                <span>•</span>
+                <span>Slug: {formData.slug}</span>
+              </div>
+              <div style={{ fontSize: '1.2rem', color: '#aaa', fontStyle: 'italic', marginBottom: '2rem', borderLeft: '4px solid #bb86fc', paddingLeft: '1.5rem' }}>
+                {formData.excerpt}
+              </div>
+              <div 
+                className="preview-content"
+                dangerouslySetInnerHTML={{ __html: formData.content }} 
+                style={{ lineHeight: '1.8', fontSize: '1.1rem' }}
               />
             </div>
-            
-            <input 
-              type="url" 
-              placeholder="Link ảnh bìa (Cover Image URL)" 
-              value={formData.coverImage}
-              onChange={(e) => setFormData({...formData, coverImage: e.target.value})}
-              style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-            />
-
-            <textarea 
-              placeholder="Đoạn trích ngắn (Excerpt)" 
-              value={formData.excerpt}
-              onChange={(e) => setFormData({...formData, excerpt: e.target.value})}
-              style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', minHeight: '80px' }}
-            />
-
-            <textarea 
-              placeholder="Nội dung bài viết (Hỗ trợ HTML)" 
-              value={formData.content}
-              onChange={(e) => setFormData({...formData, content: e.target.value})}
-              style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', minHeight: '300px', fontFamily: 'monospace' }}
-              required
-            />
-
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button type="submit" className="btn-primary" style={{ padding: '1rem 2rem' }}>
-                {editingId ? "Cập Nhật Bài Viết" : "Xuất Bản Bài Viết"}
-              </button>
-              <button 
-                type="button" 
-                className="btn-outline" 
-                onClick={() => { setShowForm(false); setEditingId(null); }}
-                style={{ padding: '1rem 2rem' }}
-              >
-                Hủy
-              </button>
-            </div>
-          </form>
+          )}
         </div>
       )}
 
@@ -155,65 +270,79 @@ export default function ManagePosts() {
         {loading ? (
           <p>Đang tải danh sách bài viết...</p>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Ảnh</th>
-                <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Tiêu Đề</th>
-                <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Slug</th>
-                <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Tác Giả</th>
-                <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {posts.length === 0 ? (
-                <tr>
-                  <td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.4)' }}>Chưa có bài viết nào được tạo.</td>
+          <div className="table-container">
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Ảnh</th>
+                  <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Tiêu Đề</th>
+                  <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Tác Giả & Ngày</th>
+                  <th style={{ padding: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
                 </tr>
-              ) : (
-                posts.map(post => (
-                  <tr key={post.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
-                    <td style={{ padding: '1rem' }}>
-                      <div style={{ 
-                        width: '60px', 
-                        height: '40px', 
-                        borderRadius: '6px', 
-                        backgroundImage: `url(${post.coverImage || 'https://via.placeholder.com/60x40'})`, 
-                        backgroundSize: 'cover', 
-                        backgroundPosition: 'center' 
-                      }}></div>
-                    </td>
-                    <td style={{ padding: '1rem', fontWeight: '600', color: '#fff' }}>{post.title}</td>
-                    <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>{post.slug}</td>
-                    <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>{post.author || 'Admin'}</td>
-                    <td style={{ padding: '1rem' }}>
-                      <button 
-                        onClick={() => handleEdit(post)} 
-                        className="btn-outline" 
-                        style={{ marginRight: '0.8rem', padding: '0.5rem 1rem', fontSize: '0.85rem' }}
-                      >
-                        Sửa
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(post.id)} 
-                        style={{ 
-                          background: 'rgba(255, 95, 86, 0.1)', 
-                          color: '#ff5f56', 
-                          border: '1px solid rgba(255, 95, 86, 0.2)', 
-                          padding: '0.5rem 1rem', 
-                          borderRadius: '8px', 
-                          cursor: 'pointer',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Xoá
-                      </button>
+              </thead>
+              <tbody>
+                {posts.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
+                      
+                      Chưa có bài viết nào được tạo. Hãy bắt đầu viết ngay!
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  posts.map(post => (
+                    <tr key={post.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
+                      <td style={{ padding: '1.2rem' }}>
+                        <div style={{ 
+                          width: '80px', 
+                          height: '50px', 
+                          borderRadius: '8px', 
+                          backgroundImage: `url(${post.coverImage || 'https://via.placeholder.com/80x50'})`, 
+                          backgroundSize: 'cover', 
+                          backgroundPosition: 'center',
+                          border: '1px solid rgba(255,255,255,0.1)'
+                        }}></div>
+                      </td>
+                      <td style={{ padding: '1.2rem' }}>
+                        <div style={{ fontWeight: '600', color: '#fff', marginBottom: '0.3rem' }}>{post.title}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#bb86fc', opacity: 0.8 }}>/{post.slug}</div>
+                      </td>
+                      <td style={{ padding: '1.2rem' }}>
+                        <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem' }}>{post.author || 'Admin'}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>
+                          {post.createdAt?.toDate ? post.createdAt.toDate().toLocaleDateString('vi-VN') : 'Vừa xong'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '1.2rem' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button 
+                            onClick={() => handleEdit(post)} 
+                            className="btn-outline" 
+                            style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+                          >
+                            Chỉnh sửa
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(post.id)} 
+                            style={{ 
+                              background: 'rgba(255, 95, 86, 0.1)', 
+                              color: '#ff5f56', 
+                              border: '1px solid rgba(255, 95, 86, 0.2)', 
+                              padding: '0.4rem 1rem', 
+                              borderRadius: '8px', 
+                              cursor: 'pointer',
+                              fontSize: '0.85rem'
+                            }}
+                          >
+                            Xoá
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
