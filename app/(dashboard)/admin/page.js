@@ -12,8 +12,12 @@ export default function AdminDashboard() {
     activeMembers: 0,
     borrowingCount: 0,
     overdueCount: 0,
+    activeBorrowers: 0
   });
-  const [recentActivities, setRecentActivities] = useState([]);
+  const [data, setData] = useState({
+    recentRecords: [],
+    newBooks: []
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,7 +35,6 @@ export default function AdminDashboard() {
         const members = await membersRes.json();
         const recordsRaw = await recordsRes.json();
         
-        // Defensive check: ensure records is an array
         const records = Array.isArray(recordsRaw) ? recordsRaw : [];
 
         // Calculate specific stats
@@ -43,14 +46,24 @@ export default function AdminDashboard() {
           return dueDate && dueDate < now;
         });
 
+        // Unique readers count
+        const activeBorrowerIds = new Set(borrowing.map(r => r.userId).filter(Boolean));
+
         setStats({
           totalBooks: Array.isArray(books) ? books.length : 0,
           activeMembers: Array.isArray(members) ? members.length : 0,
           borrowingCount: borrowing.length,
           overdueCount: overdue.length,
+          activeBorrowers: activeBorrowerIds.size
         });
 
-        setRecentActivities(records.slice(0, 8)); // Get top 8 recent
+        // Sách mới nhập (last 5)
+        const sortedBooks = Array.isArray(books) ? [...books].sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)) : [];
+
+        setData({
+          recentRecords: records.slice(0, 5),
+          newBooks: sortedBooks.slice(0, 5)
+        });
       } catch (error) {
         console.error("Failed to load dashboard data", error);
       } finally {
@@ -66,10 +79,10 @@ export default function AdminDashboard() {
   return (
     <div>
       <div className={styles.headerArea}>
-        <h1 className={styles.pageTitle}>Bảng Điều Khiển Thủ Thư</h1>
+        <h1 className={styles.pageTitle}>Dashboard (Tổng quan)</h1>
         <div style={{ display: 'flex', gap: '0.8rem' }}>
-          <Link href="/admin/books" className="btn-outline">Quản Lý Kho</Link>
-          <Link href="/admin/transactions" className="btn-primary">Duyệt Phiếu Mượn</Link>
+          <Link href="/admin/books" className="btn-outline">Quản lý Sách</Link>
+          <Link href="/admin/transactions" className="btn-primary">Quản lý Phiếu mượn</Link>
         </div>
       </div>
 
@@ -80,74 +93,82 @@ export default function AdminDashboard() {
           {/* Stats Grid */}
           <div className={styles.grid} style={{ marginBottom: '2.5rem' }}>
             <div className={styles.card} style={{ borderLeft: '4px solid #bb86fc' }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tổng sách trong kho</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tổng số sách</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalBooks}</div>
             </div>
             
             <div className={styles.card} style={{ borderLeft: '4px solid #03dac6' }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Độc giả hoạt động</div>
-              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.activeMembers}</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Độc giả đang mượn sách</div>
+              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.activeBorrowers}</div>
             </div>
 
             <div className={styles.card} style={{ borderLeft: '4px solid #27c93f' }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Sách đang được mượn</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách đang mượn</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.borrowingCount}</div>
             </div>
 
             <div className={styles.card} style={{ borderLeft: '4px solid #ff5f56' }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Sách quá hạn trả</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách quá hạn hôm nay</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.overdueCount}</div>
             </div>
           </div>
 
-          {/* Recent Activity Table */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.3rem', fontWeight: '700' }}>Hoạt Động Mượn Trả Gần Đây</h2>
-              <Link href="/admin/transactions" style={{ fontSize: '0.85rem', color: '#bb86fc', textDecoration: 'none' }}>Xem tất cả →</Link>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
+             {/* Recent Activity Table */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h2 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Phiếu mượn gần đây</h2>
+                <Link href="/admin/transactions" style={{ fontSize: '0.85rem', color: '#bb86fc', textDecoration: 'none' }}>Tất cả →</Link>
+              </div>
 
-            <div className="table-container">
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Người mượn</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Tên sách</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Ngày mượn</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentActivities.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>Chưa có hoạt động nào được ghi nhận.</td>
+              <div className="table-container">
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Người mượn</th>
+                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Tên sách</th>
+                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Trạng thái</th>
                     </tr>
-                  ) : (
-                    recentActivities.map(activity => {
-                      const borrowDate = activity.borrowDate?.toDate ? activity.borrowDate.toDate().toLocaleDateString('vi-VN') : 'Vừa xong';
+                  </thead>
+                  <tbody>
+                    {data.recentRecords.map(activity => {
                       const isOverdue = (activity.status === 'BORROWING' || activity.status === 'Active') && 
-                                        activity.dueDate?.toDate && activity.dueDate.toDate() < new Date();
-                      
+                                          activity.dueDate?.toDate && activity.dueDate.toDate() < new Date();
                       return (
                         <tr key={activity.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '1rem', fontWeight: '500' }}>{activity.userName || activity.memberName}</td>
-                          <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.8)' }}>{activity.bookTitle}</td>
-                          <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem' }}>{borrowDate}</td>
-                          <td style={{ padding: '1rem' }}>
+                          <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>{activity.userName || activity.memberName}</td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>{activity.bookTitle}</td>
+                          <td style={{ padding: '0.75rem' }}>
                             <span style={{
-                              padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700',
+                              padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '700',
                               background: isOverdue ? 'rgba(255,95,86,0.15)' : activity.status === 'RETURNED' ? 'rgba(255,255,255,0.06)' : 'rgba(39,201,63,0.15)',
                               color: isOverdue ? '#ff5f56' : activity.status === 'RETURNED' ? 'rgba(255,255,255,0.4)' : '#27c93f'
                             }}>
-                              {isOverdue ? 'QUÁ HẠN' : activity.status === 'RETURNED' ? 'ĐÃ TRẢ' : 'ĐANG MƯỢN'}
+                              {isOverdue ? 'QUÁ HẠN' : activity.status === 'RETURNED' ? 'ĐÃ TRẢ' : 'MƯỢN'}
                             </span>
                           </td>
                         </tr>
                       );
-                    })
-                  )}
-                </tbody>
-              </table>
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* New Books List */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem' }}>Sách mới nhập gần đây</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {data.newBooks.map(book => (
+                  <Link href="/admin/books" key={book.id} style={{ display: 'flex', gap: '1rem', textDecoration: 'none', color: 'inherit', padding: '0.5rem', borderRadius: '10px', background: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ width: '40px', height: '60px', borderRadius: '4px', background: `url(${book.coverImage || '/placeholder.png'}) center/cover` }}></div>
+                    <div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: '600' }}>{book.title}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>{book.author} • {book.category}</div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         </>

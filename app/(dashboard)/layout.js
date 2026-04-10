@@ -29,15 +29,16 @@ export default function DashboardLayout({ children }) {
   const toggleMobileSidebar = () => setIsMobileOpen(!isMobileOpen);
 
   const navLinks = role === "admin" ? [
-    { href: "/admin", label: "Bảng Điều Khiển Thủ Thư" },
-    { href: "/admin/books", label: "Quản Lý Kho Sách" },
-    { href: "/admin/transactions", label: "Quản Lý Mượn Trả" },
-    { href: "/admin/members", label: "Quản Lý Độc Giả" },
-    { href: "/admin/posts", label: "Bài Viết & Tin Tức" },
-    { href: "/admin/settings", label: "Cài Đặt" },
+    { href: "/admin", label: "Dashboard (Tổng quan)" },
+    { href: "/admin/books", label: "Quản lý Sách" },
+    { href: "/admin/transactions", label: "Quản lý Phiếu Mượn" },
+    { href: "/admin/members", label: "Quản lý Độc giả" },
+    { href: "/admin/categories", label: "Thể loại Sách" },
+    { href: "/admin/stats", label: "Thống kê" },
+    { href: "/admin/posts", label: "Tin Tức & Blog" },
   ] : [
     { href: "/user", label: "Trang Cá Nhân Độc Giả" },
-    { href: "/user/books", label: "Danh Mục Sách" },
+    { href: "/user/books", label: "Danh mục Sách" },
     { href: "/user/settings", label: "Cài Đặt" },
   ];
 

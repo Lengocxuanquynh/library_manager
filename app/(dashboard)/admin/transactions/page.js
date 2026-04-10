@@ -10,6 +10,7 @@ export default function ManageLoans() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('requests');
+  const [filterStatus, setFilterStatus] = useState('ALL'); // ALL, BORROWING, RETURNED, OVERDUE
 
   // Offline modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -414,29 +415,67 @@ export default function ManageLoans() {
           </div>
         ) : (
           /* BORROW RECORDS */
-          <div className="table-container">
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Người Mượn</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hạn Trả</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
-                      Chưa có bản ghi mượn sách nào.
-                    </td>
+          <>
+            <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '0.8rem', borderRadius: '12px' }}>
+              <button 
+                onClick={() => setFilterStatus('ALL')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'ALL' ? 'rgba(255,255,255,0.1)' : 'transparent', color: '#fff', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'ALL' ? '700' : '400' }}
+              >Tất cả</button>
+              <button 
+                onClick={() => setFilterStatus('BORROWING')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'BORROWING' ? 'rgba(39,201,63,0.1)' : 'transparent', color: '#27c93f', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'BORROWING' ? '700' : '400' }}
+              >Đang mượn</button>
+              <button 
+                onClick={() => setFilterStatus('OVERDUE')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'OVERDUE' ? 'rgba(255,95,86,0.1)' : 'transparent', color: '#ff5f56', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'OVERDUE' ? '700' : '400' }}
+              >Quá hạn</button>
+              <button 
+                onClick={() => setFilterStatus('RETURNED')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'RETURNED' ? 'rgba(255,255,255,0.05)' : 'transparent', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'RETURNED' ? '700' : '400' }}
+              >Đã trả</button>
+            </div>
+
+            <div className="table-container">
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Người Mượn</th>
+                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách</th>
+                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hạn Trả</th>
+                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
+                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>
                   </tr>
-                ) : (
-                  records.map(rec => {
+                </thead>
+                <tbody>
+                  {records.filter(rec => {
                     const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
                     const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
                     const isOverdue = isActive && dueDate && dueDate < new Date();
+                    
+                    if (filterStatus === 'BORROWING') return isActive && !isOverdue;
+                    if (filterStatus === 'OVERDUE') return isOverdue;
+                    if (filterStatus === 'RETURNED') return rec.status === 'RETURNED';
+                    return true;
+                  }).length === 0 ? (
+                    <tr>
+                      <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
+                        Không có bản ghi nào phù hợp với bộ lọc.
+                      </td>
+                    </tr>
+                  ) : (
+                    records.filter(rec => {
+                      const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
+                      const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
+                      const isOverdue = isActive && dueDate && dueDate < new Date();
+                      
+                      if (filterStatus === 'BORROWING') return isActive && !isOverdue;
+                      if (filterStatus === 'OVERDUE') return isOverdue;
+                      if (filterStatus === 'RETURNED') return rec.status === 'RETURNED';
+                      return true;
+                    }).map(rec => {
+                      const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
+                      const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
+                      const isOverdue = isActive && dueDate && dueDate < new Date();
 
                     return (
                       <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -467,8 +506,9 @@ export default function ManageLoans() {
                 )}
               </tbody>
             </table>
-          </div>
-        )}
+              </div>
+            </>
+          )}
       </div>
     </div>
   );

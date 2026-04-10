@@ -1,15 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import styles from "../../dashboard.module.css";
 import { uploadToCloudinary } from "@/lib/cloudinary";
+import { useSearchParams } from "next/navigation";
 
-export default function ManageBooks() {
+function ManageBooksContent() {
+  const searchParams = useSearchParams();
+  const initialCategory = searchParams.get('category') || "ALL";
+
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [availableCategories, setAvailableCategories] = useState([]);
+  
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState(initialCategory);
+
+
+
   
   const [formData, setFormData] = useState({
     title: '',
@@ -24,9 +35,24 @@ export default function ManageBooks() {
     status: 'Available'
   });
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+
   useEffect(() => {
     fetchBooks();
+    fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch('/api/categories');
+      const data = await res.json();
+      setAvailableCategories(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
 
   const fetchBooks = async () => {
     try {
@@ -115,6 +141,27 @@ export default function ManageBooks() {
     }
   };
 
+  const filteredBooks = books.filter(book => {
+    const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (book.isbn && book.isbn.includes(searchTerm));
+    
+    const matchesCategory = selectedFilter === "ALL" || book.category === selectedFilter;
+    
+    return matchesSearch && matchesCategory;
+  });
+
+  // Merge formal categories with existing book categories for backup/filter
+  const bookCategories = [...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
+  const managedNames = availableCategories.map(c => c.name);
+  const filterTabs = [
+    { id: 'ALL', name: 'Tất cả thể loại' },
+    ...availableCategories.map(c => ({ id: c.id, name: c.name })),
+    ...bookCategories.filter(name => !managedNames.includes(name)).map(name => ({ id: name, name }))
+  ];
+
+
+
   return (
     <div>
       <div className={styles.headerArea}>
@@ -183,14 +230,23 @@ export default function ManageBooks() {
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Thể loại / Hạng mục</label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: Kỹ năng sống"
+                <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                />
+                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', cursor: 'pointer' }}
+                >
+                  <option value="" style={{ background: '#2a2a2d' }}>Chọn thể loại...</option>
+                  <option value="Chưa phân loại" style={{ background: '#2a2a2d' }}>Chưa phân loại</option>
+                  {availableCategories.map(cat => (
+                    <option key={cat.id} value={cat.name} style={{ background: '#2a2a2d' }}>{cat.name}</option>
+                  ))}
+                  {/* Handle legacy categories not in the new system */}
+                  {formData.category && formData.category !== "Chưa phân loại" && !availableCategories.find(c => c.name === formData.category) && (
+                    <option value={formData.category} style={{ background: '#2a2a2d' }}>{formData.category} (Cũ)</option>
+                  )}
+                </select>
               </div>
+
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Số lượng trong kho</label>
                 <input
@@ -255,7 +311,93 @@ export default function ManageBooks() {
         </div>
       )}
 
+      {/* Search & Filter Bar */}
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        gap: '1.5rem', 
+        marginBottom: '2.5rem', 
+        background: 'rgba(255,255,255,0.02)', 
+        padding: '1.5rem', 
+        borderRadius: '20px',
+        border: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '300px', position: 'relative' }}>
+            <input 
+              type="text" 
+              placeholder="Tìm theo tên, tác giả hoặc ISBN..." 
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              style={{ 
+                width: '100%', 
+                padding: '0.9rem 1rem', 
+                paddingLeft: '3rem',
+                borderRadius: '12px', 
+                background: 'rgba(255,255,255,0.04)', 
+                border: '1px solid rgba(255,255,255,0.08)', 
+                color: 'white',
+                fontSize: '0.95rem',
+                outline: 'none',
+                transition: 'border-color 0.2s'
+              }}
+              onFocus={e => e.target.style.borderColor = 'rgba(187,134,252,0.4)'}
+              onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
+            />
+            <span style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.3, fontSize: '1.2rem' }}>🔍</span>
+          </div>
+          <div style={{ fontSize: '0.9rem', opacity: 0.5 }}>
+            Tìm thấy <strong>{filteredBooks.length}</strong> cuốn sách
+          </div>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px' }}>Lọc theo thể loại</div>
+          <div style={{ 
+            display: 'flex', 
+            gap: '0.8rem', 
+            overflowX: 'auto', 
+            paddingBottom: '0.5rem',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            WebkitOverflowScrolling: 'touch'
+          }}>
+            <style jsx>{`
+              div::-webkit-scrollbar { display: none; }
+            `}</style>
+            {filterTabs.map(tab => {
+              const isActive = (tab.id === 'ALL' && selectedFilter === 'ALL') || (selectedFilter === tab.name);
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => { setSelectedFilter(tab.name === 'Tất cả thể loại' ? 'ALL' : tab.name); setCurrentPage(1); }}
+                  style={{
+                    padding: '0.6rem 1.4rem',
+                    borderRadius: '99px',
+                    border: 'none',
+                    background: isActive 
+                      ? 'linear-gradient(135deg, #bb86fc, #9965f4)' 
+                      : 'rgba(255,255,255,0.05)',
+                    color: isActive ? '#000' : 'rgba(255,255,255,0.7)',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.3s ease',
+                    boxShadow: isActive ? '0 4px 15px rgba(153, 101, 244, 0.4)' : 'none',
+                    fontSize: '0.85rem',
+                    flexShrink: 0
+                  }}
+                >
+                  {tab.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* Book Stats Bar */}
+
       {!loading && books.length > 0 && (
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '1rem 1.5rem', flex: '1', minWidth: '140px' }}>
@@ -290,9 +432,11 @@ export default function ManageBooks() {
           <p style={{ fontSize: '0.9rem', opacity: 0.6 }}>Nhấn "Thêm Sách Mới" để bắt đầu.</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.2rem' }}>
-          {books.map(book => (
-            <div key={book.id} style={{
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.2rem' }}>
+            {filteredBooks.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(book => (
+
+              <div key={book.id} style={{
               background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: '14px',
@@ -392,7 +536,41 @@ export default function ManageBooks() {
             </div>
           ))}
         </div>
+
+        {/* Pagination Controls */}
+        {filteredBooks.length > itemsPerPage && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '2.5rem', marginBottom: '1rem' }}>
+            <button 
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(curr => curr - 1)}
+              className="btn-outline"
+              style={{ opacity: currentPage === 1 ? 0.3 : 1 }}
+            >
+              ← Trang trước
+            </button>
+            <span style={{ fontSize: '0.9rem', opacity: 0.6 }}>Trang {currentPage} / {Math.ceil(filteredBooks.length / itemsPerPage)}</span>
+            <button 
+              disabled={currentPage >= Math.ceil(filteredBooks.length / itemsPerPage)}
+              onClick={() => setCurrentPage(curr => curr + 1)}
+              className="btn-outline"
+              style={{ opacity: currentPage >= Math.ceil(filteredBooks.length / itemsPerPage) ? 0.3 : 1 }}
+            >
+              Trang sau →
+            </button>
+          </div>
+        )}
+
+      </>
       )}
     </div>
   );
 }
+
+export default function ManageBooks() {
+  return (
+    <Suspense fallback={<div className={styles.container}><p>Đang tải...</p></div>}>
+      <ManageBooksContent />
+    </Suspense>
+  );
+}
+

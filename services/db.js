@@ -294,3 +294,44 @@ export const updateUserRole = async (id, role) => {
   const docRef = doc(db, "users", id);
   return await updateDoc(docRef, { role });
 };
+
+// ========================
+// CATEGORIES
+// ========================
+export const getCategories = async () => {
+  const q = query(collection(db, "categories"), orderBy("name"));
+  return await getCollectionData(q);
+};
+
+export const addCategory = async (data) => {
+  return await addDoc(collection(db, "categories"), {
+    ...data,
+    createdAt: serverTimestamp()
+  });
+};
+
+export const updateCategory = async (id, data) => {
+  const docRef = doc(db, "categories", id);
+  return await updateDoc(docRef, data);
+};
+
+export const deleteCategory = async (id) => {
+  const docRef = doc(db, "categories", id);
+  return await deleteDoc(docRef);
+};
+
+export const ensureCategoryExists = async (categoryName) => {
+  if (!categoryName || categoryName === "Chưa phân loại" || categoryName === "Khác") return;
+  
+  const q = query(collection(db, "categories"), where("name", "==", categoryName));
+  const snapshot = await getDocs(q);
+  
+  if (snapshot.empty) {
+    await addCategory({ 
+      name: categoryName, 
+      description: "Tự động tạo từ hệ thống sách" 
+    });
+  }
+};
+
+

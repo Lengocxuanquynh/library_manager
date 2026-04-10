@@ -11,24 +11,32 @@ export default function BookCatalog() {
   const [books, setBooks] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Tất cả");
+  const [formalCategories, setFormalCategories] = useState([]);
   const [selectedBook, setSelectedBook] = useState(null);
   const [loading, setLoading] = useState(true);
 
+
   useEffect(() => {
-    fetchBooks();
+    fetchData();
   }, []);
 
-  const fetchBooks = async () => {
+  const fetchData = async () => {
     try {
-      const res = await fetch('/api/books');
-      const data = await res.json();
-      setBooks(data);
+      const [booksRes, catsRes] = await Promise.all([
+        fetch('/api/books'),
+        fetch('/api/categories')
+      ]);
+      const booksData = await booksRes.json();
+      setBooks(Array.isArray(booksData) ? booksData : []);
+      const catsData = await catsRes.json();
+      setFormalCategories(Array.isArray(catsData) ? catsData : []);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleBorrow = async (book, e) => {
     if (e) e.stopPropagation(); // Prevents opening modal when clicking borrow
@@ -64,8 +72,15 @@ export default function BookCatalog() {
     }
   };
 
-  // Extract unique categories
-  const categories = ["Tất cả", ...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
+  // Merge formal categories with existing book categories for backup
+  const bookCategories = [...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
+  const managedNames = formalCategories.map(c => c.name);
+  const categories = [
+    "Tất cả", 
+    ...managedNames,
+    ...bookCategories.filter(name => !managedNames.includes(name))
+  ];
+
 
   const filteredBooks = books.filter(b => {
     const matchesSearch = b.title.toLowerCase().includes(search.toLowerCase()) || 
@@ -105,20 +120,28 @@ export default function BookCatalog() {
               key={cat}
               onClick={() => setSelectedCategory(cat)}
               style={{
-                padding: '0.6rem 1.2rem',
+                padding: '0.65rem 1.4rem',
                 borderRadius: '99px',
                 border: 'none',
-                background: selectedCategory === cat ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
+                background: selectedCategory === cat 
+                  ? 'linear-gradient(135deg, #bb86fc, #9965f4)' 
+                  : 'rgba(255,255,255,0.06)',
                 color: selectedCategory === cat ? '#000' : 'rgba(255,255,255,0.7)',
-                fontWeight: '600',
+                fontWeight: '700',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
-                transition: 'all 0.2s'
+                transition: 'all 0.3s ease',
+                boxShadow: selectedCategory === cat 
+                  ? '0 6px 18px rgba(153, 101, 244, 0.4)' 
+                  : 'none',
+                fontSize: '0.9rem',
+                flexShrink: 0
               }}
             >
               {cat}
             </button>
           ))}
+
         </div>
       </div>
 

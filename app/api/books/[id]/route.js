@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBook, updateBook, deleteBook } from '@/services/db';
+import { getBook, updateBook, deleteBook, ensureCategoryExists } from '@/services/db';
 
 export async function GET(request, { params }) {
   try {
@@ -17,7 +17,9 @@ export async function PATCH(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
+    if (body.category) await ensureCategoryExists(body.category);
     await updateBook(id, body);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error updating book API:', error);

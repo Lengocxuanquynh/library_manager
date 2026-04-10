@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addBook, getBooks } from '@/services/db';
+import { addBook, getBooks, ensureCategoryExists } from '@/services/db';
 
 export async function GET() {
   try {
@@ -22,6 +22,10 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    // Auto-sync category
+    if (category) await ensureCategoryExists(category);
+
 
     const docRef = await addBook({
       title,
