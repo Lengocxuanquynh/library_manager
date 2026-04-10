@@ -100,34 +100,36 @@ export default function ManageMembers() {
         {loading ? (
           <p>Đang tải danh sách...</p>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Họ Tên</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Email</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>SĐT</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.length === 0 ? (
-                <tr>
-                  <td colSpan="4" style={{ padding: '1rem', textAlign: 'center' }}>Chưa có hội viên nào.</td>
+          <div className="table-container">
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Họ Tên</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Email</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>SĐT</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
                 </tr>
-              ) : (
-                members.map(member => (
-                  <tr key={member.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '1rem', fontWeight: '500' }}>{member.name}</td>
-                    <td style={{ padding: '1rem' }}>{member.email}</td>
-                    <td style={{ padding: '1rem' }}>{member.phone || 'N/A'}</td>
-                    <td style={{ padding: '1rem' }}>
-                      <button onClick={() => handleDelete(member.id)} style={{ background: 'rgba(255, 95, 86, 0.1)', color: '#ff5f56', border: '1px solid rgba(255, 95, 86, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer' }}>Xoá</button>
-                    </td>
+              </thead>
+              <tbody>
+                {members.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '1rem', textAlign: 'center' }}>Chưa có hội viên nào.</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  members.map(member => (
+                    <tr key={member.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1rem', fontWeight: '500' }}>{member.name}</td>
+                      <td style={{ padding: '1rem' }}>{member.email}</td>
+                      <td style={{ padding: '1rem' }}>{member.phone || 'N/A'}</td>
+                      <td style={{ padding: '1rem' }}>
+                        <button onClick={() => handleDelete(member.id)} style={{ background: 'rgba(255, 95, 86, 0.1)', color: '#ff5f56', border: '1px solid rgba(255, 95, 86, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer' }}>Xoá</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

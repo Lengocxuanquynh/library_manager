@@ -45,10 +45,13 @@ export default function BookList() {
         display: 'flex', 
         gap: '0.8rem', 
         overflowX: 'auto', 
-        paddingBottom: '2.5rem', 
-        justifyContent: 'center',
+        paddingBottom: '1.5rem', 
+        paddingLeft: '1rem',
+        paddingRight: '1rem',
+        justifyContent: 'flex-start',
         scrollbarWidth: 'none',
-        msOverflowStyle: 'none'
+        msOverflowStyle: 'none',
+        WebkitOverflowScrolling: 'touch'
       }}>
         {categories.map(cat => (
           <button

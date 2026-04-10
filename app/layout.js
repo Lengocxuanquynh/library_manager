@@ -12,7 +12,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning>
         <AuthProvider>
           <Navbar />
           <main className="main-content" style={{ minHeight: 'calc(100vh - 300px)' }}>

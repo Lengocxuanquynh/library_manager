@@ -186,7 +186,27 @@
   }
 
   .grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .mainContent {
+    padding: 1rem 0.75rem;
+  }
+
+  .headerArea {
+    gap: 0.75rem;
+  }
+
+  .pageTitle {
+    font-size: 1.35rem;
+  }
+
+  .grid {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 }
 
@@ -206,6 +226,9 @@
 @media (max-width: 768px) {
   .mobileToggle {
     display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 1100;
   }
 }
 

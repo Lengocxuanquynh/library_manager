@@ -122,84 +122,88 @@ export default function ManageLoans() {
           <p>Đang tải dữ liệu...</p>
         ) : activeTab === 'requests' ? (
           /* PENDING REQUESTS TABLE */
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hội Viên</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách Yêu Cầu</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Gửi</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.length === 0 ? (
-                <tr>
-                  <td colSpan="4" style={{ padding: '1rem', textAlign: 'center' }}>Không có yêu cầu nào đang chờ.</td>
+          <div className="table-container">
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hội Viên</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách Yêu Cầu</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Gửi</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
                 </tr>
-              ) : (
-                requests.map(req => (
-                  <tr key={req.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '1rem', fontWeight: '500' }}>{req.userName}</td>
-                    <td style={{ padding: '1rem' }}>{req.bookTitle}</td>
-                    <td style={{ padding: '1rem' }}>{req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('vi-VN') : 'Vừa xong'}</td>
-                    <td style={{ padding: '1rem', display: 'flex', gap: '0.5rem' }}>
-                      <button onClick={() => handleApprove(req)} style={{ background: 'rgba(39, 201, 63, 0.2)', color: '#27c93f', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer' }}>Duyệt</button>
-                      <button onClick={() => handleReject(req.id)} style={{ background: 'rgba(255, 95, 86, 0.2)', color: '#ff5f56', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer' }}>Từ Chối</button>
-                    </td>
+              </thead>
+              <tbody>
+                {requests.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '1rem', textAlign: 'center' }}>Không có yêu cầu nào đang chờ.</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        ) : (
-          /* RECORDS TABLE */
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Người Mượn</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Phải Trả</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.length === 0 ? (
-                <tr>
-                  <td colSpan="5" style={{ padding: '1rem', textAlign: 'center' }}>Chưa có bản ghi mượn sách nào.</td>
-                </tr>
-              ) : (
-                records.map(rec => {
-                  const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
-                  const isOverdue = rec.status === 'Active' && dueDate && dueDate < new Date();
-
-                  return (
-                    <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
-                      <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
-                      <td style={{ padding: '1rem' }}>{dueDate ? dueDate.toLocaleDateString('vi-VN') : 'N/A'}</td>
-                      <td style={{ padding: '1rem' }}>
-                        <span style={{
-                          background: isOverdue ? 'rgba(255, 95, 86, 0.2)' : rec.status === 'Active' || rec.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255,255,255,0.1)',
-                          color: isOverdue ? '#ff5f56' : rec.status === 'Active' || rec.status === 'BORROWING' ? '#27c93f' : '#888',
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: '4px',
-                          fontSize: '0.85rem'
-                        }}>
-                          {isOverdue ? 'Quá Hạn' : (rec.status === 'Active' || rec.status === 'BORROWING' ? 'Đang Mượn' : 'Đã Trả')}
-                        </span>
-                      </td>
-                      <td style={{ padding: '1rem' }}>
-                        {(rec.status === 'Active' || rec.status === 'BORROWING') && (
-                          <button onClick={() => handleReturn(rec.id, rec.bookId)} className="btn-outline" style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem' }}>Thu Hồi / Trả</button>
-                        )}
+                ) : (
+                  requests.map(req => (
+                    <tr key={req.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1rem', fontWeight: '500' }}>{req.userName}</td>
+                      <td style={{ padding: '1rem' }}>{req.bookTitle}</td>
+                      <td style={{ padding: '1rem' }}>{req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('vi-VN') : 'Vừa xong'}</td>
+                      <td style={{ padding: '1rem', display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={() => handleApprove(req)} style={{ background: 'rgba(39, 201, 63, 0.2)', color: '#27c93f', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer' }}>Duyệt</button>
+                        <button onClick={() => handleReject(req.id)} style={{ background: 'rgba(255, 95, 86, 0.2)', color: '#ff5f56', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer' }}>Từ Chối</button>
                       </td>
                     </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* RECORDS TABLE */
+          <div className="table-container">
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Người Mượn</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Phải Trả</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" style={{ padding: '1rem', textAlign: 'center' }}>Chưa có bản ghi mượn sách nào.</td>
+                  </tr>
+                ) : (
+                  records.map(rec => {
+                    const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
+                    const isOverdue = rec.status === 'Active' && dueDate && dueDate < new Date();
+  
+                    return (
+                      <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
+                        <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
+                        <td style={{ padding: '1rem' }}>{dueDate ? dueDate.toLocaleDateString('vi-VN') : 'N/A'}</td>
+                        <td style={{ padding: '1rem' }}>
+                          <span style={{
+                            background: isOverdue ? 'rgba(255, 95, 86, 0.2)' : rec.status === 'Active' || rec.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255,255,255,0.1)',
+                            color: isOverdue ? '#ff5f56' : rec.status === 'Active' || rec.status === 'BORROWING' ? '#27c93f' : '#888',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.85rem'
+                          }}>
+                            {isOverdue ? 'Quá Hạn' : (rec.status === 'Active' || rec.status === 'BORROWING' ? 'Đang Mượn' : 'Đã Trả')}
+                          </span>
+                        </td>
+                        <td style={{ padding: '1rem' }}>
+                          {(rec.status === 'Active' || rec.status === 'BORROWING') && (
+                            <button onClick={() => handleReturn(rec.id, rec.bookId)} className="btn-outline" style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem' }}>Thu Hồi / Trả</button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

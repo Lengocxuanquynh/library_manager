@@ -125,50 +125,52 @@ export default function ManageBooks() {
         {loading ? (
           <p>Đang tải danh sách...</p>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '60px' }}>Ảnh</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Tiêu Đề</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Tác Giả</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Số Lượng</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {books.length === 0 ? (
-                <tr>
-                  <td colSpan="6" style={{ padding: '1rem', textAlign: 'center' }}>Không tìm thấy cuốn sách nào trong kho.</td>
+          <div className="table-container">
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '60px' }}>Ảnh</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Tiêu Đề</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Tác Giả</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Số Lượng</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
                 </tr>
-              ) : (
-                books.map(book => (
-                  <tr key={book.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '1rem' }}>
-                      <div style={{ width: '40px', height: '60px', backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/40x60'})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '4px' }}></div>
-                    </td>
-                    <td style={{ padding: '1rem', fontWeight: '500' }}>{book.title}</td>
-                    <td style={{ padding: '1rem' }}>{book.author}</td>
-                    <td style={{ padding: '1rem' }}>{book.quantity || 0}</td>
-                    <td style={{ padding: '1rem' }}>
-                      <span style={{
-                        background: (book.quantity > 0) ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 95, 86, 0.2)',
-                        color: (book.quantity > 0) ? '#27c93f' : '#ff5f56',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '4px',
-                        fontSize: '0.85rem'
-                      }}>
-                        {(book.quantity > 0) ? 'Còn Sách' : 'Hết Sách'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      <button onClick={() => handleDelete(book.id)} style={{ background: 'rgba(255, 95, 86, 0.1)', color: '#ff5f56', border: '1px solid rgba(255, 95, 86, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer' }}>Xoá</button>
-                    </td>
+              </thead>
+              <tbody>
+                {books.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ padding: '1rem', textAlign: 'center' }}>Không tìm thấy cuốn sách nào trong kho.</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  books.map(book => (
+                    <tr key={book.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ width: '40px', height: '60px', backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/40x60'})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '4px' }}></div>
+                      </td>
+                      <td style={{ padding: '1rem', fontWeight: '500' }}>{book.title}</td>
+                      <td style={{ padding: '1rem' }}>{book.author}</td>
+                      <td style={{ padding: '1rem' }}>{book.quantity || 0}</td>
+                      <td style={{ padding: '1rem' }}>
+                        <span style={{
+                          background: (book.quantity > 0) ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 95, 86, 0.2)',
+                          color: (book.quantity > 0) ? '#27c93f' : '#ff5f56',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '4px',
+                          fontSize: '0.85rem'
+                        }}>
+                          {(book.quantity > 0) ? 'Còn Sách' : 'Hết Sách'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <button onClick={() => handleDelete(book.id)} style={{ background: 'rgba(255, 95, 86, 0.1)', color: '#ff5f56', border: '1px solid rgba(255, 95, 86, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer' }}>Xoá</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
