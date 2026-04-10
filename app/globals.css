@@ -131,6 +131,30 @@ button {
   color: #fff;
 }
 
+@media (max-width: 600px) {
+  .navbar {
+    height: auto;
+    padding: 1rem 0;
+  }
+  
+  .nav-content {
+    flex-direction: column;
+    gap: 1rem;
+    height: auto;
+  }
+
+  .nav-links {
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .btn-primary, .btn-outline {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.9rem;
+  }
+}
+
 .main-content {
   min-height: calc(100vh - 80px);
 }

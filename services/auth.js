@@ -1,7 +1,7 @@
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
   updateProfile
 } from "firebase/auth";
@@ -13,7 +13,7 @@ export const registerUser = async (email, password, name, role = "user") => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Update display name
     await updateProfile(user, { displayName: name });
 
@@ -36,7 +36,7 @@ export const loginUser = async (email, password) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Fetch role
     const userDocRef = doc(db, "users", user.uid);
     const userDoc = await getDoc(userDocRef);
@@ -90,7 +90,7 @@ export const updateUserProfile = async (uid, data) => {
 
     // Update Firestore User Doc
     const userDocRef = doc(db, "users", uid);
-    await setDoc(userDocRef, { 
+    await setDoc(userDocRef, {
       ...data,
       name: data.name,
       id: uid

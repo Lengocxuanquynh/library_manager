@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import { logoutUser } from "@/services/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 export default function Navbar() {
   const { user, role, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Hide navbar on dashboard routes
+  if (pathname.startsWith("/admin") || pathname.startsWith("/user")) {
+    return null;
+  }
 
   const handleLogout = async () => {
     await logoutUser();

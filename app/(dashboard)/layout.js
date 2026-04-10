@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { logoutUser } from "@/services/auth";
@@ -10,6 +11,7 @@ export default function DashboardLayout({ children }) {
   const { user, role, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   if (loading) {
     return <div className={styles.loading}>Đang tải bảng điều khiển...</div>;
@@ -23,6 +25,8 @@ export default function DashboardLayout({ children }) {
     await logoutUser();
     router.push("/login");
   };
+
+  const toggleMobileSidebar = () => setIsMobileOpen(!isMobileOpen);
 
   const navLinks = role === "admin" ? [
     { href: "/admin", label: "Tổng Quan" },
@@ -40,7 +44,14 @@ export default function DashboardLayout({ children }) {
 
   return (
     <div className={styles.layout}>
-      <aside className={styles.sidebar}>
+      <header className={styles.mobileToggle}>
+        <span className={styles.logoText}>Thư Viện</span>
+        <button onClick={toggleMobileSidebar} className={styles.toggleBtn}>
+          {isMobileOpen ? "✕ Đóng" : "☰ Menu"}
+        </button>
+      </header>
+
+      <aside className={`${styles.sidebar} ${isMobileOpen ? styles.mobileOpen : ""}`}>
         <div className={styles.sidebarHeader}>
           <h2>{role === "admin" ? "Trang Quản Trị" : "Trang Độc Giả"}</h2>
           <p className={styles.userEmail}>{user.email}</p>
@@ -51,6 +62,7 @@ export default function DashboardLayout({ children }) {
               key={link.href} 
               href={link.href}
               className={`${styles.navItem} ${pathname === link.href ? styles.active : ""}`}
+              onClick={() => setIsMobileOpen(false)}
             >
               {link.label}
             </Link>

@@ -1,13 +1,13 @@
-import { 
-  collection, 
-  doc, 
-  getDocs, 
-  getDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
   orderBy,
   serverTimestamp
 } from "firebase/firestore";
@@ -99,7 +99,7 @@ export const updateTransaction = async (id, data) => {
 export const processBorrow = async (bookId, memberId, memberName, bookTitle) => {
   const bookRef = doc(db, "books", bookId);
   await updateDoc(bookRef, { status: 'Borrowed' });
-  
+
   return await addDoc(collection(db, "transactions"), {
     bookId,
     bookTitle,
@@ -114,7 +114,7 @@ export const processBorrow = async (bookId, memberId, memberName, bookTitle) => 
 export const processReturn = async (transactionId, bookId) => {
   const transRef = doc(db, "transactions", transactionId);
   await updateDoc(transRef, { status: 'Returned', returnDate: serverTimestamp() });
-  
+
   const bookRef = doc(db, "books", bookId);
   await updateDoc(bookRef, { status: 'Available' });
 };
@@ -161,11 +161,11 @@ export const getBorrowRequests = async (status = null, userId = null) => {
   const constraints = [];
   if (status) constraints.push(where("status", "==", status));
   if (userId) constraints.push(where("userId", "==", userId));
-  
+
   if (constraints.length > 0) {
     q = query(q, ...constraints);
   }
-  
+
   const data = await getCollectionData(q);
   return data.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
 };
@@ -195,7 +195,7 @@ export const getBorrowRecords = async (userId = null) => {
     q = query(q, where("userId", "==", userId));
   }
   const data = await getCollectionData(q);
-  
+
   // Enhance data with dynamic status (OVERDUE check)
   const now = new Date();
   return data.map(record => {
@@ -264,7 +264,7 @@ export const canUserBorrow = async (userId) => {
   const records = await getBorrowRecords(userId);
   const hasOverdue = records.some(r => r.status === 'OVERDUE');
   if (hasOverdue) return { canBorrow: false, reason: 'Bạn đang có sách quá hạn chưa trả.' };
-  
+
   // Also check if they already requested this book and it's pending
   const requests = await getBorrowRequests('PENDING', userId);
   if (requests.length > 0) return { canBorrow: false, reason: 'Bạn đang có một yêu cầu mượn sách đang chờ duyệt.' };

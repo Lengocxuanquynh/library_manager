@@ -30,8 +30,8 @@ export default function ManageSystemUsers() {
 
   const handleUpdateRole = async (userId, currentRole) => {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
-    const confirmMsg = newRole === 'admin' 
-      ? `Bạn có chắc muốn nâng thư quyền Admin cho người dùng này?` 
+    const confirmMsg = newRole === 'admin'
+      ? `Bạn có chắc muốn nâng thư quyền Admin cho người dùng này?`
       : `Bạn có chắc muốn gỡ quyền Admin của người dùng này?`;
 
     if (confirm(confirmMsg)) {
@@ -80,21 +80,21 @@ export default function ManageSystemUsers() {
                     <td style={{ padding: '1rem', fontWeight: '500' }}>{u.name}</td>
                     <td style={{ padding: '1rem' }}>{u.email}</td>
                     <td style={{ padding: '1rem' }}>
-                      <span style={{ 
+                      <span style={{
                         background: u.role === 'admin' ? 'rgba(187, 134, 252, 0.2)' : 'rgba(255, 255, 255, 0.1)',
                         color: u.role === 'admin' ? '#bb86fc' : '#aaa',
                         padding: '0.25rem 0.5rem',
                         borderRadius: '4px',
                         fontSize: '0.85rem'
-                       }}>
+                      }}>
                         {u.role === 'admin' ? 'Admin' : 'Thành viên'}
                       </span>
                     </td>
                     <td style={{ padding: '1rem' }}>
                       {u.id !== user.uid && (
-                        <button 
-                          onClick={() => handleUpdateRole(u.id, u.role)} 
-                          className="btn-outline" 
+                        <button
+                          onClick={() => handleUpdateRole(u.id, u.role)}
+                          className="btn-outline"
                           style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem' }}
                         >
                           {u.role === 'admin' ? 'Gỡ quyền Admin' : 'Cấp quyền Admin'}

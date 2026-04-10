@@ -25,10 +25,10 @@ export default function ManageLoans() {
         fetch(`/api/admin/borrow-requests?status=PENDING&adminId=${user.uid}`),
         fetch(`/api/admin/borrow-records?adminId=${user.uid}`)
       ]);
-      
+
       const requestsData = await reqRes.json();
       setRequests(Array.isArray(requestsData) ? requestsData : []);
-      
+
       const recordsData = await recRes.json();
       setRecords(Array.isArray(recordsData) ? recordsData : []);
     } catch (error) {
@@ -102,14 +102,14 @@ export default function ManageLoans() {
       <div className={styles.headerArea}>
         <h1 className={styles.pageTitle}>Quản Lý Mượn Trả</h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button 
-            className={activeTab === 'requests' ? 'btn-primary' : 'btn-outline'} 
+          <button
+            className={activeTab === 'requests' ? 'btn-primary' : 'btn-outline'}
             onClick={() => setActiveTab('requests')}
           >
             Yêu Cầu Chờ Duyệt ({requests.length})
           </button>
-          <button 
-            className={activeTab === 'records' ? 'btn-primary' : 'btn-outline'} 
+          <button
+            className={activeTab === 'records' ? 'btn-primary' : 'btn-outline'}
             onClick={() => setActiveTab('records')}
           >
             Sách Đang Mượn & Lịch Sử
@@ -172,20 +172,20 @@ export default function ManageLoans() {
                 records.map(rec => {
                   const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
                   const isOverdue = rec.status === 'Active' && dueDate && dueDate < new Date();
-                  
+
                   return (
                     <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
                       <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
                       <td style={{ padding: '1rem' }}>{dueDate ? dueDate.toLocaleDateString('vi-VN') : 'N/A'}</td>
                       <td style={{ padding: '1rem' }}>
-                        <span style={{ 
+                        <span style={{
                           background: isOverdue ? 'rgba(255, 95, 86, 0.2)' : rec.status === 'Active' || rec.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255,255,255,0.1)',
                           color: isOverdue ? '#ff5f56' : rec.status === 'Active' || rec.status === 'BORROWING' ? '#27c93f' : '#888',
                           padding: '0.25rem 0.5rem',
                           borderRadius: '4px',
                           fontSize: '0.85rem'
-                         }}>
+                        }}>
                           {isOverdue ? 'Quá Hạn' : (rec.status === 'Active' || rec.status === 'BORROWING' ? 'Đang Mượn' : 'Đã Trả')}
                         </span>
                       </td>
