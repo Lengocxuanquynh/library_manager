@@ -18,6 +18,9 @@ export default function ManageBooks() {
     quantity: 1,
     coverImage: '',
     description: '',
+    isbn: '',
+    publisher: '',
+    year: '',
     status: 'Available'
   });
 
@@ -90,6 +93,9 @@ export default function ManageBooks() {
       quantity: book.quantity || 0,
       coverImage: book.coverImage || '',
       description: book.description || '',
+      isbn: book.isbn || '',
+      publisher: book.publisher || '',
+      year: book.year || '',
       status: book.status || 'Available'
     });
     setEditingId(book.id);
@@ -97,7 +103,7 @@ export default function ManageBooks() {
   };
 
   const resetForm = () => {
-    setFormData({ title: '', author: '', category: '', quantity: 1, coverImage: '', description: '', status: 'Available' });
+    setFormData({ title: '', author: '', category: '', quantity: 1, coverImage: '', description: '', isbn: '', publisher: '', year: '', status: 'Available' });
     setEditingId(null);
     setShowForm(false);
   };
@@ -132,6 +138,36 @@ export default function ManageBooks() {
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
                   required
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Mã ISBN</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: 978-604-..."
+                  value={formData.isbn}
+                  onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
+                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Nhà xuất bản</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: NXB Trẻ"
+                  value={formData.publisher}
+                  onChange={(e) => setFormData({ ...formData, publisher: e.target.value })}
+                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Năm xuất bản</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: 2024"
+                  value={formData.year}
+                  onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
                 />
               </div>
               <div>

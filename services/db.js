@@ -9,7 +9,8 @@ import {
   query,
   where,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  increment
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -217,15 +218,13 @@ export const getBorrowRecords = async (userId = null) => {
 export const createBorrowRecord = async (userId, bookId, userName, bookTitle) => {
   const borrowDate = new Date();
   const dueDate = new Date();
-  dueDate.setDate(borrowDate.getDate() + 7); // Default 7 days
+  dueDate.setDate(borrowDate.getDate() + 14); // Default 14 days
 
-  // Decrement book quantity
+  // Decrement book quantity atomically
   const bookRef = doc(db, "books", bookId);
-  const bookSnap = await getDoc(bookRef);
-  if (bookSnap.exists()) {
-    const currentQty = bookSnap.data().quantity || 1;
-    await updateDoc(bookRef, { quantity: Math.max(0, currentQty - 1) });
-  }
+  await updateDoc(bookRef, { 
+    quantity: increment(-1)
+  });
 
   return await addDoc(collection(db, "borrowRecords"), {
     userId,
@@ -255,13 +254,11 @@ export const returnBorrowRecord = async (recordId, bookId) => {
     returnDate: serverTimestamp()
   });
 
-  // Increase book quantity
+  // Increase book quantity atomically
   const bookRef = doc(db, "books", bookId);
-  const bookSnap = await getDoc(bookRef);
-  if (bookSnap.exists()) {
-    const currentQty = bookSnap.data().quantity || 0;
-    await updateDoc(bookRef, { quantity: currentQty + 1 });
-  }
+  await updateDoc(bookRef, { 
+    quantity: increment(1)
+  });
 };
 
 // ========================
