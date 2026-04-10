@@ -77,6 +77,13 @@ export const getTransactions = async () => {
   return await getCollectionData(q);
 };
 
+export const getUserTransactions = async (userId) => {
+  // Use plain query to avoid Firebase composite index requirements, then sort in JS
+  const q = query(collection(db, "transactions"), where("memberId", "==", userId));
+  const data = await getCollectionData(q);
+  return data.sort((a, b) => (b.borrowDate?.toMillis() || 0) - (a.borrowDate?.toMillis() || 0));
+};
+
 export const addTransaction = async (data) => {
   return await addDoc(collection(db, "transactions"), {
     ...data,
@@ -87,6 +94,29 @@ export const addTransaction = async (data) => {
 export const updateTransaction = async (id, data) => {
   const docRef = doc(db, "transactions", id);
   return await updateDoc(docRef, data);
+};
+
+export const processBorrow = async (bookId, memberId, memberName, bookTitle) => {
+  const bookRef = doc(db, "books", bookId);
+  await updateDoc(bookRef, { status: 'Borrowed' });
+  
+  return await addDoc(collection(db, "transactions"), {
+    bookId,
+    bookTitle,
+    memberId,
+    memberName,
+    status: 'Active',
+    borrowDate: serverTimestamp(),
+    returnDate: null
+  });
+};
+
+export const processReturn = async (transactionId, bookId) => {
+  const transRef = doc(db, "transactions", transactionId);
+  await updateDoc(transRef, { status: 'Returned', returnDate: serverTimestamp() });
+  
+  const bookRef = doc(db, "books", bookId);
+  await updateDoc(bookRef, { status: 'Available' });
 };
 
 // ========================

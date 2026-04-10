@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getBooks, getMembers, getPosts, getTransactions } from "@/services/db";
 import styles from "../dashboard.module.css";
 import Link from "next/link";
 
@@ -17,11 +16,18 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
+        const [booksRes, membersRes, postsRes, transactionsRes] = await Promise.all([
+          fetch('/api/books'),
+          fetch('/api/members'),
+          fetch('/api/posts'),
+          fetch('/api/transactions')
+        ]);
+        
         const [books, members, posts, transactions] = await Promise.all([
-          getBooks(),
-          getMembers(),
-          getPosts(),
-          getTransactions()
+          booksRes.json(),
+          membersRes.json(),
+          postsRes.json(),
+          transactionsRes.json()
         ]);
         
         setStats({
