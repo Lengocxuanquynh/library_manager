@@ -60,6 +60,7 @@
 }
 
 .button {
+  width: 100%;
   background: #bb86fc;
   color: #121212;
   border: none;
