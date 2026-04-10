@@ -38,7 +38,7 @@ export default function DashboardLayout({ children }) {
     { href: "/admin/settings", label: "Cài Đặt" },
   ] : [
     { href: "/user", label: "Hồ Sơ Cá Nhân" },
-    { href: "/user/books", label: "Sách Đang Mượn" },
+    { href: "/user/books", label: "Sách" },
     { href: "/user/settings", label: "Cài Đặt" },
   ];
 
@@ -58,8 +58,8 @@ export default function DashboardLayout({ children }) {
         </div>
         <nav className={styles.navMenu}>
           {navLinks.map((link) => (
-            <Link 
-              key={link.href} 
+            <Link
+              key={link.href}
               href={link.href}
               className={`${styles.navItem} ${pathname === link.href ? styles.active : ""}`}
               onClick={() => setIsMobileOpen(false)}

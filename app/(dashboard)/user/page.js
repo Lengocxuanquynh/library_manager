@@ -28,7 +28,7 @@ export default function UserDashboard() {
       const res = await fetch('/api/return-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId, bookId })
+        body: JSON.stringify({ recordId, bookId, userId: user.uid })
       });
       if (res.ok) {
         loadRecords();

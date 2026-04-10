@@ -189,6 +189,13 @@ export const updateBorrowRequestStatus = async (requestId, status) => {
 // ========================
 // BORROW RECORDS
 // ========================
+export const getBorrowRecord = async (recordId) => {
+  const docRef = doc(db, "borrowRecords", recordId);
+  const docSnap = await getDoc(docRef);
+  if (!docSnap.exists()) return null;
+  return { id: docSnap.id, ...docSnap.data() };
+};
+
 export const getBorrowRecords = async (userId = null) => {
   let q = collection(db, "borrowRecords");
   if (userId) {
