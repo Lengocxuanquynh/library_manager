@@ -7,7 +7,7 @@ export default function ManageBooks() {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [newBook, setNewBook] = useState({ title: '', author: '', category: '', status: 'Available', coverImage: '' });
+  const [newBook, setNewBook] = useState({ title: '', author: '', category: '', status: 'Available', coverImage: '', quantity: 1, description: '' });
 
   useEffect(() => {
     fetchBooks();
@@ -35,16 +35,19 @@ export default function ManageBooks() {
   const handleAddBook = async (e) => {
     e.preventDefault();
     if (!newBook.title || !newBook.author) return;
-    
+
     try {
       const res = await fetch('/api/books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newBook)
+        body: JSON.stringify({
+          ...newBook,
+          quantity: parseInt(newBook.quantity) || 0
+        })
       });
-      
+
       if (res.ok) {
-        setNewBook({ title: '', author: '', category: '', status: 'Available', coverImage: '' });
+        setNewBook({ title: '', author: '', category: '', status: 'Available', coverImage: '', quantity: 1, description: '' });
         setShowForm(false);
         fetchBooks();
       } else {
@@ -68,44 +71,51 @@ export default function ManageBooks() {
         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem' }}>
           <h3 style={{ marginBottom: '1rem' }}>Thêm Sách Mới</h3>
           <form onSubmit={handleAddBook} style={{ display: 'grid', gap: '1rem', gridTemplateColumns: '1fr 1fr' }}>
-            <input 
-              type="text" 
-              placeholder="Tiêu đề sách" 
+            <input
+              type="text"
+              placeholder="Tiêu đề sách"
               value={newBook.title}
-              onChange={(e) => setNewBook({...newBook, title: e.target.value})}
+              onChange={(e) => setNewBook({ ...newBook, title: e.target.value })}
               style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
               required
             />
-            <input 
-              type="text" 
-              placeholder="Tác giả" 
+            <input
+              type="text"
+              placeholder="Tác giả"
               value={newBook.author}
-              onChange={(e) => setNewBook({...newBook, author: e.target.value})}
+              onChange={(e) => setNewBook({ ...newBook, author: e.target.value })}
               style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
               required
             />
-            <input 
-              type="text" 
-              placeholder="Hạng mục (Thể loại)" 
+            <input
+              type="text"
+              placeholder="Hạng mục (Thể loại)"
               value={newBook.category}
-              onChange={(e) => setNewBook({...newBook, category: e.target.value})}
+              onChange={(e) => setNewBook({ ...newBook, category: e.target.value })}
               style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
             />
-            <input 
-              type="url" 
-              placeholder="Đường dẫn ảnh bìa (Link Image)" 
+            <input
+              type="number"
+              placeholder="Số lượng"
+              value={newBook.quantity}
+              onChange={(e) => setNewBook({ ...newBook, quantity: e.target.value })}
+              style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+              min="0"
+              required
+            />
+            <input
+              type="url"
+              placeholder="Đường dẫn ảnh bìa (Link Image)"
               value={newBook.coverImage || ''}
-              onChange={(e) => setNewBook({...newBook, coverImage: e.target.value})}
-              style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-            />
-            <select 
-              value={newBook.status}
-              onChange={(e) => setNewBook({...newBook, status: e.target.value})}
+              onChange={(e) => setNewBook({ ...newBook, coverImage: e.target.value })}
               style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', gridColumn: 'span 2' }}
-            >
-              <option value="Available">Có Sẵn (Available)</option>
-              <option value="Borrowed">Đã Mượn (Borrowed)</option>
-            </select>
+            />
+            <textarea
+              placeholder="Mô tả tóm tắt nội dung sách..."
+              value={newBook.description || ''}
+              onChange={(e) => setNewBook({ ...newBook, description: e.target.value })}
+              style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', gridColumn: 'span 2', minHeight: '100px', fontFamily: 'inherit' }}
+            />
             <button type="submit" className="btn-primary" style={{ gridColumn: 'span 2' }}>Lưu Sách</button>
           </form>
         </div>
@@ -121,7 +131,7 @@ export default function ManageBooks() {
                 <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '60px' }}>Ảnh</th>
                 <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Tiêu Đề</th>
                 <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Tác Giả</th>
-                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hạng Mục</th>
+                <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Số Lượng</th>
                 <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
                 <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
               </tr>
@@ -129,7 +139,7 @@ export default function ManageBooks() {
             <tbody>
               {books.length === 0 ? (
                 <tr>
-                  <td colSpan="5" style={{ padding: '1rem', textAlign: 'center' }}>Không tìm thấy cuốn sách nào trong kho.</td>
+                  <td colSpan="6" style={{ padding: '1rem', textAlign: 'center' }}>Không tìm thấy cuốn sách nào trong kho.</td>
                 </tr>
               ) : (
                 books.map(book => (
@@ -139,20 +149,19 @@ export default function ManageBooks() {
                     </td>
                     <td style={{ padding: '1rem', fontWeight: '500' }}>{book.title}</td>
                     <td style={{ padding: '1rem' }}>{book.author}</td>
-                    <td style={{ padding: '1rem' }}>{book.category}</td>
+                    <td style={{ padding: '1rem' }}>{book.quantity || 0}</td>
                     <td style={{ padding: '1rem' }}>
-                      <span style={{ 
-                        background: book.status === 'Available' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 189, 46, 0.2)',
-                        color: book.status === 'Available' ? '#27c93f' : '#ffbd2e',
+                      <span style={{
+                        background: (book.quantity > 0) ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 95, 86, 0.2)',
+                        color: (book.quantity > 0) ? '#27c93f' : '#ff5f56',
                         padding: '0.25rem 0.5rem',
                         borderRadius: '4px',
                         fontSize: '0.85rem'
-                       }}>
-                        {book.status || 'Chưa rõ'}
+                      }}>
+                        {(book.quantity > 0) ? 'Còn Sách' : 'Hết Sách'}
                       </span>
                     </td>
                     <td style={{ padding: '1rem' }}>
-                      <button className="btn-outline" style={{ marginRight: '0.5rem', padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Sửa</button>
                       <button onClick={() => handleDelete(book.id)} style={{ background: 'rgba(255, 95, 86, 0.1)', color: '#ff5f56', border: '1px solid rgba(255, 95, 86, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer' }}>Xoá</button>
                     </td>
                   </tr>

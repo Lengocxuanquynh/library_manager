@@ -22,14 +22,14 @@ export default function AdminDashboard() {
           fetch('/api/posts'),
           fetch('/api/transactions')
         ]);
-        
+
         const [books, members, posts, transactions] = await Promise.all([
           booksRes.json(),
           membersRes.json(),
           postsRes.json(),
           transactionsRes.json()
         ]);
-        
+
         setStats({
           books: books.length,
           members: members.length,

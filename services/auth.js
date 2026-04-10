@@ -1,7 +1,7 @@
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
   updateProfile
 } from "firebase/auth";
@@ -13,7 +13,7 @@ export const registerUser = async (email, password, name, role = "user") => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Update display name
     await updateProfile(user, { displayName: name });
 
@@ -36,7 +36,7 @@ export const loginUser = async (email, password) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Fetch role
     const userDocRef = doc(db, "users", user.uid);
     const userDoc = await getDoc(userDocRef);
@@ -75,4 +75,29 @@ export const subscribeToAuthChanges = (callback) => {
       callback(null);
     }
   });
+};
+
+// Update user profile
+export const updateUserProfile = async (uid, data) => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("No user logged in");
+
+    // Update Firebase Auth Profile
+    if (data.name) {
+      await updateProfile(user, { displayName: data.name });
+    }
+
+    // Update Firestore User Doc
+    const userDocRef = doc(db, "users", uid);
+    await setDoc(userDocRef, {
+      ...data,
+      name: data.name,
+      id: uid
+    }, { merge: true });
+
+    return true;
+  } catch (error) {
+    throw error;
+  }
 };

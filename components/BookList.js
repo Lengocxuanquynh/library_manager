@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import styles from "./BookList.module.css";
 
 export default function BookList() {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState("Tất cả");
 
   useEffect(() => {
     async function fetchBooks() {
@@ -26,12 +29,58 @@ export default function BookList() {
     return <div className={styles.booksContainer}><p>Đang tải danh sách sách...</p></div>;
   }
 
+  // Extract unique categories
+  const categories = ["Tất cả", ...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
+
+  const filteredBooks = books.filter(b => 
+    selectedCategory === "Tất cả" || (b.category || "Khác") === selectedCategory
+  );
+
   return (
     <div className={`container ${styles.booksContainer}`}>
       <h2 className={styles.sectionTitle}>Sách Mới Cập Nhật</h2>
+
+      {/* Category Tabs */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '0.8rem', 
+        overflowX: 'auto', 
+        paddingBottom: '2.5rem', 
+        justifyContent: 'center',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none'
+      }}>
+        {categories.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            style={{
+              padding: '0.7rem 1.5rem',
+              borderRadius: '99px',
+              border: 'none',
+              background: selectedCategory === cat ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
+              color: selectedCategory === cat ? '#000' : 'rgba(255,255,255,0.8)',
+              fontWeight: '700',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: selectedCategory === cat ? '0 4px 15px rgba(187, 134, 252, 0.4)' : 'none',
+              fontSize: '0.95rem'
+            }}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
       <div className={styles.booksGrid}>
-        {books.map(book => (
-          <div key={book.id} className={styles.bookCard}>
+        {filteredBooks.map(book => (
+          <div 
+            key={book.id} 
+            className={styles.bookCard} 
+            onClick={() => setSelectedBook(book)}
+            style={{ cursor: 'pointer' }}
+          >
             <div style={{ height: '180px', width: '100%', marginBottom: '1rem', borderRadius: '6px', backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/200x300?text=Book'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
             <h3 className={styles.bookTitle} style={{ fontSize: '1.1rem', marginBottom: '0.4rem' }}>{book.title}</h3>
             <p className={styles.bookAuthor} style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', marginBottom: '0.4rem' }}>{book.author}</p>
@@ -42,6 +91,68 @@ export default function BookList() {
           </div>
         ))}
       </div>
+
+      {/* Public Book Details Modal */}
+      {selectedBook && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+          <div style={{ backgroundColor: '#181818', maxWidth: '850px', width: '100%', borderRadius: '28px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', maxHeight: '90vh', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            <button onClick={() => setSelectedBook(null)} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', width: '45px', height: '45px', borderRadius: '50%', cursor: 'pointer', zIndex: 10, fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}>✕</button>
+            
+            <div style={{ display: 'flex', flexDirection: 'row', gap: '2.5rem', padding: '3rem', overflowY: 'auto' }} className="modal-content-responsive">
+              <div style={{ flexShrink: 0, width: '260px', height: '390px', borderRadius: '16px', backgroundImage: `url(${selectedBook.coverImage || 'https://via.placeholder.com/200x300?text=Book'})`, backgroundSize: 'cover', backgroundPosition: 'center', boxShadow: '0 30px 60px rgba(0,0,0,0.6)' }}></div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', textAlign: 'left' }}>
+                <span style={{ color: '#bb86fc', fontWeight: '700', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '1.5px' }}>{selectedBook.category || "General"}</span>
+                <h2 style={{ fontSize: '2.8rem', fontWeight: '900', margin: 0, lineHeight: 1.1, color: '#fff' }}>{selectedBook.title}</h2>
+                <p style={{ fontSize: '1.25rem', color: 'rgba(255,255,255,0.5)', margin: 0 }}>Tác giả: <span style={{ color: '#fff', fontWeight: '500' }}>{selectedBook.author}</span></p>
+                
+                <div style={{ margin: '1.5rem 0', height: '1px', background: 'linear-gradient(to right, rgba(255,255,255,0.2), transparent)' }}></div>
+                
+                <h4 style={{ margin: 0, color: 'rgba(255,255,255,0.9)', fontSize: '1.1rem' }}>Tóm tắt nội dung</h4>
+                <p style={{ lineHeight: 1.8, color: 'rgba(255,255,255,0.65)', fontSize: '1.05rem', margin: 0 }}>
+                  {selectedBook.description || "Cuốn sách tuyệt vời này hiện đang có mặt tại thư viện của chúng tôi. Hãy đăng nhập để khám phá đầy đủ kiến thức và trải nghiệm mượn sách trực tuyến nhanh chóng."}
+                </p>
+
+                <div style={{ marginTop: '2.5rem', display: 'flex', gap: '1rem' }}>
+                  <Link 
+                    href="/login"
+                    onClick={() => setSelectedBook(null)}
+                    className="btn-primary" 
+                    style={{ padding: '1rem 2rem', fontSize: '1.05rem', borderRadius: '12px' }}
+                  >
+                    Đăng Nhập Để Mượn Sách
+                  </Link>
+                </div>
+              </div>
+            </div>
+            
+            <style jsx>{`
+              @media (max-width: 768px) {
+                .modal-content-responsive {
+                  flex-direction: column !important;
+                  align-items: center;
+                  padding: 2rem !important;
+                  padding-top: 4rem !important;
+                }
+                div[style*="width: 260px"] {
+                  width: 180px !important;
+                  height: 270px !important;
+                }
+                h2 {
+                  font-size: 2rem !important;
+                  text-align: center;
+                }
+                p {
+                  text-align: center;
+                }
+                div[style*="display: flex; gap: 1rem"] {
+                  justify-content: center;
+                }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
