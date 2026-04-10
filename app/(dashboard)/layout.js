@@ -29,11 +29,13 @@ export default function DashboardLayout({ children }) {
     { href: "/admin/posts", label: "Quản Lý Bài Viết" },
     { href: "/admin/books", label: "Quản Lý Sách" },
     { href: "/admin/members", label: "Hội Viên" },
-    { href: "/admin/transactions", label: "Lịch Sử Giao Dịch" },
+    { href: "/admin/transactions", label: "Mượn Trả" },
     { href: "/admin/users", label: "Tài Khoản Hệ Thống" },
+    { href: "/admin/settings", label: "Cài Đặt" },
   ] : [
     { href: "/user", label: "Hồ Sơ Cá Nhân" },
     { href: "/user/books", label: "Sách Đang Mượn" },
+    { href: "/user/settings", label: "Cài Đặt" },
   ];
 
   return (

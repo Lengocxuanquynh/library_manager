@@ -154,6 +154,131 @@ export const deletePost = async (id) => {
 };
 
 // ========================
+// BORROW REQUESTS
+// ========================
+export const getBorrowRequests = async (status = null, userId = null) => {
+  let q = collection(db, "borrowRequests");
+  const constraints = [];
+  if (status) constraints.push(where("status", "==", status));
+  if (userId) constraints.push(where("userId", "==", userId));
+  
+  if (constraints.length > 0) {
+    q = query(q, ...constraints);
+  }
+  
+  const data = await getCollectionData(q);
+  return data.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+};
+
+export const createBorrowRequest = async (userId, bookId, userName, bookTitle) => {
+  return await addDoc(collection(db, "borrowRequests"), {
+    userId,
+    bookId,
+    userName,
+    bookTitle,
+    status: 'PENDING',
+    createdAt: serverTimestamp()
+  });
+};
+
+export const updateBorrowRequestStatus = async (requestId, status) => {
+  const docRef = doc(db, "borrowRequests", requestId);
+  return await updateDoc(docRef, { status });
+};
+
+// ========================
+// BORROW RECORDS
+// ========================
+export const getBorrowRecords = async (userId = null) => {
+  let q = collection(db, "borrowRecords");
+  if (userId) {
+    q = query(q, where("userId", "==", userId));
+  }
+  const data = await getCollectionData(q);
+  
+  // Enhance data with dynamic status (OVERDUE check)
+  const now = new Date();
+  return data.map(record => {
+    let currentStatus = record.status;
+    if (currentStatus === 'BORROWING' && record.dueDate?.toDate() < now) {
+      currentStatus = 'OVERDUE';
+    }
+    return { ...record, status: currentStatus };
+  }).sort((a, b) => (b.borrowDate?.toMillis() || 0) - (a.borrowDate?.toMillis() || 0));
+};
+
+export const createBorrowRecord = async (userId, bookId, userName, bookTitle) => {
+  const borrowDate = new Date();
+  const dueDate = new Date();
+  dueDate.setDate(borrowDate.getDate() + 7); // Default 7 days
+
+  // Decrement book quantity
+  const bookRef = doc(db, "books", bookId);
+  const bookSnap = await getDoc(bookRef);
+  if (bookSnap.exists()) {
+    const currentQty = bookSnap.data().quantity || 1;
+    await updateDoc(bookRef, { quantity: Math.max(0, currentQty - 1) });
+  }
+
+  return await addDoc(collection(db, "borrowRecords"), {
+    userId,
+    bookId,
+    userName,
+    bookTitle,
+    borrowDate: serverTimestamp(),
+    dueDate,
+    returnDate: null,
+    status: 'BORROWING'
+  });
+};
+
+export const approveBorrowRequest = async (requestId, userId, bookId, userName, bookTitle) => {
+  await updateBorrowRequestStatus(requestId, 'APPROVED');
+  return await createBorrowRecord(userId, bookId, userName, bookTitle);
+};
+
+export const rejectBorrowRequest = async (requestId) => {
+  return await updateBorrowRequestStatus(requestId, 'REJECTED');
+};
+
+export const returnBorrowRecord = async (recordId, bookId) => {
+  const recordRef = doc(db, "borrowRecords", recordId);
+  await updateDoc(recordRef, {
+    status: 'RETURNED',
+    returnDate: serverTimestamp()
+  });
+
+  // Increase book quantity
+  const bookRef = doc(db, "books", bookId);
+  const bookSnap = await getDoc(bookRef);
+  if (bookSnap.exists()) {
+    const currentQty = bookSnap.data().quantity || 0;
+    await updateDoc(bookRef, { quantity: currentQty + 1 });
+  }
+};
+
+// ========================
+// BUSINESS RULES
+// ========================
+export const canUserBorrow = async (userId) => {
+  const records = await getBorrowRecords(userId);
+  const hasOverdue = records.some(r => r.status === 'OVERDUE');
+  if (hasOverdue) return { canBorrow: false, reason: 'Bạn đang có sách quá hạn chưa trả.' };
+  
+  // Also check if they already requested this book and it's pending
+  const requests = await getBorrowRequests('PENDING', userId);
+  if (requests.length > 0) return { canBorrow: false, reason: 'Bạn đang có một yêu cầu mượn sách đang chờ duyệt.' };
+
+  return { canBorrow: true };
+};
+
+export const isBookAvailable = async (bookId) => {
+  const book = await getBook(bookId);
+  if (!book || (book.quantity || 0) <= 0) return false;
+  return true;
+};
+
+// ========================
 // USERS
 // ========================
 export const getUsers = async () => {

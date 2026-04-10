@@ -10,18 +10,12 @@ export default function UserDashboard() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (user?.uid) {
-      loadTransactions();
-    }
-  }, [user]);
-
-  const loadTransactions = async () => {
+  const loadRecords = async () => {
     if (!user) return;
     try {
-      const res = await fetch(`/api/transactions/user/${user.uid}`);
+      const res = await fetch(`/api/borrow-records/user/${user.uid}`);
       const data = await res.json();
-      setTransactions(data);
+      setTransactions(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
     } finally {
@@ -29,20 +23,26 @@ export default function UserDashboard() {
     }
   };
 
-  const handleReturn = async (txId, bookId) => {
+  const handleReturn = async (recordId, bookId) => {
     if (confirm("Xác nhận trả cuốn sách này?")) {
-      const res = await fetch('/api/transactions/return', {
+      const res = await fetch('/api/return-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId: txId, bookId })
+        body: JSON.stringify({ recordId, bookId })
       });
       if (res.ok) {
-        loadTransactions();
+        loadRecords();
       } else {
         alert("Có lỗi xảy ra khi gọi API trả sách.");
       }
     }
   };
+
+  useEffect(() => {
+    if (user?.uid) {
+      loadRecords();
+    }
+  }, [user]);
 
   return (
     <div>
@@ -79,6 +79,7 @@ export default function UserDashboard() {
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách</th>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Mượn</th>
+                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Hết Hạn</th>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
                   </tr>
@@ -86,23 +87,27 @@ export default function UserDashboard() {
                 <tbody>
                   {transactions.map(tx => {
                     const dateBorrow = tx.borrowDate?.toDate ? tx.borrowDate.toDate().toLocaleDateString('vi-VN') : 'N/A';
+                    const dateDue = tx.dueDate?.toDate ? tx.dueDate.toDate().toLocaleDateString('vi-VN') : (tx.dueDate ? new Date(tx.dueDate).toLocaleDateString('vi-VN') : 'N/A');
+                    const isActive = tx.status === 'BORROWING' || tx.status === 'OVERDUE';
+                    
                     return (
                       <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <td style={{ padding: '1rem', fontWeight: '500' }}>{tx.bookTitle}</td>
                         <td style={{ padding: '1rem' }}>{dateBorrow}</td>
+                        <td style={{ padding: '1rem' }}>{dateDue}</td>
                         <td style={{ padding: '1rem' }}>
                           <span style={{ 
-                            background: tx.status === 'Active' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                            color: tx.status === 'Active' ? '#27c93f' : '#aaa',
+                            background: tx.status === 'OVERDUE' ? 'rgba(255, 95, 86, 0.2)' : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                            color: tx.status === 'OVERDUE' ? '#ff5f56' : tx.status === 'BORROWING' ? '#27c93f' : '#aaa',
                             padding: '0.25rem 0.5rem',
                             borderRadius: '4px',
                             fontSize: '0.85rem'
                            }}>
-                            {tx.status === 'Active' ? 'Đang Mượn' : 'Đã Trả'}
+                            {tx.status === 'BORROWING' ? 'Đang Mượn' : (tx.status === 'OVERDUE' ? 'Quá Hạn' : 'Đã Trả')}
                           </span>
                         </td>
                         <td style={{ padding: '1rem' }}>
-                          {tx.status === 'Active' ? (
+                          {isActive ? (
                             <button onClick={() => handleReturn(tx.id, tx.bookId)} style={{ background: 'rgba(39, 201, 63, 0.1)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer' }}>Trả Sách</button>
                           ) : (
                             <span style={{ color: '#666', fontSize: '0.9rem' }}>N/A</span>

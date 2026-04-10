@@ -31,23 +31,30 @@ export default function BookCatalog() {
   const handleBorrow = async (book) => {
     if (!user) return;
     
-    if (confirm(`Bạn muốn mượn cuốn "${book.title}"?`)) {
+    if (confirm(`Bạn muốn gửi yêu cầu mượn cuốn "${book.title}"?`)) {
       setLoading(true);
-      const res = await fetch('/api/transactions/borrow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bookId: book.id,
-          memberId: user.uid,
-          memberName: user.displayName || user.email,
-          bookTitle: book.title
-        })
-      });
-      if (res.ok) {
-        alert("Đã mượn sách thành công!");
-        router.push("/user"); // navigate to profile to see borrowed books
-      } else {
-        alert("Trục trặc khi gọi API mượn sách");
+      try {
+        const res = await fetch('/api/borrow-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bookId: book.id,
+            userId: user.uid,
+            userName: user.displayName || user.email,
+            bookTitle: book.title
+          })
+        });
+        const result = await res.json();
+        
+        if (res.ok) {
+          alert(result.message || "Yêu cầu đã được gửi!");
+          router.push("/user");
+        } else {
+          alert(result.error || "Có lỗi xảy ra khi gửi yêu cầu.");
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error(error);
         setLoading(false);
       }
     }
@@ -80,36 +87,39 @@ export default function BookCatalog() {
         ) : filteredBooks.length === 0 ? (
           <p>Không tìm thấy sách nào khớp với tìm kiếm.</p>
         ) : (
-          filteredBooks.map(book => (
-            <div key={book.id} className={styles.card} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1rem' }}>
-              <div style={{ height: '200px', width: '100%', borderRadius: '8px', backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/200x300?text=Book'})`, backgroundSize: 'cover', backgroundPosition: 'center', marginBottom: '0.5rem' }}></div>
-              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>{book.title}</h3>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', margin: 0 }}><strong>Tác Giả:</strong> {book.author}</p>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', margin: 0 }}><strong>Hạng Mục:</strong> {book.category || 'Chưa phân loại'}</p>
-              <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-                <span style={{ 
-                  display: 'inline-block',
-                  background: book.status === 'Available' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 189, 46, 0.2)',
-                  color: book.status === 'Available' ? '#27c93f' : '#ffbd2e',
-                  padding: '0.3rem 0.6rem',
-                  borderRadius: '4px',
-                  fontSize: '0.85rem',
-                  marginBottom: '1rem'
-                 }}>
-                  {book.status === 'Available' ? 'Có Sẵn' : 'Đã Cho Mượn'}
-                </span>
-                {book.status === 'Available' && (
-                  <button 
-                    onClick={() => handleBorrow(book)} 
-                    className="btn-primary" 
-                    style={{ width: '100%', padding: '0.8rem' }}
-                  >
-                    Mượn Ngay
-                  </button>
-                )}
+          filteredBooks.map(book => {
+            const isAvailable = (book.quantity || 0) > 0;
+            return (
+              <div key={book.id} className={styles.card} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1rem' }}>
+                <div style={{ height: '200px', width: '100%', borderRadius: '8px', backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/200x300?text=Book'})`, backgroundSize: 'cover', backgroundPosition: 'center', marginBottom: '0.5rem' }}></div>
+                <h3 style={{ fontSize: '1.2rem', margin: 0 }}>{book.title}</h3>
+                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', margin: 0 }}><strong>Tác Giả:</strong> {book.author}</p>
+                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', margin: 0 }}><strong>Số lượng còn:</strong> {book.quantity || 0}</p>
+                <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
+                  <span style={{ 
+                    display: 'inline-block',
+                    background: isAvailable ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 95, 86, 0.2)',
+                    color: isAvailable ? '#27c93f' : '#ff5f56',
+                    padding: '0.3rem 0.6rem',
+                    borderRadius: '4px',
+                    fontSize: '0.85rem',
+                    marginBottom: '1rem'
+                   }}>
+                    {isAvailable ? 'Còn Sách' : 'Hết Sách'}
+                  </span>
+                  {isAvailable && (
+                    <button 
+                      onClick={() => handleBorrow(book)} 
+                      className="btn-primary" 
+                      style={{ width: '100%', padding: '0.8rem' }}
+                    >
+                      Đăng Ký Mượn
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

@@ -38,6 +38,9 @@ export const AuthProvider = ({ children }) => {
         router.push("/user");
       } else if (pathname.startsWith("/user") && !user) {
         router.push("/login");
+      } else if ((pathname === "/login" || pathname === "/register") && user) {
+        // Already logged in, go to dashboard
+        router.push(role === "admin" ? "/admin" : "/user");
       }
     }
   }, [user, role, loading, pathname, router]);

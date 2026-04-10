@@ -76,3 +76,28 @@ export const subscribeToAuthChanges = (callback) => {
     }
   });
 };
+
+// Update user profile
+export const updateUserProfile = async (uid, data) => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("No user logged in");
+
+    // Update Firebase Auth Profile
+    if (data.name) {
+      await updateProfile(user, { displayName: data.name });
+    }
+
+    // Update Firestore User Doc
+    const userDocRef = doc(db, "users", uid);
+    await setDoc(userDocRef, { 
+      ...data,
+      name: data.name,
+      id: uid
+    }, { merge: true });
+
+    return true;
+  } catch (error) {
+    throw error;
+  }
+};

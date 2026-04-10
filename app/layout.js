@@ -1,5 +1,6 @@
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
+import Navbar from "@/components/Navbar";
 import Link from "next/link";
 
 export const metadata = {
@@ -12,16 +13,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <AuthProvider>
-          <header className="navbar glass">
-            <div className="container nav-content">
-              <Link href="/" className="logo">Thư Viện</Link>
-              <nav className="nav-links">
-                <Link href="/blog">Tin Tức</Link>
-                <Link href="/login" className="btn-outline">Đăng Nhập</Link>
-                <Link href="/register" className="btn-primary">Đăng Ký</Link>
-              </nav>
-            </div>
-          </header>
+          <Navbar />
           <main className="main-content" style={{ minHeight: 'calc(100vh - 300px)' }}>
             {children}
           </main>
