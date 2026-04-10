@@ -38,7 +38,8 @@ export default function DashboardLayout({ children }) {
     { href: "/admin/settings", label: "Cài Đặt" },
   ] : [
     { href: "/user", label: "Hồ Sơ Cá Nhân" },
-    { href: "/user/books", label: "Sách Đang Mượn" },
+    { href: "/user/books", label: "Danh Mục Sách" },
+    { href: "/user/borrowed-books", label: "Sách Đang Mượn" },
     { href: "/user/settings", label: "Cài Đặt" },
   ];
 

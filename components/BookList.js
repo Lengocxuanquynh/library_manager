@@ -2,13 +2,19 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/components/AuthProvider";
+import { useRouter } from "next/navigation";
 import styles from "./BookList.module.css";
 
 export default function BookList() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("Tất cả");
+  const [borrowLoading, setBorrowLoading] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
     async function fetchBooks() {
@@ -24,6 +30,47 @@ export default function BookList() {
     }
     fetchBooks();
   }, []);
+
+  const handleBorrow = (book) => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+    setShowConfirmModal(true);
+  };
+
+  const executeBorrow = async () => {
+    if (!selectedBook || !user) return;
+    
+    setBorrowLoading(true);
+    try {
+      const res = await fetch('/api/borrow-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookId: selectedBook.id,
+          userId: user.uid,
+          userName: user.displayName || user.email,
+          bookTitle: selectedBook.title
+        })
+      });
+      const result = await res.json();
+      
+      if (res.ok) {
+        alert(result.message || "Yêu cầu đã được gửi!");
+        setShowConfirmModal(false);
+        setSelectedBook(null);
+        router.push("/user");
+      } else {
+        alert(result.error || "Có lỗi xảy ra khi gửi yêu cầu.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Lỗi kết nối server.");
+    } finally {
+      setBorrowLoading(false);
+    }
+  };
 
   if (loading) {
     return <div className={styles.booksContainer}><p>Đang tải danh sách sách...</p></div>;
@@ -95,7 +142,6 @@ export default function BookList() {
         ))}
       </div>
 
-      {/* Public Book Details Modal */}
       {selectedBook && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
           <div style={{ backgroundColor: '#181818', maxWidth: '850px', width: '100%', borderRadius: '28px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', maxHeight: '90vh', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
@@ -117,14 +163,25 @@ export default function BookList() {
                 </p>
 
                 <div style={{ marginTop: '2.5rem', display: 'flex', gap: '1rem' }}>
-                  <Link 
-                    href="/login"
-                    onClick={() => setSelectedBook(null)}
-                    className="btn-primary" 
-                    style={{ padding: '1rem 2rem', fontSize: '1.05rem', borderRadius: '12px' }}
-                  >
-                    Đăng Nhập Để Mượn Sách
-                  </Link>
+                  {user ? (
+                    <button 
+                      onClick={() => handleBorrow(selectedBook)}
+                      disabled={borrowLoading || selectedBook.status !== 'Available'}
+                      className="btn-primary" 
+                      style={{ padding: '1rem 2.5rem', fontSize: '1.05rem', borderRadius: '12px', opacity: (borrowLoading || selectedBook.status !== 'Available') ? 0.6 : 1, cursor: (borrowLoading || selectedBook.status !== 'Available') ? 'not-allowed' : 'pointer' }}
+                    >
+                      {borrowLoading ? "Đang xử lý..." : selectedBook.status === 'Available' ? "Gửi Yêu Cầu Mượn Sách" : "Đã Được Mượn"}
+                    </button>
+                  ) : (
+                    <Link 
+                      href="/login"
+                      onClick={() => setSelectedBook(null)}
+                      className="btn-primary" 
+                      style={{ padding: '1rem 2rem', fontSize: '1.05rem', borderRadius: '12px' }}
+                    >
+                      Đăng Nhập Để Mượn Sách
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>
@@ -153,6 +210,39 @@ export default function BookList() {
                 }
               }
             `}</style>
+          </div>
+        </div>
+      )}
+
+      {showConfirmModal && selectedBook && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(15px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ backgroundColor: 'rgba(30, 30, 30, 0.85)', maxWidth: '450px', width: '100%', borderRadius: '32px', padding: '2.5rem', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)', textAlign: 'center', backdropFilter: 'blur(20px)' }}>
+            <div style={{ width: '70px', height: '70px', background: 'rgba(187, 134, 252, 0.15)', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: 'var(--primary)', fontSize: '2rem' }}>
+              📚
+            </div>
+            <h3 style={{ fontSize: '1.6rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>Xác nhận mượn sách</h3>
+            <p style={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, marginBottom: '2.5rem', fontSize: '1.05rem' }}>
+              Bạn có chắc chắn muốn gửi yêu cầu mượn cuốn sách <br/>
+              <strong style={{ color: '#fff', fontSize: '1.1rem' }}>"{selectedBook.title}"</strong> không?
+            </p>
+            
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button 
+                onClick={() => setShowConfirmModal(false)}
+                disabled={borrowLoading}
+                style={{ flex: 1, padding: '1rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' }}
+              >
+                Hủy bỏ
+              </button>
+              <button 
+                onClick={executeBorrow}
+                disabled={borrowLoading}
+                className="btn-primary"
+                style={{ flex: 1, padding: '1rem', borderRadius: '16px', fontWeight: '700', fontSize: '1rem' }}
+              >
+                {borrowLoading ? "Đang gửi..." : "Đồng ý mượn"}
+              </button>
+            </div>
           </div>
         </div>
       )}
