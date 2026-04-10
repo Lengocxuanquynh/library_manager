@@ -3,7 +3,9 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  signInWithPopup,
+  GoogleAuthProvider
 } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -51,6 +53,37 @@ export const loginUser = async (email, password) => {
   }
 };
 
+// Login with Google
+export const loginWithGoogle = async () => {
+  try {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+
+    // Check if user document exists in Firestore
+    const userDocRef = doc(db, "users", user.uid);
+    const userDoc = await getDoc(userDocRef);
+    
+    let role = "user";
+    if (userDoc.exists()) {
+      role = userDoc.data().role;
+    } else {
+      // First time Google login, create user doc
+      await setDoc(userDocRef, {
+        id: user.uid,
+        name: user.displayName,
+        email: user.email,
+        role: "user",
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return { user, role };
+  } catch (error) {
+    throw error;
+  }
+};
+
 // Logout user
 export const logoutUser = async () => {
   try {
@@ -67,10 +100,13 @@ export const subscribeToAuthChanges = (callback) => {
       const userDocRef = doc(db, "users", user.uid);
       const userDoc = await getDoc(userDocRef);
       let role = "user";
+      let isLocked = false;
       if (userDoc.exists()) {
-        role = userDoc.data().role;
+        const userData = userDoc.data();
+        role = userData.role || "user";
+        isLocked = userData.isLocked || false;
       }
-      callback({ user, role });
+      callback({ user, role, isLocked });
     } else {
       callback(null);
     }

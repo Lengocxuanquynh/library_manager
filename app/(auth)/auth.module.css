@@ -108,3 +108,19 @@
 .footerText a:hover {
   color: #fff;
 }
+
+@media (max-width: 480px) {
+  .card {
+    padding: 2rem 1.5rem;
+    max-width: 90vw;
+  }
+  
+  .title {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .input, .button {
+    padding: 0.8rem;
+  }
+}

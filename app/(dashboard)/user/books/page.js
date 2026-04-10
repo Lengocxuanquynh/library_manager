@@ -90,7 +90,16 @@ export default function BookCatalog() {
         />
 
         {/* Category Tabs */}
-        <div style={{ display: 'flex', gap: '0.8rem', overflowX: 'auto', paddingBottom: '1rem', scrollbarWidth: 'none' }}>
+        <div style={{ 
+          display: 'flex', 
+          gap: '0.8rem', 
+          overflowX: 'auto', 
+          paddingBottom: '0.5rem', 
+          paddingLeft: '0.2rem',
+          paddingRight: '1.5rem',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch'
+        }}>
           {categories.map(cat => (
             <button
               key={cat}
