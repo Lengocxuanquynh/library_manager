@@ -53,9 +53,7 @@ export default function UserDashboard() {
     <div>
       <div className={styles.headerArea}>
         <h1 className={styles.pageTitle}>Xin chào, {user?.displayName || "Độc giả"}</h1>
-        <Link href="/" className="btn-outline">Về Trang Chủ</Link>
       </div>
-
       <div className={styles.grid}>
         <div className={styles.card}>
           <h3>Thông Tin Cá Nhân</h3>
