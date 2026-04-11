@@ -28,12 +28,17 @@ export default function UserDashboard() {
       const res = await fetch('/api/return-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId, bookId })
+        body: JSON.stringify({ 
+          recordId, 
+          bookId,
+          userId: user.uid // Pass user ID to authorize the return
+        })
       });
       if (res.ok) {
         loadRecords();
       } else {
-        alert("Có lỗi xảy ra khi gọi API trả sách.");
+        const result = await res.json();
+        alert(result.error || "Có lỗi xảy ra khi gọi API trả sách.");
       }
     }
   };
