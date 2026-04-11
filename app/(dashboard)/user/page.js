@@ -48,7 +48,6 @@ export default function UserDashboard() {
     <div>
       <div className={styles.headerArea}>
         <h1 className={styles.pageTitle}>Xin chào, {user?.displayName || "Độc giả"}</h1>
-        <Link href="/" className="btn-outline">Về Trang Chủ</Link>
       </div>
 
       <div className={styles.grid}>
@@ -60,7 +59,7 @@ export default function UserDashboard() {
             <p><strong>Mã Độc Giả:</strong> {user?.uid}</p>
           </div>
         </div>
-        
+
         <div className={styles.card} style={{ gridColumn: '1 / -1' }}>
           <h3>Sách Đang Mượn & Lịch Sử</h3>
           {loading ? (
@@ -89,20 +88,20 @@ export default function UserDashboard() {
                     const dateBorrow = tx.borrowDate?.toDate ? tx.borrowDate.toDate().toLocaleDateString('vi-VN') : 'N/A';
                     const dateDue = tx.dueDate?.toDate ? tx.dueDate.toDate().toLocaleDateString('vi-VN') : (tx.dueDate ? new Date(tx.dueDate).toLocaleDateString('vi-VN') : 'N/A');
                     const isActive = tx.status === 'BORROWING' || tx.status === 'OVERDUE';
-                    
+
                     return (
                       <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <td style={{ padding: '1rem', fontWeight: '500' }}>{tx.bookTitle}</td>
                         <td style={{ padding: '1rem' }}>{dateBorrow}</td>
                         <td style={{ padding: '1rem' }}>{dateDue}</td>
                         <td style={{ padding: '1rem' }}>
-                          <span style={{ 
+                          <span style={{
                             background: tx.status === 'OVERDUE' ? 'rgba(255, 95, 86, 0.2)' : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 255, 255, 0.1)',
                             color: tx.status === 'OVERDUE' ? '#ff5f56' : tx.status === 'BORROWING' ? '#27c93f' : '#aaa',
                             padding: '0.25rem 0.5rem',
                             borderRadius: '4px',
                             fontSize: '0.85rem'
-                           }}>
+                          }}>
                             {tx.status === 'BORROWING' ? 'Đang Mượn' : (tx.status === 'OVERDUE' ? 'Quá Hạn' : 'Đã Trả')}
                           </span>
                         </td>
