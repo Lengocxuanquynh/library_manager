@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addBook, getBooks } from '@/services/db';
+import { addBook, getBooks, ensureCategoryExists } from '@/services/db';
 
 export async function GET() {
   try {
@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { title, author, category, status, coverImage } = body;
+    const { title, author, category, status, coverImage, quantity, isbn, publisher, year } = body;
 
     if (!title || !author) {
       return NextResponse.json(
@@ -23,12 +23,20 @@ export async function POST(request) {
       );
     }
 
+    // Auto-sync category
+    if (category) await ensureCategoryExists(category);
+
+
     const docRef = await addBook({
       title,
       author,
       category: category || 'Chưa phân loại',
       status: status || 'Available',
-      coverImage: coverImage || ''
+      coverImage: coverImage || '',
+      quantity: parseInt(quantity) || 0,
+      isbn: isbn || '',
+      publisher: publisher || '',
+      year: year || ''
     });
 
     return NextResponse.json({

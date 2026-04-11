@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import styles from "../dashboard.module.css";
 import Link from "next/link";
+import { formatDate } from "@/lib/utils";
 
 export default function UserDashboard() {
   const { user } = useAuth();
@@ -28,11 +29,7 @@ export default function UserDashboard() {
       const res = await fetch('/api/return-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          recordId, 
-          bookId,
-          userId: user.uid // Pass user ID to authorize the return
-        })
+        body: JSON.stringify({ recordId, bookId, userId: user.uid })
       });
       if (res.ok) {
         loadRecords();
@@ -63,7 +60,7 @@ export default function UserDashboard() {
             <p><strong>Mã Độc Giả:</strong> {user?.uid}</p>
           </div>
         </div>
-        
+
         <div className={styles.card} style={{ gridColumn: '1 / -1' }}>
           <h3>Sách Đang Mượn & Lịch Sử</h3>
           {loading ? (
@@ -89,36 +86,21 @@ export default function UserDashboard() {
                 </thead>
                 <tbody>
                   {transactions.map(tx => {
-                        // Hàm helper parse Date từ Firebase hoặc String
-                    const parseDate = (d) => {
-                      if (!d) return 'N/A';
-                      // Nếu có .seconds (Firebase Timestamp bị serialize json)
-                      if (d.seconds) return new Date(d.seconds * 1000).toLocaleDateString('vi-VN');
-                      // Nếu còn giữ nguyên object Firebase Timestamp ở client
-                      if (typeof d.toDate === 'function') return d.toDate().toLocaleDateString('vi-VN');
-                      // Nếu là chuỗi hoặc timestamp chuẩn
-                      const parsed = new Date(d);
-                      if (!isNaN(parsed)) return parsed.toLocaleDateString('vi-VN');
-                      return 'N/A';
-                    };
-
-                    const dateBorrow = parseDate(tx.borrowDate);
-                    const dateDue = parseDate(tx.dueDate);
                     const isActive = tx.status === 'BORROWING' || tx.status === 'OVERDUE';
-                    
+
                     return (
                       <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <td style={{ padding: '1rem', fontWeight: '500' }}>{tx.bookTitle}</td>
-                        <td style={{ padding: '1rem' }}>{dateBorrow}</td>
-                        <td style={{ padding: '1rem' }}>{dateDue}</td>
+                        <td style={{ padding: '1rem' }}>{formatDate(tx.borrowDate)}</td>
+                        <td style={{ padding: '1rem' }}>{formatDate(tx.dueDate)}</td>
                         <td style={{ padding: '1rem' }}>
-                          <span style={{ 
+                          <span style={{
                             background: tx.status === 'OVERDUE' ? 'rgba(255, 95, 86, 0.2)' : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 255, 255, 0.1)',
                             color: tx.status === 'OVERDUE' ? '#ff5f56' : tx.status === 'BORROWING' ? '#27c93f' : '#aaa',
                             padding: '0.25rem 0.5rem',
                             borderRadius: '4px',
                             fontSize: '0.85rem'
-                           }}>
+                          }}>
                             {tx.status === 'BORROWING' ? 'Đang Mượn' : (tx.status === 'OVERDUE' ? 'Quá Hạn' : 'Đã Trả')}
                           </span>
                         </td>
