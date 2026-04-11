@@ -91,8 +91,21 @@ export default function UserDashboard() {
                 </thead>
                 <tbody>
                   {transactions.map(tx => {
-                    const dateBorrow = tx.borrowDate?.toDate ? tx.borrowDate.toDate().toLocaleDateString('vi-VN') : 'N/A';
-                    const dateDue = tx.dueDate?.toDate ? tx.dueDate.toDate().toLocaleDateString('vi-VN') : (tx.dueDate ? new Date(tx.dueDate).toLocaleDateString('vi-VN') : 'N/A');
+                        // Hàm helper parse Date từ Firebase hoặc String
+                    const parseDate = (d) => {
+                      if (!d) return 'N/A';
+                      // Nếu có .seconds (Firebase Timestamp bị serialize json)
+                      if (d.seconds) return new Date(d.seconds * 1000).toLocaleDateString('vi-VN');
+                      // Nếu còn giữ nguyên object Firebase Timestamp ở client
+                      if (typeof d.toDate === 'function') return d.toDate().toLocaleDateString('vi-VN');
+                      // Nếu là chuỗi hoặc timestamp chuẩn
+                      const parsed = new Date(d);
+                      if (!isNaN(parsed)) return parsed.toLocaleDateString('vi-VN');
+                      return 'N/A';
+                    };
+
+                    const dateBorrow = parseDate(tx.borrowDate);
+                    const dateDue = parseDate(tx.dueDate);
                     const isActive = tx.status === 'BORROWING' || tx.status === 'OVERDUE';
                     
                     return (
