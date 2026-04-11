@@ -11,20 +11,23 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Thiếu thông tin yêu cầu' }, { status: 400 });
     }
 
-    // Allow if admin OR if the user owns this borrow record
+    let authorized = false;
+
+    // 1. Check Admin
     if (adminId) {
-      const isAdmin = await verifyAdmin(adminId);
-      if (!isAdmin) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-      }
-    } else if (userId) {
-      // Verify user owns this record
+      authorized = await verifyAdmin(adminId);
+    }
+
+    // 2. Check Owner (User)
+    if (!authorized && userId) {
       const record = await getBorrowRecord(recordId);
-      if (!record || record.userId !== userId) {
-        return NextResponse.json({ error: 'Bạn không có quyền trả sách này' }, { status: 403 });
+      if (record && record.userId === userId) {
+        authorized = true;
       }
-    } else {
-      return NextResponse.json({ error: 'Thiếu thông tin xác thực' }, { status: 401 });
+    }
+
+    if (!authorized) {
+      return NextResponse.json({ error: 'Bạn không có quyền thực hiện thao tác này' }, { status: 403 });
     }
 
     await returnBorrowRecord(recordId, bookId);

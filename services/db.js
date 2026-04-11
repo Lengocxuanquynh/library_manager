@@ -215,10 +215,13 @@ export const getBorrowRecords = async (userId = null) => {
   }).sort((a, b) => (b.borrowDate?.toMillis() || 0) - (a.borrowDate?.toMillis() || 0));
 };
 
-export const createBorrowRecord = async (userId, bookId, userName, bookTitle) => {
-  const borrowDate = new Date();
-  const dueDate = new Date();
-  dueDate.setDate(borrowDate.getDate() + 14); // Default 14 days
+export const createBorrowRecord = async (userId, bookId, userName, bookTitle, customBorrowDate = null, customDueDate = null) => {
+  const borrowDateObj = customBorrowDate ? new Date(customBorrowDate) : new Date();
+  const dueDateObj = customDueDate ? new Date(customDueDate) : (customBorrowDate ? new Date(customBorrowDate) : new Date());
+  
+  if (!customDueDate) {
+    dueDateObj.setDate(dueDateObj.getDate() + 14); // Default 14 days
+  }
 
   // Decrement book quantity atomically
   const bookRef = doc(db, "books", bookId);
@@ -231,8 +234,8 @@ export const createBorrowRecord = async (userId, bookId, userName, bookTitle) =>
     bookId,
     userName,
     bookTitle,
-    borrowDate: serverTimestamp(),
-    dueDate,
+    borrowDate: customBorrowDate ? borrowDateObj : serverTimestamp(),
+    dueDate: dueDateObj,
     returnDate: null,
     status: 'BORROWING'
   });

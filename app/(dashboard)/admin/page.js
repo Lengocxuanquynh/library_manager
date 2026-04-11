@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import styles from "../dashboard.module.css";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
+import { formatDate } from "@/lib/utils";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -42,7 +42,10 @@ export default function AdminDashboard() {
         
         const now = new Date();
         const overdue = borrowing.filter(r => {
-          const dueDate = r.dueDate?.toDate ? r.dueDate.toDate() : (r.dueDate ? new Date(r.dueDate) : null);
+          let dueDate = null;
+          if (r.dueDate?.seconds) dueDate = new Date(r.dueDate.seconds * 1000);
+          else if (r.dueDate?.toDate) dueDate = r.dueDate.toDate();
+          else if (r.dueDate) dueDate = new Date(r.dueDate);
           return dueDate && dueDate < now;
         });
 
@@ -126,7 +129,8 @@ export default function AdminDashboard() {
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                       <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Người mượn</th>
-                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Tên sách</th>
+                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Ngày mượn</th>
+                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Hạn trả</th>
                       <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Trạng thái</th>
                     </tr>
                   </thead>
@@ -136,8 +140,16 @@ export default function AdminDashboard() {
                                           activity.dueDate?.toDate && activity.dueDate.toDate() < new Date();
                       return (
                         <tr key={activity.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>{activity.userName || activity.memberName}</td>
-                          <td style={{ padding: '0.75rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>{activity.bookTitle}</td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
+                            <div style={{ fontWeight: '600' }}>{activity.userName || activity.memberName}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>{activity.bookTitle}</div>
+                          </td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
+                            {formatDate(activity.borrowDate)}
+                          </td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
+                            {formatDate(activity.dueDate)}
+                          </td>
                           <td style={{ padding: '0.75rem' }}>
                             <span style={{
                               padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '700',

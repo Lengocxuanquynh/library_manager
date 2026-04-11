@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import styles from "../dashboard.module.css";
 import Link from "next/link";
+import { formatDate } from "@/lib/utils";
 
 export default function UserDashboard() {
   const { user } = useAuth();
@@ -85,15 +86,13 @@ export default function UserDashboard() {
                 </thead>
                 <tbody>
                   {transactions.map(tx => {
-                    const dateBorrow = tx.borrowDate?.toDate ? tx.borrowDate.toDate().toLocaleDateString('vi-VN') : 'N/A';
-                    const dateDue = tx.dueDate?.toDate ? tx.dueDate.toDate().toLocaleDateString('vi-VN') : (tx.dueDate ? new Date(tx.dueDate).toLocaleDateString('vi-VN') : 'N/A');
                     const isActive = tx.status === 'BORROWING' || tx.status === 'OVERDUE';
 
                     return (
                       <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <td style={{ padding: '1rem', fontWeight: '500' }}>{tx.bookTitle}</td>
-                        <td style={{ padding: '1rem' }}>{dateBorrow}</td>
-                        <td style={{ padding: '1rem' }}>{dateDue}</td>
+                        <td style={{ padding: '1rem' }}>{formatDate(tx.borrowDate)}</td>
+                        <td style={{ padding: '1rem' }}>{formatDate(tx.dueDate)}</td>
                         <td style={{ padding: '1rem' }}>
                           <span style={{
                             background: tx.status === 'OVERDUE' ? 'rgba(255, 95, 86, 0.2)' : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 255, 255, 0.1)',

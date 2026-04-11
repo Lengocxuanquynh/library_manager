@@ -4,7 +4,7 @@ import { createBorrowRecord, isBookAvailable, canUserBorrow } from '@/services/d
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { userId, bookId, userName, bookTitle } = body;
+    const { userId, bookId, userName, bookTitle, borrowDate, dueDate } = body;
 
     if (!bookId || !userName || !bookTitle) {
       return NextResponse.json(
@@ -34,7 +34,7 @@ export async function POST(request) {
     }
 
     // 3. Create the record — use "offline" as fallback userId for walk-ins
-    await createBorrowRecord(userId || `offline_${Date.now()}`, bookId, userName, bookTitle);
+    await createBorrowRecord(userId || `offline_${Date.now()}`, bookId, userName, bookTitle, borrowDate, dueDate);
 
     return NextResponse.json({
       success: true,
