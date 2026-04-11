@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
+import { updateUserProfile } from "@/services/auth";
 
 export default function UserSettings() {
   const { user, role } = useAuth();
@@ -25,21 +26,11 @@ export default function UserSettings() {
     setMessage({ type: '', text: '' });
 
     try {
-      const res = await fetch(`/api/users/${user.uid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-      });
-
-      if (res.ok) {
-        setMessage({ type: 'success', text: 'Cập nhật thông tin thành công!' });
-      } else {
-        const err = await res.json();
-        setMessage({ type: 'error', text: err.error || 'Có lỗi xảy ra' });
-      }
+      await updateUserProfile(user.uid, { name });
+      setMessage({ type: 'success', text: 'Cập nhật thông tin thành công!' });
     } catch (error) {
       console.error(error);
-      setMessage({ type: 'error', text: 'Lỗi kết nối máy chủ' });
+      setMessage({ type: 'error', text: 'Lỗi cập nhật hồ sơ' });
     } finally {
       setLoading(false);
     }

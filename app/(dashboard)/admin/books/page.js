@@ -197,7 +197,17 @@ export default function ManageBooks() {
                   )}
                 </div>
                 <input type="file" id="book-cover" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
-                <label htmlFor="book-cover" className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-block' }}> Thay ảnh </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label htmlFor="book-cover" className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-block', textAlign: 'center' }}> Tải ảnh từ máy </label>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.7, textAlign: 'center' }}>hoặc URL:</div>
+                  <input
+                    type="text"
+                    placeholder="Nhập link ảnh..."
+                    value={formData.coverImage}
+                    onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', fontSize: '0.8rem', textAlign: 'center' }}
+                  />
+                </div>
               </div>
 
               <div>
