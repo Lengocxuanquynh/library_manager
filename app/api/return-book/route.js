@@ -5,15 +5,29 @@ import { verifyAdmin } from '@/services/admin-check';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { recordId, bookId, adminId } = body;
+    const { recordId, bookId, adminId, userId } = body;
 
-    if (!recordId || !bookId || !adminId) {
-      return NextResponse.json({ error: 'Thiếu thông tin yêu cầu hoặc adminId' }, { status: 400 });
+    if (!recordId || !bookId) {
+      return NextResponse.json({ error: 'Thiếu thông tin yêu cầu' }, { status: 400 });
     }
 
-    // Security check
-    const isAdmin = await verifyAdmin(adminId);
-    if (!isAdmin) {
+    let authorized = false;
+
+    // 1. Check Admin
+    if (adminId) {
+      authorized = await verifyAdmin(adminId);
+    }
+
+    // 2. Check Owner (User)
+    if (!authorized && userId) {
+      const { getBorrowRecord } = await import('@/services/db');
+      const record = await getBorrowRecord(recordId);
+      if (record && record.userId === userId) {
+        authorized = true;
+      }
+    }
+
+    if (!authorized) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 

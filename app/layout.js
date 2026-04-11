@@ -9,6 +9,12 @@ export const metadata = {
   description: "Mượn, đọc và quản lý thư viện dễ dàng với nền tảng công nghệ số.",
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
