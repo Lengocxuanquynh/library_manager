@@ -264,12 +264,6 @@ export const returnBorrowRecord = async (recordId, bookId) => {
   });
 };
 
-export const getBorrowRecord = async (recordId) => {
-  const recordRef = doc(db, "borrowRecords", recordId);
-  const snap = await getDoc(recordRef);
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-};
-
 // ========================
 // BUSINESS RULES
 // ========================
