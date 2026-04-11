@@ -11,23 +11,33 @@ export default function BookList() {
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("Tất cả");
+  const [formalCategories, setFormalCategories] = useState([]);
   const [borrowing, setBorrowing] = useState(false);
+
   const [borrowResult, setBorrowResult] = useState(null); // { type: 'success' | 'error', message }
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
 
   useEffect(() => {
-    async function fetchBooks() {
+    async function fetchData() {
       try {
-        const res = await fetch('/api/books');
-        const data = await res.json();
-        setBooks(Array.isArray(data) ? data : []);
+        const [booksRes, catsRes] = await Promise.all([
+          fetch('/api/books'),
+          fetch('/api/categories')
+        ]);
+        const booksData = await booksRes.json();
+        setBooks(Array.isArray(booksData) ? booksData : []);
+        const catsData = await catsRes.json();
+        setFormalCategories(Array.isArray(catsData) ? catsData : []);
       } catch (error) {
-        console.error("Lỗi khi tải sách:", error);
+        console.error("Lỗi khi tải dữ liệu:", error);
       } finally {
         setLoading(false);
       }
     }
-    fetchBooks();
+    fetchData();
   }, []);
+
 
   const handleBorrow = async (book) => {
     if (!user) return;
@@ -66,8 +76,15 @@ export default function BookList() {
     return <div className={styles.booksContainer}><p>Đang tải danh sách sách...</p></div>;
   }
 
-  // Extract unique categories
-  const categories = ["Tất cả", ...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
+  // Merge formal categories with existing book categories for backup
+  const bookCategories = [...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
+  const managedNames = formalCategories.map(c => c.name);
+  const categories = [
+    "Tất cả", 
+    ...managedNames,
+    ...bookCategories.filter(name => !managedNames.includes(name))
+  ];
+
 
   const filteredBooks = books.filter(b => 
     selectedCategory === "Tất cả" || (b.category || "Khác") === selectedCategory
@@ -115,28 +132,38 @@ export default function BookList() {
         {categories.map(cat => (
           <button
             key={cat}
-            onClick={() => setSelectedCategory(cat)}
+            onClick={() => { setSelectedCategory(cat); setCurrentPage(1); }}
             style={{
-              padding: '0.7rem 1.5rem',
+              padding: '0.7rem 1.6rem',
               borderRadius: '99px',
               border: 'none',
-              background: selectedCategory === cat ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
-              color: selectedCategory === cat ? '#000' : 'rgba(255,255,255,0.8)',
+              background: selectedCategory === cat 
+                ? 'linear-gradient(135deg, #bb86fc, #9965f4)' 
+                : 'rgba(255,255,255,0.06)',
+              color: selectedCategory === cat ? '#000' : 'rgba(255,255,255,0.7)',
               fontWeight: '700',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              boxShadow: selectedCategory === cat ? '0 4px 15px rgba(187, 134, 252, 0.4)' : 'none',
-              fontSize: '0.95rem'
+              transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: selectedCategory === cat 
+                ? '0 6px 20px rgba(153, 101, 244, 0.4), 0 0 10px rgba(187, 134, 252, 0.2)' 
+                : 'none',
+              fontSize: '0.9rem',
+              letterSpacing: '0.3px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
             }}
           >
             {cat}
           </button>
         ))}
+
       </div>
 
       <div className={styles.booksGrid}>
-        {filteredBooks.map(book => (
+        {filteredBooks.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(book => (
           <div 
             key={book.id} 
             className={styles.bookCard} 
@@ -153,6 +180,35 @@ export default function BookList() {
           </div>
         ))}
       </div>
+
+      {/* Pagination Controls */}
+      {filteredBooks.length > itemsPerPage && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '2.5rem', marginBottom: '1rem' }}>
+          <button 
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(curr => curr - 1)}
+            style={{
+              padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)',
+              background: 'transparent', color: '#fff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              opacity: currentPage === 1 ? 0.3 : 1
+            }}
+          >
+            ← Trang trước
+          </button>
+          <span style={{ fontSize: '0.9rem', opacity: 0.6 }}>Trang {currentPage} / {Math.ceil(filteredBooks.length / itemsPerPage)}</span>
+          <button 
+            disabled={currentPage >= Math.ceil(filteredBooks.length / itemsPerPage)}
+            onClick={() => setCurrentPage(curr => curr + 1)}
+            style={{
+              padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)',
+              background: 'transparent', color: '#fff', cursor: currentPage >= Math.ceil(filteredBooks.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+              opacity: currentPage >= Math.ceil(filteredBooks.length / itemsPerPage) ? 0.3 : 1
+            }}
+          >
+            Trang sau →
+          </button>
+        </div>
+      )}
 
       {/* Book Details Modal */}
       {selectedBook && (

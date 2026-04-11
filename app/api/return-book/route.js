@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { returnBorrowRecord } from '@/services/db';
+import { returnBorrowRecord, getBorrowRecord } from '@/services/db';
 import { verifyAdmin } from '@/services/admin-check';
 
 export async function POST(request) {
@@ -20,7 +20,6 @@ export async function POST(request) {
 
     // 2. Check Owner (User)
     if (!authorized && userId) {
-      const { getBorrowRecord } = await import('@/services/db');
       const record = await getBorrowRecord(recordId);
       if (record && record.userId === userId) {
         authorized = true;
@@ -28,7 +27,7 @@ export async function POST(request) {
     }
 
     if (!authorized) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      return NextResponse.json({ error: 'Bạn không có quyền thực hiện thao tác này' }, { status: 403 });
     }
 
     await returnBorrowRecord(recordId, bookId);

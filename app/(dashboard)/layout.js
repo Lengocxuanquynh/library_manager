@@ -29,16 +29,16 @@ export default function DashboardLayout({ children }) {
   const toggleMobileSidebar = () => setIsMobileOpen(!isMobileOpen);
 
   const navLinks = role === "admin" ? [
-    { href: "/admin", label: "Tổng Quan" },
-    { href: "/admin/posts", label: "Quản Lý Bài Viết" },
-    { href: "/admin/books", label: "Quản Lý Sách" },
-    { href: "/admin/members", label: "Hội Viên" },
-    { href: "/admin/transactions", label: "Mượn Trả" },
-    { href: "/admin/users", label: "Tài Khoản Hệ Thống" },
-    { href: "/admin/settings", label: "Cài Đặt" },
+    { href: "/admin", label: "Dashboard (Tổng quan)" },
+    { href: "/admin/books", label: "Quản lý Sách" },
+    { href: "/admin/transactions", label: "Quản lý Phiếu Mượn" },
+    { href: "/admin/members", label: "Quản lý Độc giả" },
+    { href: "/admin/categories", label: "Thể loại Sách" },
+    { href: "/admin/stats", label: "Thống kê" },
+    { href: "/admin/posts", label: "Tin Tức & Blog" },
   ] : [
-    { href: "/user", label: "Hồ Sơ Cá Nhân" },
-    { href: "/user/books", label: "Danh mục sách" },
+    { href: "/user", label: "Trang Cá Nhân Độc Giả" },
+    { href: "/user/books", label: "Danh mục Sách" },
     { href: "/user/settings", label: "Cài Đặt" },
   ];
 
@@ -75,7 +75,7 @@ export default function DashboardLayout({ children }) {
             onClick={() => setIsMobileOpen(false)}
             style={{ textAlign: 'center', marginBottom: '0.5rem', opacity: 0.7 }}
           >
-            ← Trang Chủ
+            ← Về Trang Chủ
           </Link>
           <button onClick={handleLogout} className={styles.logoutBtn}>Đăng Xuất</button>
         </div>

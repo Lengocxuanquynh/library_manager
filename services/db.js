@@ -9,7 +9,8 @@ import {
   query,
   where,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  increment
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -189,6 +190,13 @@ export const updateBorrowRequestStatus = async (requestId, status) => {
 // ========================
 // BORROW RECORDS
 // ========================
+export const getBorrowRecord = async (recordId) => {
+  const docRef = doc(db, "borrowRecords", recordId);
+  const docSnap = await getDoc(docRef);
+  if (!docSnap.exists()) return null;
+  return { id: docSnap.id, ...docSnap.data() };
+};
+
 export const getBorrowRecords = async (userId = null) => {
   let q = collection(db, "borrowRecords");
   if (userId) {
@@ -207,26 +215,27 @@ export const getBorrowRecords = async (userId = null) => {
   }).sort((a, b) => (b.borrowDate?.toMillis() || 0) - (a.borrowDate?.toMillis() || 0));
 };
 
-export const createBorrowRecord = async (userId, bookId, userName, bookTitle) => {
-  const borrowDate = new Date();
-  const dueDate = new Date();
-  dueDate.setDate(borrowDate.getDate() + 7); // Default 7 days
-
-  // Decrement book quantity
-  const bookRef = doc(db, "books", bookId);
-  const bookSnap = await getDoc(bookRef);
-  if (bookSnap.exists()) {
-    const currentQty = bookSnap.data().quantity || 1;
-    await updateDoc(bookRef, { quantity: Math.max(0, currentQty - 1) });
+export const createBorrowRecord = async (userId, bookId, userName, bookTitle, customBorrowDate = null, customDueDate = null) => {
+  const borrowDateObj = customBorrowDate ? new Date(customBorrowDate) : new Date();
+  const dueDateObj = customDueDate ? new Date(customDueDate) : (customBorrowDate ? new Date(customBorrowDate) : new Date());
+  
+  if (!customDueDate) {
+    dueDateObj.setDate(dueDateObj.getDate() + 14); // Default 14 days
   }
+
+  // Decrement book quantity atomically
+  const bookRef = doc(db, "books", bookId);
+  await updateDoc(bookRef, { 
+    quantity: increment(-1)
+  });
 
   return await addDoc(collection(db, "borrowRecords"), {
     userId,
     bookId,
     userName,
     bookTitle,
-    borrowDate: serverTimestamp(),
-    dueDate,
+    borrowDate: customBorrowDate ? borrowDateObj : serverTimestamp(),
+    dueDate: dueDateObj,
     returnDate: null,
     status: 'BORROWING'
   });
@@ -248,19 +257,11 @@ export const returnBorrowRecord = async (recordId, bookId) => {
     returnDate: serverTimestamp()
   });
 
-  // Increase book quantity
+  // Increase book quantity atomically
   const bookRef = doc(db, "books", bookId);
-  const bookSnap = await getDoc(bookRef);
-  if (bookSnap.exists()) {
-    const currentQty = bookSnap.data().quantity || 0;
-    await updateDoc(bookRef, { quantity: currentQty + 1 });
-  }
-};
-
-export const getBorrowRecord = async (recordId) => {
-  const recordRef = doc(db, "borrowRecords", recordId);
-  const snap = await getDoc(recordRef);
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  await updateDoc(bookRef, { 
+    quantity: increment(1)
+  });
 };
 
 // ========================
@@ -296,3 +297,44 @@ export const updateUserRole = async (id, role) => {
   const docRef = doc(db, "users", id);
   return await updateDoc(docRef, { role });
 };
+
+// ========================
+// CATEGORIES
+// ========================
+export const getCategories = async () => {
+  const q = query(collection(db, "categories"), orderBy("name"));
+  return await getCollectionData(q);
+};
+
+export const addCategory = async (data) => {
+  return await addDoc(collection(db, "categories"), {
+    ...data,
+    createdAt: serverTimestamp()
+  });
+};
+
+export const updateCategory = async (id, data) => {
+  const docRef = doc(db, "categories", id);
+  return await updateDoc(docRef, data);
+};
+
+export const deleteCategory = async (id) => {
+  const docRef = doc(db, "categories", id);
+  return await deleteDoc(docRef);
+};
+
+export const ensureCategoryExists = async (categoryName) => {
+  if (!categoryName || categoryName === "Chưa phân loại" || categoryName === "Khác") return;
+  
+  const q = query(collection(db, "categories"), where("name", "==", categoryName));
+  const snapshot = await getDocs(q);
+  
+  if (snapshot.empty) {
+    await addCategory({ 
+      name: categoryName, 
+      description: "Tự động tạo từ hệ thống sách" 
+    });
+  }
+};
+
+
