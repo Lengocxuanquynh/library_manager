@@ -329,10 +329,7 @@ export default function ManageLoans() {
     }
   };
 
-  // ==================
-  // SELECTED BOOK INFO
-  // ==================
-  const selectedBookInfo = allBooks.find(b => b.id === selectedBook);
+
 
   return (
     <div style={{ position: 'relative' }}>
