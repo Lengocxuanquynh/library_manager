@@ -55,7 +55,6 @@ export default function DashboardLayout({ children }) {
       <aside className={`${styles.sidebar} ${isMobileOpen ? styles.mobileOpen : ""}`}>
         <div className={styles.sidebarHeader}>
           <h2>{role === "admin" ? "Trang Quản Trị" : "Trang Độc Giả"}</h2>
-          <p className={styles.userEmail}>{user.email}</p>
         </div>
         <nav className={styles.navMenu}>
           {navLinks.map((link) => (

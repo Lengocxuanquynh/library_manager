@@ -298,6 +298,10 @@ export const canUserBorrow = async (userId) => {
   const hasOverdue = records.some(r => r.status === 'OVERDUE');
   if (hasOverdue) return { canBorrow: false, reason: 'Bạn đang có sách quá hạn chưa trả.' };
 
+  // Check if user has a book approved but not yet picked up
+  const hasPendingPickup = records.some(r => r.status === 'APPROVED_PENDING_PICKUP');
+  if (hasPendingPickup) return { canBorrow: false, reason: 'Bạn đang có sách đã được duyệt, vui lòng đến thư viện lấy sách trước.' };
+
   // Also check if they already requested this book and it's pending
   const requests = await getBorrowRequests('PENDING', userId);
   if (requests.length > 0) return { canBorrow: false, reason: 'Bạn đang có một yêu cầu mượn sách đang chờ duyệt.' };
