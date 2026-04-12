@@ -136,8 +136,10 @@ function ManageBooksContent() {
 
   const handleDelete = async (id) => {
     if (confirm("Bạn có chắc chắn muốn xóa cuốn sách này không?")) {
-      await fetch(`/api/books/${id}`, { method: 'DELETE' });
-      fetchBooks();
+      if (confirm("XÁC NHẬN LẦN 2: Hành động này không thể hoàn tác. Bạn vẫn muốn xóa chứ?")) {
+        await fetch(`/api/books/${id}`, { method: 'DELETE' });
+        fetchBooks();
+      }
     }
   };
 
@@ -259,6 +261,18 @@ function ManageBooksContent() {
                   required
                 />
               </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Trạng thái lưu kho</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', cursor: 'pointer' }}
+                >
+                  <option value="Available">Sẵn sàng cho mượn</option>
+                  <option value="Warehouse">Chuyển vào Kho (Bảo trì/Ẩn)</option>
+                </select>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'min-content 1fr', gap: '2rem', alignItems: 'start' }}>
@@ -367,13 +381,26 @@ function ManageBooksContent() {
             display: 'flex', 
             gap: '0.8rem', 
             overflowX: 'auto', 
-            paddingBottom: '0.5rem',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            WebkitOverflowScrolling: 'touch'
-          }}>
+            padding: '0.5rem 0',
+            scrollBehavior: 'smooth',
+            WebkitOverflowScrolling: 'touch',
+            position: 'relative'
+          }} className="category-scroll-container">
             <style jsx>{`
-              div::-webkit-scrollbar { display: none; }
+              .category-scroll-container::-webkit-scrollbar {
+                height: 6px;
+              }
+              .category-scroll-container::-webkit-scrollbar-track {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 10px;
+              }
+              .category-scroll-container::-webkit-scrollbar-thumb {
+                background: rgba(187, 134, 252, 0.3);
+                border-radius: 10px;
+              }
+              .category-scroll-container::-webkit-scrollbar-thumb:hover {
+                background: rgba(187, 134, 252, 0.5);
+              }
             `}</style>
             {filterTabs.map(tab => {
               const isActive = (tab.id === 'ALL' && selectedFilter === 'ALL') || (selectedFilter === tab.name);
@@ -492,12 +519,12 @@ function ManageBooksContent() {
                     <span style={{
                       fontSize: '0.75rem',
                       padding: '0.2rem 0.5rem',
-                      background: (book.quantity > 0) ? 'rgba(39, 201, 63, 0.12)' : 'rgba(255, 95, 86, 0.12)',
-                      color: (book.quantity > 0) ? '#27c93f' : '#ff5f56',
+                      background: (book.quantity > 0 && book.status !== 'Warehouse') ? 'rgba(39, 201, 63, 0.12)' : 'rgba(255, 95, 86, 0.12)',
+                      color: (book.quantity > 0 && book.status !== 'Warehouse') ? '#27c93f' : '#ff5f56',
                       borderRadius: '4px',
                       fontWeight: '600'
                     }}>
-                      {(book.quantity > 0) ? `${book.quantity} bản` : 'Hết sách'}
+                      {book.status === 'Warehouse' ? 'Trong kho (Bảo trì)' : (book.quantity > 0) ? `${book.quantity} bản` : 'Hết sách'}
                     </span>
                   </div>
                 </div>

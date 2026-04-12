@@ -208,14 +208,22 @@ export const getBorrowRecords = async (userId = null) => {
   const now = new Date();
   return data.map(record => {
     let currentStatus = record.status;
-    if (currentStatus === 'BORROWING' && record.dueDate?.toDate() < now) {
+    
+    // Convert dueDate to JS Date for comparison
+    let dueDate = null;
+    if (record.dueDate?._seconds) dueDate = new Date(record.dueDate._seconds * 1000);
+    else if (record.dueDate?.seconds) dueDate = new Date(record.dueDate.seconds * 1000);
+    else if (typeof record.dueDate?.toDate === 'function') dueDate = record.dueDate.toDate();
+    else if (record.dueDate) dueDate = new Date(record.dueDate);
+
+    if (currentStatus === 'BORROWING' && dueDate && dueDate < now) {
       currentStatus = 'OVERDUE';
     }
     return { ...record, status: currentStatus };
   }).sort((a, b) => (b.borrowDate?.toMillis() || 0) - (a.borrowDate?.toMillis() || 0));
 };
 
-export const createBorrowRecord = async (userId, bookId, userName, bookTitle, customBorrowDate = null, customDueDate = null) => {
+export const createBorrowRecord = async (userId, bookId, userName, bookTitle, customBorrowDate = null, customDueDate = null, autoDecrement = true, borrowerPhone = "") => {
   const borrowDateObj = customBorrowDate ? new Date(customBorrowDate) : new Date();
   const dueDateObj = customDueDate ? new Date(customDueDate) : (customBorrowDate ? new Date(customBorrowDate) : new Date());
   
@@ -223,27 +231,45 @@ export const createBorrowRecord = async (userId, bookId, userName, bookTitle, cu
     dueDateObj.setDate(dueDateObj.getDate() + 14); // Default 14 days
   }
 
-  // Decrement book quantity atomically
-  const bookRef = doc(db, "books", bookId);
-  await updateDoc(bookRef, { 
-    quantity: increment(-1)
-  });
+  if (autoDecrement) {
+    // Decrement book quantity atomically
+    const bookRef = doc(db, "books", bookId);
+    await updateDoc(bookRef, { 
+      quantity: increment(-1)
+    });
+  }
 
   return await addDoc(collection(db, "borrowRecords"), {
     userId,
     bookId,
     userName,
     bookTitle,
+    borrowerPhone: borrowerPhone || "",
     borrowDate: customBorrowDate ? borrowDateObj : serverTimestamp(),
     dueDate: dueDateObj,
     returnDate: null,
-    status: 'BORROWING'
+    status: autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP'
+  });
+};
+
+export const confirmBorrowPickup = async (recordId, bookId) => {
+  const recordRef = doc(db, "borrowRecords", recordId);
+  await updateDoc(recordRef, {
+    status: 'BORROWING',
+    pickupDate: serverTimestamp()
+  });
+
+  // Decrement book quantity atomically only when picked up
+  const bookRef = doc(db, "books", bookId);
+  await updateDoc(bookRef, { 
+    quantity: increment(-1)
   });
 };
 
 export const approveBorrowRequest = async (requestId, userId, bookId, userName, bookTitle) => {
   await updateBorrowRequestStatus(requestId, 'APPROVED');
-  return await createBorrowRecord(userId, bookId, userName, bookTitle);
+  // For online approval, we wait for pickup to decrement quantity
+  return await createBorrowRecord(userId, bookId, userName, bookTitle, null, null, false);
 };
 
 export const rejectBorrowRequest = async (requestId) => {
