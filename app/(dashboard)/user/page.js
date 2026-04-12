@@ -54,10 +54,21 @@ export default function UserDashboard() {
       <div className={styles.grid}>
         <div className={styles.card}>
           <h3>Thông Tin Cá Nhân</h3>
-          <div style={{ marginTop: '1rem', color: 'rgba(255, 255, 255, 0.7)' }}>
-            <p><strong>Họ Tên:</strong> {user?.displayName}</p>
-            <p><strong>Email:</strong> {user?.email}</p>
-            <p><strong>Mã Độc Giả:</strong> {user?.uid}</p>
+          <div style={{ marginTop: '1.2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <span style={{ fontSize: '0.85rem', opacity: 0.5, fontWeight: '500' }}>Họ Tên</span>
+              <div style={{ fontSize: '1rem', color: '#fff' }}>{user?.displayName || "Chưa cập nhật"}</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <span style={{ fontSize: '0.85rem', opacity: 0.5, fontWeight: '500' }}>Email</span>
+              <div style={{ fontSize: '1rem', color: '#fff' }}>{user?.email}</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <span style={{ fontSize: '0.85rem', opacity: 0.5, fontWeight: '500' }}>Mã Độc Giả</span>
+              <div style={{ fontSize: '0.9rem', color: '#fff', wordBreak: 'break-all', fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)', padding: '0.6rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                {user?.uid}
+              </div>
+            </div>
           </div>
         </div>
 
