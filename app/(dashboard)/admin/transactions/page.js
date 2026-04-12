@@ -352,8 +352,20 @@ export default function ManageLoans() {
             Chờ Duyệt ({requests.length})
           </button>
           <button
+            onClick={() => { setActiveTab('records'); setFilterStatus('APPROVED_PENDING_PICKUP'); }}
+            style={{
+              background: (activeTab === 'records' && filterStatus === 'APPROVED_PENDING_PICKUP') ? 'rgba(187,134,252,0.2)' : 'transparent',
+              border: '1px solid rgba(187,134,252,0.4)',
+              color: '#bb86fc', padding: '0.5rem 1.1rem',
+              borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Chờ Lấy Sách ({records.filter(r => r.status === 'APPROVED_PENDING_PICKUP').length})
+          </button>
+          <button
             className={activeTab === 'records' ? 'btn-primary' : 'btn-outline'}
-            onClick={() => setActiveTab('records')}
+            onClick={() => { setActiveTab('records'); setFilterStatus('ALL'); }}
           >
             Lịch Sử Mượn
           </button>
@@ -727,6 +739,10 @@ export default function ManageLoans() {
                 style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'BORROWING' ? 'rgba(39,201,63,0.1)' : 'transparent', color: '#27c93f', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'BORROWING' ? '700' : '400' }}
               >Đang mượn</button>
               <button 
+                onClick={() => setFilterStatus('APPROVED_PENDING_PICKUP')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : 'transparent', color: '#bb86fc', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'APPROVED_PENDING_PICKUP' ? '700' : '400' }}
+              >Chờ Lấy Sách</button>
+              <button 
                 onClick={() => setFilterStatus('OVERDUE')}
                 style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'OVERDUE' ? 'rgba(255,95,86,0.1)' : 'transparent', color: '#ff5f56', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'OVERDUE' ? '700' : '400' }}
               >Quá hạn</button>
@@ -735,7 +751,6 @@ export default function ManageLoans() {
                 style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'RETURNED' ? 'rgba(255,255,255,0.05)' : 'transparent', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'RETURNED' ? '700' : '400' }}
               >Đã trả</button>
             </div>
-
             <div className="table-container">
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
@@ -756,6 +771,7 @@ export default function ManageLoans() {
                     const isOverdue = isActive && dueDate && dueDate < new Date();
                     
                     if (filterStatus === 'BORROWING') return isActive && !isOverdue;
+                    if (filterStatus === 'APPROVED_PENDING_PICKUP') return rec.status === 'APPROVED_PENDING_PICKUP';
                     if (filterStatus === 'OVERDUE') return isOverdue;
                     if (filterStatus === 'RETURNED') return rec.status === 'RETURNED';
                     return true;
@@ -772,6 +788,7 @@ export default function ManageLoans() {
                       const isOverdue = isActive && dueDate && dueDate < new Date();
                       
                       if (filterStatus === 'BORROWING') return isActive && !isOverdue;
+                      if (filterStatus === 'APPROVED_PENDING_PICKUP') return rec.status === 'APPROVED_PENDING_PICKUP';
                       if (filterStatus === 'OVERDUE') return isOverdue;
                       if (filterStatus === 'RETURNED') return rec.status === 'RETURNED';
                       return true;
@@ -797,7 +814,9 @@ export default function ManageLoans() {
                           <span style={{
                             background: isOverdue ? 'rgba(255,95,86,0.15)' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
                             color: isOverdue ? '#ff5f56' : rec.status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
-                            padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600'
+                            padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600',
+                            whiteSpace: 'nowrap', display: 'inline-block',
+                            minWidth: '100px', textAlign: 'center'
                           }}>
                             {isOverdue ? 'QUÁ HẠN' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : isActive ? 'ĐANG MƯỢN' : 'ĐÃ TRẢ'}
                           </span>
@@ -822,9 +841,9 @@ export default function ManageLoans() {
                 )}
               </tbody>
             </table>
-              </div>
-            </>
-          )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

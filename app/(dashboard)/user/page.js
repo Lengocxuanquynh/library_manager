@@ -98,7 +98,11 @@ export default function UserDashboard() {
                 </thead>
                 <tbody>
                   {transactions.map(tx => {
-                    const isActive = tx.status === 'BORROWING' || tx.status === 'OVERDUE';
+                    const isPendingPickup = tx.status === 'APPROVED_PENDING_PICKUP';
+                    const isBorrowing = tx.status === 'BORROWING';
+                    const isOverdue = tx.status === 'OVERDUE';
+                    const isReturned = tx.status === 'RETURNED';
+                    const canReturn = isBorrowing || isOverdue;
 
                     return (
                       <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -107,18 +111,29 @@ export default function UserDashboard() {
                         <td style={{ padding: '1rem' }}>{formatDate(tx.dueDate)}</td>
                         <td style={{ padding: '1rem' }}>
                           <span style={{
-                            background: tx.status === 'OVERDUE' ? 'rgba(255, 95, 86, 0.2)' : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                            color: tx.status === 'OVERDUE' ? '#ff5f56' : tx.status === 'BORROWING' ? '#27c93f' : '#aaa',
+                            background: isOverdue ? 'rgba(255, 95, 86, 0.2)' 
+                              : isBorrowing ? 'rgba(39, 201, 63, 0.2)' 
+                              : isPendingPickup ? 'rgba(187, 134, 252, 0.2)' 
+                              : 'rgba(255, 255, 255, 0.1)',
+                            color: isOverdue ? '#ff5f56' 
+                              : isBorrowing ? '#27c93f' 
+                              : isPendingPickup ? '#bb86fc' 
+                              : '#aaa',
                             padding: '0.25rem 0.5rem',
                             borderRadius: '4px',
                             fontSize: '0.85rem'
                           }}>
-                            {tx.status === 'BORROWING' ? 'Đang Mượn' : (tx.status === 'OVERDUE' ? 'Quá Hạn' : 'Đã Trả')}
+                            {isBorrowing ? 'Đang Mượn' 
+                              : isOverdue ? 'Quá Hạn' 
+                              : isPendingPickup ? 'Chờ Lấy Sách' 
+                              : 'Đã Trả'}
                           </span>
                         </td>
                         <td style={{ padding: '1rem' }}>
-                          {isActive ? (
+                          {canReturn ? (
                             <button onClick={() => handleReturn(tx.id, tx.bookId)} style={{ background: 'rgba(39, 201, 63, 0.1)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer' }}>Trả Sách</button>
+                          ) : isPendingPickup ? (
+                            <span style={{ color: '#bb86fc', fontSize: '0.85rem', fontStyle: 'italic' }}>Đến thư viện lấy sách</span>
                           ) : (
                             <span style={{ color: '#666', fontSize: '0.9rem' }}>N/A</span>
                           )}
