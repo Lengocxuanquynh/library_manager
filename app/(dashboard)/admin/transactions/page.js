@@ -17,8 +17,9 @@ export default function ManageLoans() {
   // Offline modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [allBooks, setAllBooks] = useState([]);
-  const [selectedBook, setSelectedBook] = useState("");
+  const [selectedBooks, setSelectedBooks] = useState([]); // Array now
   const [borrowerName, setBorrowerName] = useState("");
+  const [borrowerPhone, setBorrowerPhone] = useState("");
   const [bookSearch, setBookSearch] = useState("");
   const [offlineBorrowDate, setOfflineBorrowDate] = useState("");
   const [offlineDueDate, setOfflineDueDate] = useState("");
@@ -108,12 +109,14 @@ export default function ManageLoans() {
   // ==================
   const openOfflineModal = async () => {
     setIsModalOpen(true);
-    setSelectedBook("");
+    setSelectedBooks([]);
     setBorrowerName("");
     setPhoneNumber("");
     setBorrowerEmail("");
     setIsNewMember(false);
     setSelectedMemberId("");
+    setBorrowerPhone("");
+
     setBookSearch("");
 
     // Default dates: Today and 14 days later
@@ -137,13 +140,27 @@ export default function ManageLoans() {
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setSelectedBook("");
+    setSelectedBooks([]);
     setBorrowerName("");
     setPhoneNumber("");
     setBorrowerEmail("");
     setIsNewMember(false);
     setSelectedMemberId("");
+    setBorrowerPhone("");
+
     setBookSearch("");
+  };
+
+  const toggleBookSelection = (book) => {
+    if (selectedBooks.find(b => b.id === book.id)) {
+      setSelectedBooks(selectedBooks.filter(b => b.id !== book.id));
+    } else {
+      if (selectedBooks.length >= 3) {
+        alert("Chỉ được mượn tối đa 3 cuốn sách một lần.");
+        return;
+      }
+      setSelectedBooks([...selectedBooks, { id: book.id, title: book.title }]);
+    }
   };
 
   const filteredBooks = allBooks.filter(b =>
@@ -153,12 +170,11 @@ export default function ManageLoans() {
 
   const handleOfflineSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedBook || !borrowerName.trim() || !phoneNumber.trim()) {
+    if (selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim()) {
       toast.error("Vui lòng nhập đầy đủ SĐT, Tên và chọn Sách");
       return;
     }
 
-    const book = allBooks.find(b => b.id === selectedBook);
     let memberId = selectedMemberId;
 
     setSubmitting(true);
@@ -198,13 +214,15 @@ export default function ManageLoans() {
 
       // Logic Step 2: Create borrow record
       const res = await fetch('/api/borrow-records', {
+
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: memberId,
           userName: borrowerName.trim(),
-          bookId: book.id,
-          bookTitle: book.title,
+          borrowerPhone: phoneNumber.trim(),
+
+          books: selectedBooks.map(b => ({ bookId: b.id, bookTitle: b.title })),
           borrowDate: offlineBorrowDate,
           dueDate: offlineDueDate
         })
@@ -289,10 +307,29 @@ export default function ManageLoans() {
     }
   };
 
-  // ==================
-  // SELECTED BOOK INFO
-  // ==================
-  const selectedBookInfo = allBooks.find(b => b.id === selectedBook);
+  const handleConfirmPickup = async (recordId, bookId) => {
+    if (!confirm("Xác nhận hội viên đã đến lấy sách? (Hệ thống sẽ trừ số lượng sách trong kho)")) return;
+    try {
+      const res = await fetch('/api/admin/confirm-pickup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordId,
+          bookId,
+          adminId: user.uid
+        })
+      });
+      if (res.ok) fetchData();
+      else {
+        const data = await res.json();
+        alert(data.error || "Xác nhận thất bại");
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+
 
   return (
     <div style={{ position: 'relative' }}>
@@ -467,6 +504,7 @@ export default function ManageLoans() {
                 </div>
               )}
 
+
               {/* Date Inputs */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
@@ -533,51 +571,62 @@ export default function ManageLoans() {
                       Không tìm thấy sách phù hợp
                     </div>
                   ) : (
-                    filteredBooks.map(b => (
-                      <div
-                        key={b.id}
-                        onClick={() => setSelectedBook(b.id)}
-                        style={{
-                          padding: '0.7rem 1rem',
-                          cursor: 'pointer',
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          background: selectedBook === b.id ? 'rgba(187,134,252,0.15)' : 'transparent',
-                          borderLeft: selectedBook === b.id ? '3px solid #bb86fc' : '3px solid transparent',
-                          transition: 'all 0.15s'
-                        }}
-                        onMouseEnter={e => { if (selectedBook !== b.id) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                        onMouseLeave={e => { if (selectedBook !== b.id) e.currentTarget.style.background = 'transparent'; }}
-                      >
-                        <div>
-                          <div style={{ color: '#fff', fontSize: '0.9rem', fontWeight: selectedBook === b.id ? '600' : '400' }}>{b.title}</div>
-                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>{b.author}</div>
+                    filteredBooks.map(b => {
+                      const isSelected = selectedBooks.some(sb => sb.id === b.id);
+                      return (
+                        <div
+                          key={b.id}
+                          onClick={() => toggleBookSelection(b)}
+                          style={{
+                            padding: '0.7rem 1rem',
+                            cursor: 'pointer',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: isSelected ? 'rgba(187,134,252,0.15)' : 'transparent',
+                            borderLeft: isSelected ? '3px solid #bb86fc' : '3px solid transparent',
+                            transition: 'all 0.15s'
+                          }}
+                          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <div>
+                            <div style={{ color: '#fff', fontSize: '0.9rem', fontWeight: isSelected ? '600' : '400' }}>{b.title}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>{b.author}</div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {isSelected && <span style={{ color: '#bb86fc', fontSize: '1rem' }}>✓</span>}
+                            <span style={{
+                              fontSize: '0.7rem', padding: '0.15rem 0.4rem',
+                              background: 'rgba(39,201,63,0.12)', color: '#27c93f',
+                              borderRadius: '4px', fontWeight: '600', flexShrink: 0
+                            }}>
+                              Còn {b.quantity}
+                            </span>
+                          </div>
                         </div>
-                        <span style={{
-                          fontSize: '0.7rem', padding: '0.15rem 0.4rem',
-                          background: 'rgba(39,201,63,0.12)', color: '#27c93f',
-                          borderRadius: '4px', fontWeight: '600', flexShrink: 0
-                        }}>
-                          Còn {b.quantity}
-                        </span>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
 
-              {/* Selected Book Preview */}
-              {selectedBookInfo && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '1rem',
-                  padding: '0.8rem 1rem', borderRadius: '10px',
-                  background: 'rgba(187,134,252,0.08)', border: '1px solid rgba(187,134,252,0.2)'
-                }}>
-
-                  <div style={{ flex: 1 }}>
-                    <div style={{ color: '#fff', fontWeight: '600', fontSize: '0.9rem' }}>{selectedBookInfo.title}</div>
-                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>{selectedBookInfo.author} • Còn {selectedBookInfo.quantity} bản</div>
+              {/* Selected Books Preview */}
+              {selectedBooks.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>
+                    Sách đã chọn ({selectedBooks.length}/3)
                   </div>
-                  <button type="button" onClick={() => setSelectedBook("")} style={{ background: 'none', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
+                  {selectedBooks.map(book => (
+                    <div key={book.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '1rem',
+                      padding: '0.6rem 1rem', borderRadius: '10px',
+                      background: 'rgba(187,134,252,0.08)', border: '1px solid rgba(187,134,252,0.2)'
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: '#fff', fontWeight: '600', fontSize: '0.9rem' }}>{book.title}</div>
+                      </div>
+                      <button type="button" onClick={() => setSelectedBooks(selectedBooks.filter(b => b.id !== book.id))} style={{ background: 'none', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -600,16 +649,18 @@ export default function ManageLoans() {
                 >
                   Hủy
                 </button>
-                <button
+                 <button
                   type="submit"
-                  disabled={submitting || !selectedBook || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)}
+                  disabled={submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)}
+
                   style={{
                     flex: 2, padding: '0.8rem', borderRadius: '10px',
                     border: 'none',
-                    background: (submitting || !selectedBook || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
-                    color: (submitting || !selectedBook || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'rgba(255,255,255,0.2)' : '#fff',
-                    fontWeight: '700', cursor: (submitting || !selectedBook || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'not-allowed' : 'pointer',
-                    fontSize: '0.9rem', transition: 'all 0.2s'
+                    background: (submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                    color: (submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'rgba(255,255,255,0.2)' : '#fff',
+                    fontWeight: '700', cursor: (submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'not-allowed' : 'pointer',
+                    fontSize: '0.95rem', transition: 'all 0.2s'
+
                   }}
                 >
                   {submitting ? "Đang xử lý..." : (currentBorrowCount >= 5 && !isNewMember ? "Giới hạn đã đạt" : "Xác Nhận Mượn")}
@@ -649,7 +700,7 @@ export default function ManageLoans() {
                       <td style={{ padding: '1rem', fontWeight: '500' }}>{req.userName}</td>
                       <td style={{ padding: '1rem' }}>{req.bookTitle}</td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                        {formatDate(req.createdAt)}
+                        {formatDate(req.createdAt, true)}
                       </td>
                       <td style={{ padding: '1rem' }}>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -734,29 +785,36 @@ export default function ManageLoans() {
                         <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
                         <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
                         <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                          {formatDate(rec.borrowDate)}
+                          {formatDate(rec.borrowDate, true)}
                         </td>
                         <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                          {formatDate(rec.dueDate)}
+                          {formatDate(rec.dueDate, true)}
                         </td>
                         <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
                           {formatDate(rec.returnDate, true)}
                         </td>
                         <td style={{ padding: '1rem' }}>
                           <span style={{
-                            background: isOverdue ? 'rgba(255,95,86,0.15)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
-                            color: isOverdue ? '#ff5f56' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
+                            background: isOverdue ? 'rgba(255,95,86,0.15)' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
+                            color: isOverdue ? '#ff5f56' : rec.status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
                             padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600'
                           }}>
-                            {isOverdue ? 'QUÁ HẠN' : isActive ? 'ĐANG MƯỢN' : 'ĐÃ TRẢ'}
+                            {isOverdue ? 'QUÁ HẠN' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : isActive ? 'ĐANG MƯỢN' : 'ĐÃ TRẢ'}
                           </span>
                         </td>
                         <td style={{ padding: '1rem' }}>
-                          {isActive && (
-                            <button onClick={() => handleReturn(rec.id, rec.bookId)} className="btn-outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.85rem' }}>
-                              Thu Hồi
-                            </button>
-                          )}
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {rec.status === 'APPROVED_PENDING_PICKUP' && (
+                              <button onClick={() => handleConfirmPickup(rec.id, rec.bookId)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.35rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }}>
+                                Xác nhận lấy sách
+                              </button>
+                            )}
+                            {isActive && (
+                              <button onClick={() => handleReturn(rec.id, rec.bookId)} className="btn-outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.85rem' }}>
+                                Thu Hồi
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

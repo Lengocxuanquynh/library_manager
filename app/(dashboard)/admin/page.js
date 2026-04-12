@@ -9,11 +9,11 @@ import styles from "../dashboard.module.css";
 export default function AdminDashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState({
-    totalBooks: 0,
+    totalInventory: 0,
     activeMembers: 0,
     borrowingCount: 0,
     overdueCount: 0,
-    activeBorrowers: 0
+    totalLibraryBooks: 0
   });
   const [data, setData] = useState({
     recentRecords: [],
@@ -37,28 +37,31 @@ export default function AdminDashboard() {
         const recordsRaw = await recordsRes.json();
         
         const records = Array.isArray(recordsRaw) ? recordsRaw : [];
+        const booksArray = Array.isArray(books) ? books : [];
 
         // Calculate specific stats
         const borrowing = records.filter(r => r.status === 'BORROWING' || r.status === 'Active');
         
         const now = new Date();
-        const overdue = borrowing.filter(r => {
+        const overdue = records.filter(r => {
           let dueDate = null;
-          if (r.dueDate?.seconds) dueDate = new Date(r.dueDate.seconds * 1000);
-          else if (r.dueDate?.toDate) dueDate = r.dueDate.toDate();
+          if (r.dueDate?._seconds) dueDate = new Date(r.dueDate._seconds * 1000);
+          else if (r.dueDate?.seconds || r.dueDate?.seconds === 0) dueDate = new Date(r.dueDate.seconds * 1000);
           else if (r.dueDate) dueDate = new Date(r.dueDate);
-          return dueDate && dueDate < now;
+          return (r.status === 'BORROWING' || r.status === 'Active') && dueDate && dueDate < now;
         });
 
         // Unique readers count
         const activeBorrowerIds = new Set(borrowing.map(r => r.userId).filter(Boolean));
 
+        const inventoryCount = booksArray.reduce((acc, b) => acc + (parseInt(b.quantity) || 0), 0);
+
         setStats({
-          totalBooks: Array.isArray(books) ? books.length : 0,
+          totalInventory: inventoryCount,
           activeMembers: Array.isArray(members) ? members.length : 0,
           borrowingCount: borrowing.length,
           overdueCount: overdue.length,
-          activeBorrowers: activeBorrowerIds.size
+          totalLibraryBooks: inventoryCount + borrowing.length
         });
 
         // Sách mới nhập (last 5)
@@ -97,23 +100,27 @@ export default function AdminDashboard() {
           {/* Stats Grid */}
           <div className={styles.grid} style={{ marginBottom: '2.5rem' }}>
             <div className={styles.card} style={{ borderLeft: '4px solid #bb86fc' }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tổng số sách</div>
-              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalBooks}</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tổng số sách thư viện</div>
+              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalLibraryBooks}</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Hàng tồn + Đang mượn</div>
             </div>
             
             <div className={styles.card} style={{ borderLeft: '4px solid #03dac6' }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Độc giả đang mượn sách</div>
-              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.activeBorrowers}</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách tồn kho</div>
+              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalInventory}</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Sẵn sàng cho mượn</div>
             </div>
 
             <div className={styles.card} style={{ borderLeft: '4px solid #27c93f' }}>
               <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách đang mượn</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.borrowingCount}</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Sách đã ra khỏi kho</div>
             </div>
 
             <div className={styles.card} style={{ borderLeft: '4px solid #ff5f56' }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách quá hạn hôm nay</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách quá hạn</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.overdueCount}</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Cần thu hồi gấp</div>
             </div>
           </div>
 
