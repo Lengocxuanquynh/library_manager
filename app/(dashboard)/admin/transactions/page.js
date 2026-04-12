@@ -24,7 +24,7 @@ export default function ManageLoans() {
   const [offlineBorrowDate, setOfflineBorrowDate] = useState("");
   const [offlineDueDate, setOfflineDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  
+
   // New member states
   const [phoneNumber, setPhoneNumber] = useState("");
   const [borrowerEmail, setBorrowerEmail] = useState("");
@@ -32,6 +32,8 @@ export default function ManageLoans() {
   const [selectedMemberId, setSelectedMemberId] = useState("");
   const [searchingPhone, setSearchingPhone] = useState(false);
   const [currentBorrowCount, setCurrentBorrowCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [historyFilter, setHistoryFilter] = useState("ALL");
 
   useEffect(() => {
     if (user) fetchData();
@@ -60,7 +62,7 @@ export default function ManageLoans() {
       try {
         const res = await fetch(`/api/members?phone=${phoneNumber}`);
         const data = await res.json();
-        
+
         if (Array.isArray(data) && data.length > 0) {
           const member = data[0];
           setBorrowerName(member.name);
@@ -125,7 +127,7 @@ export default function ManageLoans() {
     const due = new Date();
     due.setDate(today.getDate() + 14);
     const formattedDue = due.toISOString().split('T')[0];
-    
+
     setOfflineBorrowDate(formattedToday);
     setOfflineDueDate(formattedDue);
 
@@ -204,7 +206,7 @@ export default function ManageLoans() {
         if (!memberRes.ok) {
           throw new Error(memberData.error || "Không thể tạo độc giả mới");
         }
-        
+
         // Atomic consistency: Update state immediately so we don't recreate on next try
         memberId = memberData.id;
         setSelectedMemberId(memberId);
@@ -333,41 +335,78 @@ export default function ManageLoans() {
 
   return (
     <div style={{ position: 'relative' }}>
-      <div className={styles.headerArea}>
+      <div className={styles.headerArea} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
         <h1 className={styles.pageTitle}>Quản Lý Mượn Trả</h1>
-        <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '1.2rem' }}>
           <button onClick={openOfflineModal} style={{
             background: 'linear-gradient(135deg, #27c93f, #1fa834)',
             border: 'none', color: '#fff', padding: '0.6rem 1.2rem',
             borderRadius: '8px', fontWeight: '600', cursor: 'pointer',
             fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem'
           }}>
-            + Tạo Phiếu Offline
+            + Tạo Phiếu offline
           </button>
-          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }}></div>
+
+          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 0.5rem' }}></div>
+
+          {/* Chờ Duyệt (Online requests) */}
           <button
             className={activeTab === 'requests' ? 'btn-primary' : 'btn-outline'}
             onClick={() => setActiveTab('requests')}
+            style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}
           >
             Chờ Duyệt ({requests.length})
           </button>
+
+          {/* Chờ Lấy Sách */}
           <button
             onClick={() => { setActiveTab('records'); setFilterStatus('APPROVED_PENDING_PICKUP'); }}
             style={{
               background: (activeTab === 'records' && filterStatus === 'APPROVED_PENDING_PICKUP') ? 'rgba(187,134,252,0.2)' : 'transparent',
               border: '1px solid rgba(187,134,252,0.4)',
-              color: '#bb86fc', padding: '0.5rem 1.1rem',
+              color: '#bb86fc', padding: '0.6rem 1.1rem',
               borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem',
               whiteSpace: 'nowrap'
             }}
           >
-            Chờ Lấy Sách ({records.filter(r => r.status === 'APPROVED_PENDING_PICKUP').length})
+            Lấy Sách ({records.filter(r => r.status === 'APPROVED_PENDING_PICKUP').length})
           </button>
+
+          {/* Trả Sách (Active borrowing) */}
           <button
-            className={activeTab === 'records' ? 'btn-primary' : 'btn-outline'}
-            onClick={() => { setActiveTab('records'); setFilterStatus('ALL'); }}
+            onClick={() => { setActiveTab('records'); setFilterStatus('BORROWING'); }}
+            style={{
+              background: (activeTab === 'records' && filterStatus === 'BORROWING') ? 'rgba(39,201,63,0.2)' : 'transparent',
+              border: '1px solid rgba(39,201,63,0.4)',
+              color: '#27c93f', padding: '0.6rem 1.1rem',
+              borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem',
+              whiteSpace: 'nowrap'
+            }}
           >
-            Lịch Sử Mượn
+            Trả Sách
+          </button>
+
+          {/* Trễ Hạn */}
+          <button
+            onClick={() => { setActiveTab('records'); setFilterStatus('OVERDUE'); }}
+            style={{
+              background: (activeTab === 'records' && filterStatus === 'OVERDUE') ? 'rgba(255,95,86,0.2)' : 'transparent',
+              border: '1px solid rgba(255,95,86,0.4)',
+              color: '#ff5f56', padding: '0.6rem 1.1rem',
+              borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Trễ Hạn
+          </button>
+
+          {/* Lịch Sử (Read-only) */}
+          <button
+            className={(activeTab === 'records' && filterStatus === 'ALL') ? 'btn-primary' : 'btn-outline'}
+            onClick={() => { setActiveTab('records'); setFilterStatus('ALL'); }}
+            style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}
+          >
+            Lịch Sử
           </button>
         </div>
       </div>
@@ -396,10 +435,10 @@ export default function ManageLoans() {
             }}
           >
             {/* Header */}
-            <div style={{ 
-              padding: '1.5rem 2rem', 
+            <div style={{
+              padding: '1.5rem 2rem',
               borderBottom: '1px solid rgba(255,255,255,0.05)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center' 
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
               <div>
                 <h2 style={{ color: '#fff', fontSize: '1.3rem', marginBottom: '0.2rem' }}>Tạo Phiếu Mượn</h2>
@@ -413,242 +452,242 @@ export default function ManageLoans() {
 
             <form onSubmit={handleOfflineSubmit} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               {/* Scrollable Content */}
-              <div style={{ 
-                flex: 1, 
-                overflowY: 'auto', 
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
                 padding: '1.5rem 2rem',
-                display: 'flex', flexDirection: 'column', gap: '1.2rem' 
+                display: 'flex', flexDirection: 'column', gap: '1.2rem'
               }}>
-              {/* Phone Number search */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
-                  Số điện thoại
-                </label>
-                <div style={{ position: 'relative' }}>
+                {/* Phone Number search */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                    Số điện thoại
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="Nhập 10 số để tìm kiếm độc giả..."
+                      autoFocus
+                      style={{
+                        width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.06)', color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        fontSize: '1rem', outline: 'none'
+                      }}
+                      required
+                    />
+                    {searchingPhone && (
+                      <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: '#bb86fc' }}>
+                        <span className={styles.spinner}></span> Đang tìm...
+                      </div>
+                    )}
+                  </div>
+                  {phoneNumber.length >= 10 && !searchingPhone && (
+                    <div style={{
+                      marginTop: '0.5rem', padding: '0.5rem 0.8rem', borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      background: isNewMember ? 'rgba(255,204,0,0.1)' : 'rgba(39,201,63,0.1)',
+                      color: isNewMember ? '#ffcc00' : '#27c93f',
+                      border: `1px solid ${isNewMember ? 'rgba(255,204,0,0.2)' : 'rgba(39,201,63,0.2)'}`
+                    }}>
+                      {isNewMember ? (
+                        <div>ⓘ <strong>Độc giả mới</strong> - Vui lòng nhập thêm Tên & Email phía dưới.</div>
+                      ) : (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>✓ <strong>Độc giả hợp lệ</strong></span>
+                          <span style={{ color: currentBorrowCount >= 5 ? '#ff5f56' : 'inherit' }}>
+                            Đang mượn: <strong>{currentBorrowCount} cuốn</strong>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {currentBorrowCount >= 5 && !isNewMember && (
+                    <div style={{ marginTop: '0.5rem', color: '#ff5f56', fontSize: '0.75rem', fontWeight: '600' }}>
+                      ⚠ Cảnh báo: Độc giả đã đạt giới hạn mượn sách tối đa (5 cuốn).
+                    </div>
+                  )}
+                </div>
+
+                {/* Borrower Name */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                    Tên người mượn
+                  </label>
                   <input
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="Nhập 10 số để tìm kiếm độc giả..."
-                    autoFocus
+                    type="text"
+                    value={borrowerName}
+                    onChange={(e) => setBorrowerName(e.target.value)}
+                    placeholder={selectedMemberId ? "" : "Nhập họ tên người mượn..."}
+                    readOnly={!!selectedMemberId}
                     style={{
                       width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
-                      background: 'rgba(255,255,255,0.06)', color: '#fff',
+                      background: selectedMemberId ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
+                      color: selectedMemberId ? 'rgba(255,255,255,0.5)' : '#fff',
                       border: '1px solid rgba(255,255,255,0.1)',
                       fontSize: '1rem', outline: 'none'
                     }}
                     required
                   />
-                  {searchingPhone && (
-                    <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: '#bb86fc' }}>
-                      <span className={styles.spinner}></span> Đang tìm...
-                    </div>
-                  )}
                 </div>
-                {phoneNumber.length >= 10 && !searchingPhone && (
-                  <div style={{ 
-                    marginTop: '0.5rem', padding: '0.5rem 0.8rem', borderRadius: '6px',
-                    fontSize: '0.8rem', 
-                    background: isNewMember ? 'rgba(255,204,0,0.1)' : 'rgba(39,201,63,0.1)',
-                    color: isNewMember ? '#ffcc00' : '#27c93f',
-                    border: `1px solid ${isNewMember ? 'rgba(255,204,0,0.2)' : 'rgba(39,201,63,0.2)'}`
+
+                {/* Email (only for new member) */}
+                {isNewMember && (
+                  <div style={{ animation: 'fadeIn 0.3s' }}>
+                    <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                      Email (Bắt buộc cho độc giả mới)
+                    </label>
+                    <input
+                      type="email"
+                      value={borrowerEmail}
+                      onChange={(e) => setBorrowerEmail(e.target.value)}
+                      placeholder="example@gmail.com"
+                      style={{
+                        width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.06)', color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        fontSize: '1rem', outline: 'none'
+                      }}
+                      required={isNewMember}
+                    />
+                  </div>
+                )}
+
+
+                {/* Date Inputs */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                      Ngày mượn (Tự động)
+                    </label>
+                    <input
+                      type="date"
+                      value={offlineBorrowDate}
+                      onChange={(e) => setOfflineBorrowDate(e.target.value)}
+                      style={{
+                        width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.06)', color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        fontSize: '0.9rem', outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                      Hạn trả
+                    </label>
+                    <input
+                      type="date"
+                      value={offlineDueDate}
+                      onChange={(e) => setOfflineDueDate(e.target.value)}
+                      style={{
+                        width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.06)', color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        fontSize: '0.9rem', outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Book Selection */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                    Chọn sách (còn trong kho)
+                  </label>
+                  <input
+                    type="text"
+                    value={bookSearch}
+                    onChange={(e) => setBookSearch(e.target.value)}
+                    placeholder="Tìm theo tên sách hoặc tác giả..."
+                    style={{
+                      width: '100%', padding: '0.7rem 1rem', borderRadius: '10px 10px 0 0',
+                      background: 'rgba(255,255,255,0.06)', color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none',
+                      fontSize: '0.9rem', outline: 'none'
+                    }}
+                    onFocus={e => e.target.style.borderColor = 'rgba(187,134,252,0.5)'}
+                    onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+                  />
+                  <div style={{
+                    maxHeight: '180px', overflowY: 'auto',
+                    border: '1px solid rgba(255,255,255,0.1)', borderTop: '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: '0 0 10px 10px',
+                    background: 'rgba(0,0,0,0.2)'
                   }}>
-                    {isNewMember ? (
-                      <div>ⓘ <strong>Độc giả mới</strong> - Vui lòng nhập thêm Tên & Email phía dưới.</div>
-                    ) : (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>✓ <strong>Độc giả hợp lệ</strong></span>
-                        <span style={{ color: currentBorrowCount >= 5 ? '#ff5f56' : 'inherit' }}>
-                          Đang mượn: <strong>{currentBorrowCount} cuốn</strong>
-                        </span>
+                    {filteredBooks.length === 0 ? (
+                      <div style={{ padding: '0.8rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>
+                        Không tìm thấy sách phù hợp
                       </div>
+                    ) : (
+                      filteredBooks.map(b => {
+                        const isSelected = selectedBooks.some(sb => sb.id === b.id);
+                        return (
+                          <div
+                            key={b.id}
+                            onClick={() => toggleBookSelection(b)}
+                            style={{
+                              padding: '0.7rem 1rem',
+                              cursor: 'pointer',
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              background: isSelected ? 'rgba(187,134,252,0.15)' : 'transparent',
+                              borderLeft: isSelected ? '3px solid #bb86fc' : '3px solid transparent',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                            onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            <div>
+                              <div style={{ color: '#fff', fontSize: '0.9rem', fontWeight: isSelected ? '600' : '400' }}>{b.title}</div>
+                              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>{b.author}</div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              {isSelected && <span style={{ color: '#bb86fc', fontSize: '1rem' }}>✓</span>}
+                              <span style={{
+                                fontSize: '0.7rem', padding: '0.15rem 0.4rem',
+                                background: 'rgba(39,201,63,0.12)', color: '#27c93f',
+                                borderRadius: '4px', fontWeight: '600', flexShrink: 0
+                              }}>
+                                Còn {b.quantity}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
-                )}
-                {currentBorrowCount >= 5 && !isNewMember && (
-                  <div style={{ marginTop: '0.5rem', color: '#ff5f56', fontSize: '0.75rem', fontWeight: '600' }}>
-                    ⚠ Cảnh báo: Độc giả đã đạt giới hạn mượn sách tối đa (5 cuốn).
-                  </div>
-                )}
-              </div>
-
-              {/* Borrower Name */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
-                  Tên người mượn
-                </label>
-                <input
-                  type="text"
-                  value={borrowerName}
-                  onChange={(e) => setBorrowerName(e.target.value)}
-                  placeholder={selectedMemberId ? "" : "Nhập họ tên người mượn..."}
-                  readOnly={!!selectedMemberId}
-                  style={{
-                    width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
-                    background: selectedMemberId ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
-                    color: selectedMemberId ? 'rgba(255,255,255,0.5)' : '#fff',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    fontSize: '1rem', outline: 'none'
-                  }}
-                  required
-                />
-              </div>
-
-              {/* Email (only for new member) */}
-              {isNewMember && (
-                <div style={{ animation: 'fadeIn 0.3s' }}>
-                  <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
-                    Email (Bắt buộc cho độc giả mới)
-                  </label>
-                  <input
-                    type="email"
-                    value={borrowerEmail}
-                    onChange={(e) => setBorrowerEmail(e.target.value)}
-                    placeholder="example@gmail.com"
-                    style={{
-                      width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
-                      background: 'rgba(255,255,255,0.06)', color: '#fff',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      fontSize: '1rem', outline: 'none'
-                    }}
-                    required={isNewMember}
-                  />
                 </div>
-              )}
 
-
-              {/* Date Inputs */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
-                    Ngày mượn (Tự động)
-                  </label>
-                  <input
-                    type="date"
-                    value={offlineBorrowDate}
-                    onChange={(e) => setOfflineBorrowDate(e.target.value)}
-                    style={{
-                      width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
-                      background: 'rgba(255,255,255,0.06)', color: '#fff',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      fontSize: '0.9rem', outline: 'none'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
-                    Hạn trả
-                  </label>
-                  <input
-                    type="date"
-                    value={offlineDueDate}
-                    onChange={(e) => setOfflineDueDate(e.target.value)}
-                    style={{
-                      width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
-                      background: 'rgba(255,255,255,0.06)', color: '#fff',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      fontSize: '0.9rem', outline: 'none'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Book Selection */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
-                  Chọn sách (còn trong kho)
-                </label>
-                <input
-                  type="text"
-                  value={bookSearch}
-                  onChange={(e) => setBookSearch(e.target.value)}
-                  placeholder="Tìm theo tên sách hoặc tác giả..."
-                  style={{
-                    width: '100%', padding: '0.7rem 1rem', borderRadius: '10px 10px 0 0',
-                    background: 'rgba(255,255,255,0.06)', color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none',
-                    fontSize: '0.9rem', outline: 'none'
-                  }}
-                  onFocus={e => e.target.style.borderColor = 'rgba(187,134,252,0.5)'}
-                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
-                />
-                <div style={{
-                  maxHeight: '180px', overflowY: 'auto',
-                  border: '1px solid rgba(255,255,255,0.1)', borderTop: '1px solid rgba(255,255,255,0.05)',
-                  borderRadius: '0 0 10px 10px',
-                  background: 'rgba(0,0,0,0.2)'
-                }}>
-                  {filteredBooks.length === 0 ? (
-                    <div style={{ padding: '0.8rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>
-                      Không tìm thấy sách phù hợp
+                {/* Selected Books Preview */}
+                {selectedBooks.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>
+                      Sách đã chọn ({selectedBooks.length}/3)
                     </div>
-                  ) : (
-                    filteredBooks.map(b => {
-                      const isSelected = selectedBooks.some(sb => sb.id === b.id);
-                      return (
-                        <div
-                          key={b.id}
-                          onClick={() => toggleBookSelection(b)}
-                          style={{
-                            padding: '0.7rem 1rem',
-                            cursor: 'pointer',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            background: isSelected ? 'rgba(187,134,252,0.15)' : 'transparent',
-                            borderLeft: isSelected ? '3px solid #bb86fc' : '3px solid transparent',
-                            transition: 'all 0.15s'
-                          }}
-                          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          <div>
-                            <div style={{ color: '#fff', fontSize: '0.9rem', fontWeight: isSelected ? '600' : '400' }}>{b.title}</div>
-                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>{b.author}</div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {isSelected && <span style={{ color: '#bb86fc', fontSize: '1rem' }}>✓</span>}
-                            <span style={{
-                              fontSize: '0.7rem', padding: '0.15rem 0.4rem',
-                              background: 'rgba(39,201,63,0.12)', color: '#27c93f',
-                              borderRadius: '4px', fontWeight: '600', flexShrink: 0
-                            }}>
-                              Còn {b.quantity}
-                            </span>
-                          </div>
+                    {selectedBooks.map(book => (
+                      <div key={book.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '1rem',
+                        padding: '0.6rem 1rem', borderRadius: '10px',
+                        background: 'rgba(187,134,252,0.08)', border: '1px solid rgba(187,134,252,0.2)'
+                      }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: '#fff', fontWeight: '600', fontSize: '0.9rem' }}>{book.title}</div>
                         </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Selected Books Preview */}
-              {selectedBooks.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>
-                    Sách đã chọn ({selectedBooks.length}/3)
-                  </div>
-                  {selectedBooks.map(book => (
-                    <div key={book.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '1rem',
-                      padding: '0.6rem 1rem', borderRadius: '10px',
-                      background: 'rgba(187,134,252,0.08)', border: '1px solid rgba(187,134,252,0.2)'
-                    }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ color: '#fff', fontWeight: '600', fontSize: '0.9rem' }}>{book.title}</div>
+                        <button type="button" onClick={() => setSelectedBooks(selectedBooks.filter(b => b.id !== book.id))} style={{ background: 'none', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
                       </div>
-                      <button type="button" onClick={() => setSelectedBooks(selectedBooks.filter(b => b.id !== book.id))} style={{ background: 'none', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
 
-                </div>
+              </div>
               {/* Actions sticky at bottom */}
-              <div style={{ 
-                padding: '1.2rem 2rem', 
+              <div style={{
+                padding: '1.2rem 2rem',
                 borderTop: '1px solid rgba(255,255,255,0.05)',
                 background: 'rgba(255,255,255,0.01)',
-                display: 'flex', gap: '0.8rem' 
+                display: 'flex', gap: '0.8rem'
               }}>
                 <button
                   type="button"
@@ -661,7 +700,7 @@ export default function ManageLoans() {
                 >
                   Hủy
                 </button>
-                 <button
+                <button
                   type="submit"
                   disabled={submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)}
 
@@ -729,27 +768,51 @@ export default function ManageLoans() {
         ) : (
           /* BORROW RECORDS */
           <>
-            <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '0.8rem', borderRadius: '12px' }}>
-              <button 
-                onClick={() => setFilterStatus('ALL')}
-                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'ALL' ? 'rgba(255,255,255,0.1)' : 'transparent', color: '#fff', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'ALL' ? '700' : '400' }}
-              >Tất cả</button>
-              <button 
-                onClick={() => setFilterStatus('BORROWING')}
-                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'BORROWING' ? 'rgba(39,201,63,0.1)' : 'transparent', color: '#27c93f', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'BORROWING' ? '700' : '400' }}
-              >Đang mượn</button>
-              <button 
-                onClick={() => setFilterStatus('APPROVED_PENDING_PICKUP')}
-                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : 'transparent', color: '#bb86fc', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'APPROVED_PENDING_PICKUP' ? '700' : '400' }}
-              >Chờ Lấy Sách</button>
-              <button 
-                onClick={() => setFilterStatus('OVERDUE')}
-                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'OVERDUE' ? 'rgba(255,95,86,0.1)' : 'transparent', color: '#ff5f56', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'OVERDUE' ? '700' : '400' }}
-              >Quá hạn</button>
-              <button 
-                onClick={() => setFilterStatus('RETURNED')}
-                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: filterStatus === 'RETURNED' ? 'rgba(255,255,255,0.05)' : 'transparent', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', cursor: 'pointer', fontWeight: filterStatus === 'RETURNED' ? '700' : '400' }}
-              >Đã trả</button>
+            <div style={{
+              display: 'flex', gap: '1rem', marginBottom: '1.5rem',
+              background: 'rgba(255,255,255,0.02)', padding: '1rem',
+              borderRadius: '12px', alignItems: 'center', flexWrap: 'wrap'
+            }}>
+              <div style={{ flex: 1, minWidth: '300px', position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm theo tên hội viên, SĐT hoặc tên sách..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.7rem 1rem', borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                    color: '#fff', fontSize: '0.9rem', outline: 'none'
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '1.2rem' }}
+                  >×</button>
+                )}
+              </div>
+
+              {filterStatus === 'ALL' && (
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Xem nhanh:</span>
+                  <select
+                    value={historyFilter}
+                    onChange={(e) => setHistoryFilter(e.target.value)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.08)', color: '#000000ff', 
+                      border: '1px solid rgba(187, 134, 252, 0.3)',
+                      padding: '0.6rem 1rem', borderRadius: '8px', outline: 'none', 
+                      fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer'
+                    }}
+                  >
+                    <option value="ALL">Toàn bộ lịch sử</option>
+                    <option value="RETURNED">Sách đã trả</option>
+                    <option value="BORROWING">Đang mượn</option>
+                    <option value="OVERDUE">Quá hạn</option>
+                  </select>
+                </div>
+              )}
             </div>
             <div className="table-container">
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -761,7 +824,7 @@ export default function ManageLoans() {
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hạn Trả</th>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Trả</th>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>
+                    {filterStatus !== 'ALL' && <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -769,15 +832,31 @@ export default function ManageLoans() {
                     const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
                     const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
                     const isOverdue = isActive && dueDate && dueDate < new Date();
-                    
-                    if (filterStatus === 'BORROWING') return isActive && !isOverdue;
-                    if (filterStatus === 'APPROVED_PENDING_PICKUP') return rec.status === 'APPROVED_PENDING_PICKUP';
-                    if (filterStatus === 'OVERDUE') return isOverdue;
-                    if (filterStatus === 'RETURNED') return rec.status === 'RETURNED';
+
+                    // 1. Filter by Status
+                    let statusMatch = true;
+                    const effectiveStatus = filterStatus === 'ALL' ? historyFilter : filterStatus;
+
+                    if (effectiveStatus === 'BORROWING') statusMatch = isActive && !isOverdue;
+                    else if (effectiveStatus === 'APPROVED_PENDING_PICKUP') statusMatch = (rec.status === 'APPROVED_PENDING_PICKUP');
+                    else if (effectiveStatus === 'OVERDUE') statusMatch = isOverdue;
+                    else if (effectiveStatus === 'RETURNED') statusMatch = (rec.status === 'RETURNED');
+
+                    if (!statusMatch) return false;
+
+                    // 2. Filter by Search Query
+                    if (searchQuery.trim()) {
+                      const q = searchQuery.toLowerCase();
+                      const name = (rec.memberName || rec.userName || "").toLowerCase();
+                      const phone = (rec.borrowerPhone || "").toLowerCase();
+                      const book = (rec.bookTitle || "").toLowerCase();
+                      return name.includes(q) || phone.includes(q) || book.includes(q);
+                    }
+
                     return true;
                   }).length === 0 ? (
                     <tr>
-                      <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
+                      <td colSpan="7" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
                         Không có bản ghi nào phù hợp với bộ lọc.
                       </td>
                     </tr>
@@ -786,61 +865,79 @@ export default function ManageLoans() {
                       const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
                       const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
                       const isOverdue = isActive && dueDate && dueDate < new Date();
-                      
-                      if (filterStatus === 'BORROWING') return isActive && !isOverdue;
-                      if (filterStatus === 'APPROVED_PENDING_PICKUP') return rec.status === 'APPROVED_PENDING_PICKUP';
-                      if (filterStatus === 'OVERDUE') return isOverdue;
-                      if (filterStatus === 'RETURNED') return rec.status === 'RETURNED';
+
+                      // 1. Filter by Status
+                      let statusMatch = true;
+                      const effectiveStatus = filterStatus === 'ALL' ? historyFilter : filterStatus;
+
+                      if (effectiveStatus === 'BORROWING') statusMatch = isActive && !isOverdue;
+                      else if (effectiveStatus === 'APPROVED_PENDING_PICKUP') statusMatch = (rec.status === 'APPROVED_PENDING_PICKUP');
+                      else if (effectiveStatus === 'OVERDUE') statusMatch = isOverdue;
+                      else if (effectiveStatus === 'RETURNED') statusMatch = (rec.status === 'RETURNED');
+
+                      if (!statusMatch) return false;
+
+                      // 2. Filter by Search Query
+                      if (searchQuery.trim()) {
+                        const q = searchQuery.toLowerCase();
+                        const name = (rec.memberName || rec.userName || "").toLowerCase();
+                        const phone = (rec.borrowerPhone || "").toLowerCase();
+                        const book = (rec.bookTitle || "").toLowerCase();
+                        return name.includes(q) || phone.includes(q) || book.includes(q);
+                      }
+
                       return true;
                     }).map(rec => {
                       const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
                       const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
                       const isOverdue = isActive && dueDate && dueDate < new Date();
 
-                    return (
-                      <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
-                        <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
-                        <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                          {formatDate(rec.borrowDate, true)}
-                        </td>
-                        <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                          {formatDate(rec.dueDate, true)}
-                        </td>
-                        <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                          {formatDate(rec.returnDate, true)}
-                        </td>
-                        <td style={{ padding: '1rem' }}>
-                          <span style={{
-                            background: isOverdue ? 'rgba(255,95,86,0.15)' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
-                            color: isOverdue ? '#ff5f56' : rec.status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
-                            padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600',
-                            whiteSpace: 'nowrap', display: 'inline-block',
-                            minWidth: '100px', textAlign: 'center'
-                          }}>
-                            {isOverdue ? 'QUÁ HẠN' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : isActive ? 'ĐANG MƯỢN' : 'ĐÃ TRẢ'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '1rem' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            {rec.status === 'APPROVED_PENDING_PICKUP' && (
-                              <button onClick={() => handleConfirmPickup(rec.id, rec.bookId)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.35rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }}>
-                                Xác nhận lấy sách
-                              </button>
-                            )}
-                            {isActive && (
-                              <button onClick={() => handleReturn(rec.id, rec.bookId)} className="btn-outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.85rem' }}>
-                                Thu Hồi
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                      return (
+                        <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
+                          <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
+                          <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+                            {formatDate(rec.borrowDate, true)}
+                          </td>
+                          <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+                            {formatDate(rec.dueDate, true)}
+                          </td>
+                          <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+                            {formatDate(rec.returnDate, true)}
+                          </td>
+                          <td style={{ padding: '1rem' }}>
+                            <span style={{
+                              background: isOverdue ? 'rgba(255,95,86,0.15)' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
+                              color: isOverdue ? '#ff5f56' : rec.status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
+                              padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600',
+                              whiteSpace: 'nowrap', display: 'inline-block',
+                              minWidth: '100px', textAlign: 'center'
+                            }}>
+                              {isOverdue ? 'QUÁ HẠN' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : isActive ? 'ĐANG MƯỢN' : 'ĐÃ TRẢ'}
+                            </span>
+                          </td>
+                          {filterStatus !== 'ALL' && (
+                            <td style={{ padding: '1rem' }}>
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                {rec.status === 'APPROVED_PENDING_PICKUP' && (
+                                  <button onClick={() => handleConfirmPickup(rec.id, rec.bookId)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.35rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }}>
+                                    Xác nhận lấy sách
+                                  </button>
+                                )}
+                                {isActive && (
+                                  <button onClick={() => handleReturn(rec.id, rec.bookId)} className="btn-outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.85rem' }}>
+                                    Thu Hồi
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </>
         )}
