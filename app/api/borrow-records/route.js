@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createBorrowRecord, isBookAvailable, canUserBorrow } from '@/services/db';
+import { createBorrowRecord, isBookAvailable } from '@/services/db';
 
 export async function POST(request) {
   try {
@@ -22,26 +22,22 @@ export async function POST(request) {
       );
     }
 
-    // 2. Check if user can borrow (only if userId is provided)
-    if (userId) {
-      const eligibility = await canUserBorrow(userId);
-      if (!eligibility.canBorrow) {
-        return NextResponse.json(
-          { error: eligibility.reason },
-          { status: 400 }
-        );
-      }
-    }
-
-    // 3. Create the record — use "offline" as fallback userId for walk-ins
-    await createBorrowRecord(userId || `offline_${Date.now()}`, bookId, userName, bookTitle, borrowDate, dueDate);
+    // 2. Create the record
+    await createBorrowRecord(
+      userId || `guest_${Date.now()}`, 
+      bookId, 
+      userName, 
+      bookTitle, 
+      borrowDate, 
+      dueDate
+    );
 
     return NextResponse.json({
       success: true,
-      message: 'Tạo phiếu mượn offline thành công'
+      message: 'Tạo phiếu mượn thành công'
     });
   } catch (error) {
-    console.error('Error in offline-borrow API:', error);
+    console.error('Error in borrow-records API:', error);
     return NextResponse.json(
       { error: 'Lỗi hệ thống khi xử lý phiếu mượn' },
       { status: 500 }

@@ -4,13 +4,17 @@ import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 export default function ManageMembers() {
   const { user } = useAuth();
+  const router = useRouter();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [newMember, setNewMember] = useState({ name: '', email: '', phone: '' });
+  const [submitting, setSubmitting] = useState(false);
   
   // History view state
   const [selectedMember, setSelectedMember] = useState(null);
@@ -28,6 +32,7 @@ export default function ManageMembers() {
       setMembers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
+      toast.error("Không thể tải danh sách độc giả.");
     } finally {
       setLoading(false);
     }
@@ -44,6 +49,7 @@ export default function ManageMembers() {
       setMemberHistory(filtered);
     } catch (error) {
       console.error(error);
+      toast.error("Lỗi khi tải lịch sử mượn trả.");
     } finally {
       setHistoryLoading(false);
     }
@@ -53,6 +59,8 @@ export default function ManageMembers() {
     e.preventDefault();
     if (!newMember.name || !newMember.email) return;
 
+    setSubmitting(true);
+    const loadToast = toast.loading("Đang thêm độc giả...");
     try {
       const res = await fetch('/api/members', {
         method: 'POST',
@@ -64,18 +72,50 @@ export default function ManageMembers() {
         setNewMember({ name: '', email: '', phone: '' });
         setShowForm(false);
         fetchMembers();
+        toast.success("Thêm độc giả mới thành công!", { id: loadToast });
       } else {
-        alert("Lỗi khi thêm độc giả");
+        const data = await res.json();
+        toast.error(data.error || "Lỗi khi thêm độc giả", { id: loadToast });
       }
     } catch (error) {
       console.error(error);
+      toast.error("Lỗi kết nối server.", { id: loadToast });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (confirm("Bạn có chắc chắn muốn xóa độc giả này không?")) {
-      await fetch(`/api/members/${id}`, { method: 'DELETE' });
-      fetchMembers();
+    if (!confirm("Bạn có chắc chắn muốn xóa độc giả này không? Hành động này không thể hoàn tác.")) return;
+    
+    const loadToast = toast.loading("Đàng xóa độc giả...");
+    try {
+      const res = await fetch(`/api/members/${id}`, { method: 'DELETE' });
+      
+      // Step 1: Handle success (status 200-299)
+      if (res.ok) {
+        // Essential: Optimistic UI update
+        setMembers(prev => prev.filter(member => member.id !== id));
+        toast.success("Đã xóa độc giả thành công.", { id: loadToast });
+        router.refresh();
+        return; // Success, no need to parse JSON body
+      }
+
+      // Step 2: Handle API errors (status 400, 500, etc.)
+      // Always try to get error message from server but fall back to default
+      let errorMessage = "Không thể xóa độc giả.";
+      try {
+        const data = await res.json();
+        errorMessage = data.error || errorMessage;
+      } catch (e) {
+        // Fallback for empty or non-JSON error bodies
+        if (res.status === 400) errorMessage = "Không thể xóa vì độc giả đang mượn sách hoặc quá hạn.";
+      }
+
+      toast.error(errorMessage, { id: loadToast });
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi kết nối máy chủ hoặc sự cố mạng.", { id: loadToast });
     }
   };
 

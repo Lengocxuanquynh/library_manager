@@ -1,10 +1,30 @@
 import { NextResponse } from 'next/server';
-import { addMember, getMembers } from '@/services/db';
+import { addMember, getMembers, getBorrowRecords } from '@/services/db';
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const phone = searchParams.get('phone');
+
     const members = await getMembers();
-    return NextResponse.json(members);
+
+    // Helper to add borrowCount to member objects
+    const addBorrowCount = async (memberList) => {
+      return await Promise.all(memberList.map(async (m) => {
+        const records = await getBorrowRecords(m.id);
+        const activeCount = records.filter(r => r.status === 'BORROWING' || r.status === 'OVERDUE').length;
+        return { ...m, borrowCount: activeCount };
+      }));
+    };
+
+    if (phone) {
+      const filtered = members.filter(m => m.phone === phone);
+      const enriched = await addBorrowCount(filtered);
+      return NextResponse.json(enriched);
+    }
+
+    const enrichedAll = await addBorrowCount(members);
+    return NextResponse.json(enrichedAll);
   } catch (error) {
     console.error('Error listing members API:', error);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
