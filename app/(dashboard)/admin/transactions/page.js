@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import styles from "../../dashboard.module.css";
 import { formatDate } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function ManageLoans() {
   const { user } = useAuth();
@@ -23,10 +24,66 @@ export default function ManageLoans() {
   const [offlineBorrowDate, setOfflineBorrowDate] = useState("");
   const [offlineDueDate, setOfflineDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  
+  // New member states
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [borrowerEmail, setBorrowerEmail] = useState("");
+  const [isNewMember, setIsNewMember] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [searchingPhone, setSearchingPhone] = useState(false);
+  const [currentBorrowCount, setCurrentBorrowCount] = useState(0);
 
   useEffect(() => {
     if (user) fetchData();
   }, [user]);
+
+  // Search member by phone number (Debounce 500ms)
+  useEffect(() => {
+    // Only search if length >= 10
+    if (phoneNumber.length < 10) {
+      if (phoneNumber.length === 0) {
+        setIsNewMember(false);
+        setSelectedMemberId("");
+      }
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      // Basic format check: only digits, 10 chars
+      if (!/^\d{10}$/.test(phoneNumber)) {
+        toast.error("Số điện thoại phải gồm 10 chữ số.");
+        return;
+      }
+
+      setSearchingPhone(true);
+      const loadingToast = toast.loading("Đang tìm kiếm hội viên...");
+      try {
+        const res = await fetch(`/api/members?phone=${phoneNumber}`);
+        const data = await res.json();
+        
+        if (Array.isArray(data) && data.length > 0) {
+          const member = data[0];
+          setBorrowerName(member.name);
+          setSelectedMemberId(member.id);
+          setIsNewMember(false);
+          setCurrentBorrowCount(member.borrowCount || 0);
+          toast.success(`Tìm thấy hội viên: ${member.name}!`, { id: loadingToast });
+        } else {
+          setSelectedMemberId("");
+          setIsNewMember(true);
+          setCurrentBorrowCount(0);
+          toast.info("Không tìm thấy thông tin. Đánh dấu độc giả mới.", { id: loadingToast });
+        }
+      } catch (error) {
+        console.error("Lỗi tìm kiếm độc giả:", error);
+        toast.error("Lỗi khi kết nối server.", { id: loadingToast });
+      } finally {
+        setSearchingPhone(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [phoneNumber]);
 
   const fetchData = async () => {
     if (!user) return;
@@ -54,7 +111,12 @@ export default function ManageLoans() {
     setIsModalOpen(true);
     setSelectedBooks([]);
     setBorrowerName("");
+    setPhoneNumber("");
+    setBorrowerEmail("");
+    setIsNewMember(false);
+    setSelectedMemberId("");
     setBorrowerPhone("");
+
     setBookSearch("");
 
     // Default dates: Today and 14 days later
@@ -80,7 +142,12 @@ export default function ManageLoans() {
     setIsModalOpen(false);
     setSelectedBooks([]);
     setBorrowerName("");
+    setPhoneNumber("");
+    setBorrowerEmail("");
+    setIsNewMember(false);
+    setSelectedMemberId("");
     setBorrowerPhone("");
+
     setBookSearch("");
   };
 
@@ -103,16 +170,58 @@ export default function ManageLoans() {
 
   const handleOfflineSubmit = async (e) => {
     e.preventDefault();
-    if (selectedBooks.length === 0 || !borrowerName.trim()) return;
+    if (selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim()) {
+      toast.error("Vui lòng nhập đầy đủ SĐT, Tên và chọn Sách");
+      return;
+    }
+
+    let memberId = selectedMemberId;
 
     setSubmitting(true);
+    const mainToast = toast.loading("Đang xử lý yêu cầu...");
+
     try {
-      const res = await fetch('/api/admin/offline-borrow', {
+      // Logic Step 1: Create member if new
+      if (isNewMember) {
+        // Email validation
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(borrowerEmail)) {
+          toast.error("Email không hợp lệ.", { id: mainToast });
+          setSubmitting(false);
+          return;
+        }
+
+        const memberRes = await fetch('/api/members', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: borrowerName.trim(),
+            phone: phoneNumber.trim(),
+            email: borrowerEmail.trim()
+          })
+        });
+
+        const memberData = await memberRes.json();
+        if (!memberRes.ok) {
+          throw new Error(memberData.error || "Không thể tạo độc giả mới");
+        }
+        
+        // Atomic consistency: Update state immediately so we don't recreate on next try
+        memberId = memberData.id;
+        setSelectedMemberId(memberId);
+        setIsNewMember(false);
+        toast.success("Đã tạo thông tin độc giả mới.", { description: "Tiếp tục tạo phiếu mượn..." });
+      }
+
+      // Logic Step 2: Create borrow record
+      const res = await fetch('/api/borrow-records', {
+
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userId: memberId,
           userName: borrowerName.trim(),
-          borrowerPhone: borrowerPhone.trim(),
+          borrowerPhone: phoneNumber.trim(),
+
           books: selectedBooks.map(b => ({ bookId: b.id, bookTitle: b.title })),
           borrowDate: offlineBorrowDate,
           dueDate: offlineDueDate
@@ -121,14 +230,15 @@ export default function ManageLoans() {
 
       const data = await res.json();
       if (res.ok) {
+        toast.success("🎉 Tạo phiếu mượn thành công!", { id: mainToast });
         closeModal();
         fetchData();
       } else {
-        alert(data.error || "Có lỗi xảy ra");
+        toast.error(data.error || "Có lỗi khi tạo phiếu", { id: mainToast });
       }
     } catch (error) {
       console.error(error);
-      alert("Lỗi kết nối server");
+      toast.error(error.message || "Lỗi kết nối server", { id: mainToast });
     } finally {
       setSubmitting(false);
     }
@@ -267,70 +377,136 @@ export default function ManageLoans() {
             onClick={e => e.stopPropagation()}
             style={{
               background: 'linear-gradient(145deg, #2a2a2d, #1e1e21)',
-              padding: '2.5rem', borderRadius: '20px',
+              borderRadius: '20px',
               width: '100%', maxWidth: '520px',
+              maxHeight: '90vh',
+              display: 'flex', flexDirection: 'column',
               border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: '0 24px 48px rgba(0,0,0,0.5)'
+              boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
+              overflow: 'hidden'
             }}
           >
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <div style={{ 
+              padding: '1.5rem 2rem', 
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center' 
+            }}>
               <div>
-                <h2 style={{ color: '#fff', fontSize: '1.4rem', marginBottom: '0.3rem' }}>Tạo Phiếu Mượn</h2>
-                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Nhập thông tin người mượn và chọn sách</p>
+                <h2 style={{ color: '#fff', fontSize: '1.3rem', marginBottom: '0.2rem' }}>Tạo Phiếu Mượn</h2>
+                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>Nhập thông tin người mượn và chọn sách</p>
               </div>
               <button
                 onClick={closeModal}
-                style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >×</button>
             </div>
 
-            <form onSubmit={handleOfflineSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <form onSubmit={handleOfflineSubmit} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              {/* Scrollable Content */}
+              <div style={{ 
+                flex: 1, 
+                overflowY: 'auto', 
+                padding: '1.5rem 2rem',
+                display: 'flex', flexDirection: 'column', gap: '1.2rem' 
+              }}>
+              {/* Phone Number search */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                  Số điện thoại
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="Nhập 10 số để tìm kiếm độc giả..."
+                    autoFocus
+                    style={{
+                      width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
+                      background: 'rgba(255,255,255,0.06)', color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      fontSize: '1rem', outline: 'none'
+                    }}
+                    required
+                  />
+                  {searchingPhone && (
+                    <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: '#bb86fc' }}>
+                      <span className={styles.spinner}></span> Đang tìm...
+                    </div>
+                  )}
+                </div>
+                {phoneNumber.length >= 10 && !searchingPhone && (
+                  <div style={{ 
+                    marginTop: '0.5rem', padding: '0.5rem 0.8rem', borderRadius: '6px',
+                    fontSize: '0.8rem', 
+                    background: isNewMember ? 'rgba(255,204,0,0.1)' : 'rgba(39,201,63,0.1)',
+                    color: isNewMember ? '#ffcc00' : '#27c93f',
+                    border: `1px solid ${isNewMember ? 'rgba(255,204,0,0.2)' : 'rgba(39,201,63,0.2)'}`
+                  }}>
+                    {isNewMember ? (
+                      <div>ⓘ <strong>Độc giả mới</strong> - Vui lòng nhập thêm Tên & Email phía dưới.</div>
+                    ) : (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>✓ <strong>Độc giả hợp lệ</strong></span>
+                        <span style={{ color: currentBorrowCount >= 5 ? '#ff5f56' : 'inherit' }}>
+                          Đang mượn: <strong>{currentBorrowCount} cuốn</strong>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {currentBorrowCount >= 5 && !isNewMember && (
+                  <div style={{ marginTop: '0.5rem', color: '#ff5f56', fontSize: '0.75rem', fontWeight: '600' }}>
+                    ⚠ Cảnh báo: Độc giả đã đạt giới hạn mượn sách tối đa (5 cuốn).
+                  </div>
+                )}
+              </div>
+
               {/* Borrower Name */}
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
                   Tên người mượn
                 </label>
                 <input
                   type="text"
                   value={borrowerName}
                   onChange={(e) => setBorrowerName(e.target.value)}
-                  placeholder="Nhập họ tên người mượn..."
-                  autoFocus
+                  placeholder={selectedMemberId ? "" : "Nhập họ tên người mượn..."}
+                  readOnly={!!selectedMemberId}
                   style={{
                     width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
-                    background: 'rgba(255,255,255,0.06)', color: '#fff',
+                    background: selectedMemberId ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
+                    color: selectedMemberId ? 'rgba(255,255,255,0.5)' : '#fff',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    fontSize: '1rem', outline: 'none',
-                    transition: 'border-color 0.2s'
+                    fontSize: '1rem', outline: 'none'
                   }}
-                  onFocus={e => e.target.style.borderColor = 'rgba(187,134,252,0.5)'}
-                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
                   required
                 />
               </div>
 
-              {/* Borrower Phone */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
-                  Số điện thoại người mượn
-                </label>
-                <input
-                  type="tel"
-                  value={borrowerPhone}
-                  onChange={(e) => setBorrowerPhone(e.target.value)}
-                  placeholder="Ví dụ: 0987xxxxxx"
-                  style={{
-                    width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
-                    background: 'rgba(255,255,255,0.06)', color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    fontSize: '1rem', outline: 'none',
-                    transition: 'border-color 0.2s'
-                  }}
-                  onFocus={e => e.target.style.borderColor = 'rgba(187,134,252,0.5)'}
-                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
-                />
-              </div>
+              {/* Email (only for new member) */}
+              {isNewMember && (
+                <div style={{ animation: 'fadeIn 0.3s' }}>
+                  <label style={{ display: 'block', marginBottom: '0.4rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: '500' }}>
+                    Email (Bắt buộc cho độc giả mới)
+                  </label>
+                  <input
+                    type="email"
+                    value={borrowerEmail}
+                    onChange={(e) => setBorrowerEmail(e.target.value)}
+                    placeholder="example@gmail.com"
+                    style={{
+                      width: '100%', padding: '0.9rem 1rem', borderRadius: '10px',
+                      background: 'rgba(255,255,255,0.06)', color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      fontSize: '1rem', outline: 'none'
+                    }}
+                    required={isNewMember}
+                  />
+                </div>
+              )}
+
 
               {/* Date Inputs */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -394,7 +570,7 @@ export default function ManageLoans() {
                   background: 'rgba(0,0,0,0.2)'
                 }}>
                   {filteredBooks.length === 0 ? (
-                    <div style={{ padding: '1rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.85rem' }}>
+                    <div style={{ padding: '0.8rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>
                       Không tìm thấy sách phù hợp
                     </div>
                   ) : (
@@ -457,13 +633,19 @@ export default function ManageLoans() {
                 </div>
               )}
 
-              {/* Actions */}
-              <div style={{ display: 'flex', gap: '0.8rem', marginTop: '0.5rem' }}>
+                </div>
+              {/* Actions sticky at bottom */}
+              <div style={{ 
+                padding: '1.2rem 2rem', 
+                borderTop: '1px solid rgba(255,255,255,0.05)',
+                background: 'rgba(255,255,255,0.01)',
+                display: 'flex', gap: '0.8rem' 
+              }}>
                 <button
                   type="button"
                   onClick={closeModal}
                   style={{
-                    flex: 1, padding: '0.9rem', borderRadius: '10px',
+                    flex: 1, padding: '0.8rem', borderRadius: '10px',
                     border: '1px solid rgba(255,255,255,0.12)', background: 'transparent',
                     color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontWeight: '500', fontSize: '0.9rem'
                   }}
@@ -472,17 +654,19 @@ export default function ManageLoans() {
                 </button>
                  <button
                   type="submit"
-                  disabled={submitting || selectedBooks.length === 0 || !borrowerName.trim()}
+                  disabled={submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)}
+
                   style={{
-                    flex: 2, padding: '0.9rem', borderRadius: '10px',
+                    flex: 2, padding: '0.8rem', borderRadius: '10px',
                     border: 'none',
-                    background: (submitting || selectedBooks.length === 0 || !borrowerName.trim()) ? 'rgba(187,134,252,0.3)' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
-                    color: (submitting || selectedBooks.length === 0 || !borrowerName.trim()) ? 'rgba(255,255,255,0.4)' : '#fff',
-                    fontWeight: '700', cursor: (submitting || selectedBooks.length === 0 || !borrowerName.trim()) ? 'not-allowed' : 'pointer',
+                    background: (submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                    color: (submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'rgba(255,255,255,0.2)' : '#fff',
+                    fontWeight: '700', cursor: (submitting || selectedBooks.length === 0 || !borrowerName.trim() || !phoneNumber.trim() || (!isNewMember && currentBorrowCount >= 5)) ? 'not-allowed' : 'pointer',
                     fontSize: '0.95rem', transition: 'all 0.2s'
+
                   }}
                 >
-                  {submitting ? "Đang xử lý..." : "Xác Nhận Mượn"}
+                  {submitting ? "Đang xử lý..." : (currentBorrowCount >= 5 && !isNewMember ? "Giới hạn đã đạt" : "Xác Nhận Mượn")}
                 </button>
               </div>
             </form>

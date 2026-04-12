@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createBorrowRecord, isBookAvailable, canUserBorrow } from '@/services/db';
+import { createBorrowRecord, isBookAvailable } from '@/services/db';
 
 export async function POST(request) {
   try {
@@ -26,7 +26,7 @@ export async function POST(request) {
 
       // 2. Create the record
       await createBorrowRecord(
-        userId || `offline_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
+        userId || `guest_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
         bookId, 
         userName, 
         bookTitle, 
@@ -44,10 +44,10 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      message: `Tạo phiếu mượn offline thành công cho ${results.length} cuốn sách.`
+      message: `Tạo phiếu mượn thành công cho ${results.length} cuốn sách.`
     });
   } catch (error) {
-    console.error('Error in offline-borrow API:', error);
+    console.error('Error in borrow-records API:', error);
     return NextResponse.json(
       { error: 'Lỗi hệ thống khi xử lý phiếu mượn' },
       { status: 500 }
