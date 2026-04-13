@@ -897,10 +897,10 @@ export default function ManageLoans() {
                           <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
                           <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
                           <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                            {formatDate(rec.borrowDate, true)}
+                            {rec.borrowDate ? formatDate(rec.borrowDate, true) : 'Chờ xác nhận'}
                           </td>
                           <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                            {formatDate(rec.dueDate, true)}
+                            {rec.dueDate ? formatDate(rec.dueDate, true) : 'Chờ xác nhận'}
                           </td>
                           <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
                             {formatDate(rec.returnDate, true)}

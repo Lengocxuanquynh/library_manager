@@ -245,8 +245,8 @@ export const createBorrowRecord = async (userId, bookId, userName, bookTitle, cu
     userName,
     bookTitle,
     borrowerPhone: borrowerPhone || "",
-    borrowDate: customBorrowDate ? borrowDateObj : serverTimestamp(),
-    dueDate: dueDateObj,
+    borrowDate: autoDecrement ? (customBorrowDate ? borrowDateObj : serverTimestamp()) : null,
+    dueDate: autoDecrement ? dueDateObj : null,
     returnDate: null,
     status: autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP'
   });
@@ -254,9 +254,15 @@ export const createBorrowRecord = async (userId, bookId, userName, bookTitle, cu
 
 export const confirmBorrowPickup = async (recordId, bookId) => {
   const recordRef = doc(db, "borrowRecords", recordId);
+  
+  const dueDateObj = new Date();
+  dueDateObj.setDate(dueDateObj.getDate() + 14);
+
   await updateDoc(recordRef, {
     status: 'BORROWING',
-    pickupDate: serverTimestamp()
+    pickupDate: serverTimestamp(),
+    borrowDate: serverTimestamp(),
+    dueDate: dueDateObj
   });
 
   // Decrement book quantity atomically only when picked up
