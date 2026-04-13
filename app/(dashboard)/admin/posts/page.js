@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
 import { slugify } from "@/lib/utils";
+import { useNotification } from "@/components/NotificationProvider";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 
 export default function ManagePosts() {
+  const { showToast, confirmAction } = useNotification();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -57,7 +59,7 @@ export default function ManagePosts() {
       const imageUrl = await uploadToCloudinary(file);
       setFormData({ ...formData, coverImage: imageUrl });
     } catch (error) {
-      alert("Lỗi tải ảnh lên. Vui lòng thử lại.");
+      showToast("Lỗi tải ảnh lên. Vui lòng thử lại.", "error");
     } finally {
       setUploading(false);
     }
@@ -83,6 +85,9 @@ export default function ManagePosts() {
     if (res.ok) {
       resetForm();
       fetchPosts();
+      showToast(editingId ? "Đã cập nhật bài viết!" : "Đã xuất bản bài viết thành công!", "success");
+    } else {
+      showToast("Có lỗi xảy ra khi lưu bài viết.", "error");
     }
   };
 
@@ -108,11 +113,19 @@ export default function ManagePosts() {
     setPreviewMode(false);
   };
 
-  const handleDelete = async (id) => {
-    if (confirm("Xác nhận xóa bài viết này?")) {
-      await fetch(`/api/posts/${id}`, { method: 'DELETE' });
-      fetchPosts();
-    }
+  const handleDelete = (id) => {
+    confirmAction("Xác nhận xóa bài viết này?", async () => {
+      try {
+        const res = await fetch(`/api/posts/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          fetchPosts();
+          showToast("Đã xóa bài viết.", "info");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Lỗi khi xóa bài viết.", "error");
+      }
+    });
   };
 
   return (

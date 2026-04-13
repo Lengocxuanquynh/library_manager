@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
+import { useNotification } from "@/components/NotificationProvider";
 import { useRouter } from "next/navigation";
 
 export default function ManageCategories() {
   const router = useRouter();
+  const { showToast, confirmAction } = useNotification();
   const [categories, setCategories] = useState([]);
 
   const [books, setBooks] = useState([]);
@@ -79,14 +81,19 @@ export default function ManageCategories() {
     setShowForm(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa thể loại này?")) return;
-    try {
-      const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchCategories();
-    } catch (error) {
-      console.error(error);
-    }
+  const handleDelete = (id) => {
+    confirmAction("Bạn có chắc chắn muốn xóa thể loại này?", async () => {
+      try {
+        const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          fetchCategories();
+          showToast("Đã xóa thể loại thành công.", "success");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Lỗi khi xóa thể loại.", "error");
+      }
+    });
   };
 
 
@@ -109,8 +116,9 @@ export default function ManageCategories() {
       if (res.ok) {
         resetForm();
         fetchCategories();
+        showToast(editingId ? "Cập nhật thành công!" : "Thêm mới thành công!", "success");
       } else {
-        alert("Có lỗi xảy ra");
+        showToast("Có lỗi xảy ra", "error");
       }
     } catch (error) {
       console.error(error);

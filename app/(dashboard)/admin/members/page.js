@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
+import { useNotification } from "@/components/NotificationProvider";
 
 export default function ManageMembers() {
   const { user } = useAuth();
+  const { showToast, confirmAction } = useNotification();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -64,19 +66,28 @@ export default function ManageMembers() {
         setNewMember({ name: '', email: '', phone: '' });
         setShowForm(false);
         fetchMembers();
+        showToast("Đã thêm độc giả thành công!", "success");
       } else {
-        alert("Lỗi khi thêm độc giả");
+        showToast("Lỗi khi thêm độc giả", "error");
       }
     } catch (error) {
       console.error(error);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (confirm("Bạn có chắc chắn muốn xóa độc giả này không?")) {
-      await fetch(`/api/members/${id}`, { method: 'DELETE' });
-      fetchMembers();
-    }
+  const handleDelete = (id) => {
+    confirmAction("Bạn có chắc chắn muốn xóa độc giả này không?", async () => {
+      try {
+        const res = await fetch(`/api/members/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          fetchMembers();
+          showToast("Đã xóa độc giả thành công.", "success");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Lỗi khi xóa độc giả.", "error");
+      }
+    });
   };
 
   return (

@@ -39,7 +39,7 @@ export default function AdminDashboard() {
         const records = Array.isArray(recordsRaw) ? recordsRaw : [];
 
         // Calculate specific stats
-        const borrowing = records.filter(r => r.status === 'BORROWING' || r.status === 'Active');
+        const borrowing = records.filter(r => r.status === 'BORROWING');
         
         const now = new Date();
         const overdue = borrowing.filter(r => {
@@ -137,7 +137,7 @@ export default function AdminDashboard() {
                   </thead>
                   <tbody>
                     {data.recentRecords.map(activity => {
-                      const isOverdue = (activity.status === 'BORROWING' || activity.status === 'Active') && 
+                      const isOverdue = (activity.status === 'BORROWING') && 
                                           activity.dueDate?.toDate && activity.dueDate.toDate() < new Date();
                       return (
                         <tr key={activity.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -146,10 +146,10 @@ export default function AdminDashboard() {
                             <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>{activity.bookTitle}</div>
                           </td>
                           <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
-                            {formatDate(activity.borrowDate)}
+                            {formatDate(activity.borrowDate, true)}
                           </td>
                           <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
-                            {formatDate(activity.dueDate)}
+                            {formatDate(activity.dueDate, true)}
                           </td>
                           <td style={{ padding: '0.75rem' }}>
                             <span style={{

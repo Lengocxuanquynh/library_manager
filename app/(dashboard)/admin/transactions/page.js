@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { useNotification } from "@/components/NotificationProvider";
 import styles from "../../dashboard.module.css";
 import { formatDate } from "@/lib/utils";
 
 export default function ManageLoans() {
   const { user } = useAuth();
+  const { showToast, confirmAction } = useNotification();
   const [requests, setRequests] = useState([]);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,10 +59,10 @@ export default function ManageLoans() {
 
     // Default dates: Today and 14 days later
     const today = new Date();
-    const formattedToday = today.toISOString().split('T')[0];
+    const formattedToday = today.toISOString().slice(0, 16);
     const due = new Date();
-    due.setDate(today.getDate() + 14);
-    const formattedDue = due.toISOString().split('T')[0];
+    due.setDate(today.getDate() + 14); // Default: 14 days
+    const formattedDue = due.toISOString().slice(0, 16);
     
     setOfflineBorrowDate(formattedToday);
     setOfflineDueDate(formattedDue);
@@ -110,12 +112,13 @@ export default function ManageLoans() {
       if (res.ok) {
         closeModal();
         fetchData();
+        showToast("Tạo phiếu mượn thành công!", "success");
       } else {
-        alert(data.error || "Có lỗi xảy ra");
+        showToast(data.error || "Có lỗi xảy ra", "error");
       }
     } catch (error) {
       console.error(error);
-      alert("Lỗi kết nối server");
+      showToast("Lỗi kết nối server", "error");
     } finally {
       setSubmitting(false);
     }
@@ -140,48 +143,59 @@ export default function ManageLoans() {
       });
       if (res.ok) {
         fetchData();
+        showToast("Đã duyệt yêu cầu mượn sách.", "success");
       } else {
         const data = await res.json();
-        alert(data.error || "Duyệt thất bại");
+        showToast(data.error || "Duyệt thất bại", "error");
       }
     } catch (error) {
       console.error(error);
     }
   };
 
-  const handleReject = async (id) => {
-    if (!confirm("Xác nhận từ chối yêu cầu này?")) return;
-    try {
-      const res = await fetch('/api/admin/reject-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestId: id,
-          adminId: user.uid
-        })
-      });
-      if (res.ok) fetchData();
-    } catch (error) {
-      console.error(error);
-    }
+  const handleReject = (id) => {
+    confirmAction("Xác nhận từ chối yêu cầu này?", async () => {
+      try {
+        const res = await fetch('/api/admin/reject-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requestId: id,
+            adminId: user.uid
+          })
+        });
+        if (res.ok) {
+          fetchData();
+          showToast("Đã từ chối yêu cầu.", "info");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Lỗi khi từ chối yêu cầu.", "error");
+      }
+    });
   };
 
-  const handleReturn = async (recordId, bookId) => {
-    if (!confirm("Xác nhận thu hồi / trả sách?")) return;
-    try {
-      const res = await fetch('/api/return-book', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recordId,
-          bookId,
-          adminId: user.uid
-        })
-      });
-      if (res.ok) fetchData();
-    } catch (error) {
-      console.error(error);
-    }
+  const handleReturn = (recordId, bookId) => {
+    confirmAction("Xác nhận thu hồi / trả sách?", async () => {
+      try {
+        const res = await fetch('/api/return-book', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recordId,
+            bookId,
+            adminId: user.uid
+          })
+        });
+        if (res.ok) {
+          fetchData();
+          showToast("Đã thu hồi sách thành công.", "success");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Lỗi khi thu hồi sách.", "error");
+      }
+    });
   };
 
   // ==================
@@ -282,7 +296,7 @@ export default function ManageLoans() {
                     Ngày mượn (Tự động)
                   </label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={offlineBorrowDate}
                     onChange={(e) => setOfflineBorrowDate(e.target.value)}
                     style={{
@@ -298,7 +312,7 @@ export default function ManageLoans() {
                     Hạn trả
                   </label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={offlineDueDate}
                     onChange={(e) => setOfflineDueDate(e.target.value)}
                     style={{
@@ -451,7 +465,7 @@ export default function ManageLoans() {
                       <td style={{ padding: '1rem', fontWeight: '500' }}>{req.userName}</td>
                       <td style={{ padding: '1rem' }}>{req.bookTitle}</td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                        {formatDate(req.createdAt)}
+                        {formatDate(req.createdAt, true)}
                       </td>
                       <td style={{ padding: '1rem' }}>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -503,7 +517,7 @@ export default function ManageLoans() {
                 <tbody>
                   {records.filter(rec => {
                     const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
-                    const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
+                    const isActive = rec.status === 'BORROWING';
                     const isOverdue = isActive && dueDate && dueDate < new Date();
                     
                     if (filterStatus === 'BORROWING') return isActive && !isOverdue;
@@ -519,7 +533,7 @@ export default function ManageLoans() {
                   ) : (
                     records.filter(rec => {
                       const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
-                      const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
+                      const isActive = rec.status === 'BORROWING';
                       const isOverdue = isActive && dueDate && dueDate < new Date();
                       
                       if (filterStatus === 'BORROWING') return isActive && !isOverdue;
@@ -528,7 +542,7 @@ export default function ManageLoans() {
                       return true;
                     }).map(rec => {
                       const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
-                      const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
+                      const isActive = rec.status === 'BORROWING';
                       const isOverdue = isActive && dueDate && dueDate < new Date();
 
                     return (
@@ -536,10 +550,10 @@ export default function ManageLoans() {
                         <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
                         <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
                         <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                          {formatDate(rec.borrowDate)}
+                          {formatDate(rec.borrowDate, true)}
                         </td>
                         <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                          {formatDate(rec.dueDate)}
+                          {formatDate(rec.dueDate, true)}
                         </td>
                         <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
                           {formatDate(rec.returnDate, true)}

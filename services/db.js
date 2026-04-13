@@ -10,7 +10,8 @@ import {
   where,
   orderBy,
   serverTimestamp,
-  increment
+  increment,
+  runTransaction
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -70,55 +71,6 @@ export const deleteMember = async (id) => {
   return await deleteDoc(docRef);
 };
 
-// ========================
-// TRANSACTIONS
-// ========================
-export const getTransactions = async () => {
-  const q = query(collection(db, "transactions"), orderBy("borrowDate", "desc"));
-  return await getCollectionData(q);
-};
-
-export const getUserTransactions = async (userId) => {
-  // Use plain query to avoid Firebase composite index requirements, then sort in JS
-  const q = query(collection(db, "transactions"), where("memberId", "==", userId));
-  const data = await getCollectionData(q);
-  return data.sort((a, b) => (b.borrowDate?.toMillis() || 0) - (a.borrowDate?.toMillis() || 0));
-};
-
-export const addTransaction = async (data) => {
-  return await addDoc(collection(db, "transactions"), {
-    ...data,
-    borrowDate: data.borrowDate || serverTimestamp()
-  });
-};
-
-export const updateTransaction = async (id, data) => {
-  const docRef = doc(db, "transactions", id);
-  return await updateDoc(docRef, data);
-};
-
-export const processBorrow = async (bookId, memberId, memberName, bookTitle) => {
-  const bookRef = doc(db, "books", bookId);
-  await updateDoc(bookRef, { status: 'Borrowed' });
-
-  return await addDoc(collection(db, "transactions"), {
-    bookId,
-    bookTitle,
-    memberId,
-    memberName,
-    status: 'Active',
-    borrowDate: serverTimestamp(),
-    returnDate: null
-  });
-};
-
-export const processReturn = async (transactionId, bookId) => {
-  const transRef = doc(db, "transactions", transactionId);
-  await updateDoc(transRef, { status: 'Returned', returnDate: serverTimestamp() });
-
-  const bookRef = doc(db, "books", bookId);
-  await updateDoc(bookRef, { status: 'Available' });
-};
 
 // ========================
 // POSTS (BLOG)
@@ -217,28 +169,58 @@ export const getBorrowRecords = async (userId = null) => {
 
 export const createBorrowRecord = async (userId, bookId, userName, bookTitle, customBorrowDate = null, customDueDate = null) => {
   const borrowDateObj = customBorrowDate ? new Date(customBorrowDate) : new Date();
-  const dueDateObj = customDueDate ? new Date(customDueDate) : (customBorrowDate ? new Date(customBorrowDate) : new Date());
-  
-  if (!customDueDate) {
-    dueDateObj.setDate(dueDateObj.getDate() + 14); // Default 14 days
+  let dueDateObj;
+
+  if (customDueDate) {
+    dueDateObj = new Date(customDueDate);
+  } else {
+    // Default 14 days from borrow date
+    dueDateObj = new Date(borrowDateObj);
+    dueDateObj.setDate(dueDateObj.getDate() + 14);
   }
 
-  // Decrement book quantity atomically
-  const bookRef = doc(db, "books", bookId);
-  await updateDoc(bookRef, { 
-    quantity: increment(-1)
-  });
+  try {
+    return await runTransaction(db, async (transaction) => {
+      const bookRef = doc(db, "books", bookId);
+      const bookDoc = await transaction.get(bookRef);
 
-  return await addDoc(collection(db, "borrowRecords"), {
-    userId,
-    bookId,
-    userName,
-    bookTitle,
-    borrowDate: customBorrowDate ? borrowDateObj : serverTimestamp(),
-    dueDate: dueDateObj,
-    returnDate: null,
-    status: 'BORROWING'
-  });
+      if (!bookDoc.exists()) {
+        throw new Error("Sách không tồn tại.");
+      }
+
+      const bookData = bookDoc.data();
+      const currentQuantity = bookData.quantity || 0;
+
+      if (currentQuantity <= 0) {
+        throw new Error("Sách hiện đã hết trong kho.");
+      }
+
+      // 1. Decrement book quantity
+      transaction.update(bookRef, { 
+        quantity: increment(-1) 
+      });
+
+      // 2. Create borrow record
+      const recordRef = doc(collection(db, "borrowRecords"));
+      const newRecord = {
+        userId,
+        bookId,
+        userName,
+        bookTitle,
+        borrowDate: customBorrowDate ? borrowDateObj : serverTimestamp(),
+        dueDate: dueDateObj,
+        returnDate: null,
+        status: 'BORROWING'
+      };
+
+      transaction.set(recordRef, newRecord);
+      
+      return { id: recordRef.id, ...newRecord };
+    });
+  } catch (error) {
+    console.error("Error creating borrow record in transaction:", error);
+    throw error;
+  }
 };
 
 export const approveBorrowRequest = async (requestId, userId, bookId, userName, bookTitle) => {
@@ -251,17 +233,31 @@ export const rejectBorrowRequest = async (requestId) => {
 };
 
 export const returnBorrowRecord = async (recordId, bookId) => {
-  const recordRef = doc(db, "borrowRecords", recordId);
-  await updateDoc(recordRef, {
-    status: 'RETURNED',
-    returnDate: serverTimestamp()
-  });
+  try {
+    await runTransaction(db, async (transaction) => {
+      const recordRef = doc(db, "borrowRecords", recordId);
+      const bookRef = doc(db, "books", bookId);
 
-  // Increase book quantity atomically
-  const bookRef = doc(db, "books", bookId);
-  await updateDoc(bookRef, { 
-    quantity: increment(1)
-  });
+      const recordDoc = await transaction.get(recordRef);
+      if (!recordDoc.exists()) throw new Error("Bản ghi không tồn tại");
+      if (recordDoc.data().status === 'RETURNED') throw new Error("Sách này đã được trả trước đó");
+
+      // 1. Update record status
+      transaction.update(recordRef, {
+        status: 'RETURNED',
+        returnDate: serverTimestamp()
+      });
+
+      // 2. Increase book quantity
+      transaction.update(bookRef, { 
+        quantity: increment(1)
+      });
+    });
+    return true;
+  } catch (error) {
+    console.error("Error returning borrow record in transaction:", error);
+    throw error;
+  }
 };
 
 // ========================

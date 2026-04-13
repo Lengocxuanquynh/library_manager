@@ -28,7 +28,7 @@ export default function AdminStats() {
         const members = await membersRes.json();
         const records = await recordsRes.json();
 
-        const borrowing = Array.isArray(records) ? records.filter(r => r.status === 'BORROWING' || r.status === 'Active') : [];
+        const borrowing = Array.isArray(records) ? records.filter(r => r.status === 'BORROWING') : [];
         const now = new Date();
         const overdue = borrowing.filter(r => {
           const dueDate = r.dueDate?.toDate ? r.dueDate.toDate() : (r.dueDate ? new Date(r.dueDate) : null);

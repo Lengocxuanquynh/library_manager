@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { useNotification } from "@/components/NotificationProvider";
 import styles from "../../dashboard.module.css";
 import { useRouter } from "next/navigation";
 
 export default function BookCatalog() {
   const { user } = useAuth();
+  const { showToast, confirmAction } = useNotification();
   const router = useRouter();
   const [books, setBooks] = useState([]);
   const [search, setSearch] = useState("");
@@ -42,7 +44,7 @@ export default function BookCatalog() {
     if (e) e.stopPropagation(); // Prevents opening modal when clicking borrow
     if (!user) return;
     
-    if (confirm(`Bạn muốn gửi yêu cầu mượn cuốn "${book.title}"?`)) {
+    confirmAction(`Bạn muốn gửi yêu cầu mượn cuốn "${book.title}"?`, async () => {
       setLoading(true);
       try {
         const res = await fetch('/api/borrow-request', {
@@ -58,18 +60,19 @@ export default function BookCatalog() {
         const result = await res.json();
         
         if (res.ok) {
-          alert(result.message || "Yêu cầu đã được gửi!");
+          showToast(result.message || "Yêu cầu đã được gửi!", "success");
           setSelectedBook(null); // Close modal if open
           router.push("/user");
         } else {
-          alert(result.error || "Có lỗi xảy ra khi gửi yêu cầu.");
+          showToast(result.error || "Có lỗi xảy ra khi gửi yêu cầu.", "error");
           setLoading(false);
         }
       } catch (error) {
         console.error(error);
+        showToast("Lỗi kết nối server.", "error");
         setLoading(false);
       }
-    }
+    });
   };
 
   // Merge formal categories with existing book categories for backup

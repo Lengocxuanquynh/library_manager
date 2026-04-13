@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { useNotification } from "@/components/NotificationProvider";
 import styles from "../dashboard.module.css";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 
 export default function UserDashboard() {
   const { user } = useAuth();
+  const { showToast, confirmAction } = useNotification();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,8 +26,8 @@ export default function UserDashboard() {
     }
   };
 
-  const handleReturn = async (recordId, bookId) => {
-    if (confirm("Xác nhận trả cuốn sách này?")) {
+  const handleReturn = (recordId, bookId) => {
+    confirmAction("Xác nhận trả cuốn sách này?", async () => {
       const res = await fetch('/api/return-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -33,11 +35,12 @@ export default function UserDashboard() {
       });
       if (res.ok) {
         loadRecords();
+        showToast("Đã gửi yêu cầu trả sách thành công.", "success");
       } else {
         const result = await res.json();
-        alert(result.error || "Có lỗi xảy ra khi gọi API trả sách.");
+        showToast(result.error || "Có lỗi xảy ra khi trả sách.", "error");
       }
-    }
+    });
   };
 
   useEffect(() => {
@@ -103,8 +106,8 @@ export default function UserDashboard() {
                     return (
                       <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <td style={{ padding: '1rem', fontWeight: '500' }}>{tx.bookTitle}</td>
-                        <td style={{ padding: '1rem' }}>{formatDate(tx.borrowDate)}</td>
-                        <td style={{ padding: '1rem' }}>{formatDate(tx.dueDate)}</td>
+                        <td style={{ padding: '1rem' }}>{formatDate(tx.borrowDate, true)}</td>
+                        <td style={{ padding: '1rem' }}>{formatDate(tx.dueDate, true)}</td>
                         <td style={{ padding: '1rem' }}>
                           <span style={{
                             background: tx.status === 'OVERDUE' ? 'rgba(255, 95, 86, 0.2)' : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 255, 255, 0.1)',

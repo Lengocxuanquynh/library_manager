@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import styles from "../../dashboard.module.css";
+import { useNotification } from "@/components/NotificationProvider";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { useSearchParams } from "next/navigation";
 
@@ -9,6 +10,7 @@ function ManageBooksContent() {
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get('category') || "ALL";
 
+  const { showToast, confirmAction } = useNotification();
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -75,7 +77,7 @@ function ManageBooksContent() {
       const imageUrl = await uploadToCloudinary(file);
       setFormData({ ...formData, coverImage: imageUrl });
     } catch (error) {
-      alert("Lỗi tải ảnh. Vui lòng thử lại.");
+      showToast("Lỗi tải ảnh. Vui lòng thử lại.", "error");
     } finally {
       setUploading(false);
     }
@@ -103,8 +105,9 @@ function ManageBooksContent() {
       if (res.ok) {
         resetForm();
         fetchBooks();
+        showToast(editingId ? "Cập nhật sách thành công!" : "Đăng ký sách mới thành công!", "success");
       } else {
-        alert("Có lỗi xảy ra khi lưu thông tin sách.");
+        showToast("Có lỗi xảy ra khi lưu thông tin sách.", "error");
       }
     } catch (error) {
       console.error(error);
@@ -134,11 +137,12 @@ function ManageBooksContent() {
     setShowForm(false);
   };
 
-  const handleDelete = async (id) => {
-    if (confirm("Bạn có chắc chắn muốn xóa cuốn sách này không?")) {
+  const handleDelete = (id) => {
+    confirmAction("Bạn có chắc chắn muốn xóa cuốn sách này không?", async () => {
       await fetch(`/api/books/${id}`, { method: 'DELETE' });
       fetchBooks();
-    }
+      showToast("Đã xóa cuốn sách thành công.", "success");
+    });
   };
 
   const filteredBooks = books.filter(book => {
