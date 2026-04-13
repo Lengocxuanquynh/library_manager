@@ -37,6 +37,11 @@ export default function Login() {
         router.push("/user");
       }
     } catch (err) {
+      if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') {
+        // Hide error when popup is closed by user
+        console.log('Google login popup closed by user');
+        return;
+      }
       console.error(err);
       setError("Có lỗi khi đăng nhập bằng Google. Vui lòng thử lại.");
     }
