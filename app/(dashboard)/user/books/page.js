@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { useCart } from "@/components/CartProvider";
 import styles from "../../dashboard.module.css";
 import { useRouter } from "next/navigation";
 
 export default function BookCatalog() {
   const { user } = useAuth();
+  const { addToCart, cart } = useCart();
   const router = useRouter();
   const [books, setBooks] = useState([]);
   const [search, setSearch] = useState("");
@@ -38,38 +40,11 @@ export default function BookCatalog() {
   };
 
 
-  const handleBorrow = async (book, e) => {
+  const handleBorrow = (book, e) => {
     if (e) e.stopPropagation(); // Prevents opening modal when clicking borrow
     if (!user) return;
-    
-    if (confirm(`Bạn muốn gửi yêu cầu mượn cuốn "${book.title}"?`)) {
-      setLoading(true);
-      try {
-        const res = await fetch('/api/borrow-request', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bookId: book.id,
-            userId: user.uid,
-            userName: user.displayName || user.email,
-            bookTitle: book.title
-          })
-        });
-        const result = await res.json();
-        
-        if (res.ok) {
-          alert(result.message || "Yêu cầu đã được gửi!");
-          setSelectedBook(null); // Close modal if open
-          router.push("/user");
-        } else {
-          alert(result.error || "Có lỗi xảy ra khi gửi yêu cầu.");
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error(error);
-        setLoading(false);
-      }
-    }
+    addToCart(book);
+    setSelectedBook(null); // Optional: close modal when added
   };
 
   // Merge formal categories with existing book categories for backup
@@ -206,11 +181,15 @@ export default function BookCatalog() {
                 <div style={{ marginTop: '2rem' }}>
                   <button 
                     onClick={(e) => handleBorrow(selectedBook, e)}
-                    disabled={(selectedBook.quantity || 0) <= 0}
+                    disabled={(selectedBook.quantity || 0) <= 0 || cart.some(b => b.id === selectedBook.id)}
                     className="btn-primary" 
-                    style={{ padding: '1rem 2.5rem', fontSize: '1.1rem', width: 'fit-content' }}
+                    style={{ padding: '1rem 2.5rem', fontSize: '1.1rem', width: 'fit-content', background: cart.some(b => b.id === selectedBook.id) ? 'rgba(39, 201, 63, 0.3)' : undefined }}
                   >
-                    {(selectedBook.quantity || 0) > 0 ? "Gửi Yêu Cầu Mượn Sách" : "Tạm hết sách"}
+                    {(selectedBook.quantity || 0) <= 0 
+                      ? "Tạm hết sách" 
+                      : cart.some(b => b.id === selectedBook.id) 
+                        ? "Đã có trong giỏ" 
+                        : "Thêm vào giỏ hàng"}
                   </button>
                 </div>
               </div>

@@ -15,16 +15,22 @@ export const viewport = {
   maximumScale: 1,
 };
 
+import { CartProvider } from "@/components/CartProvider";
+import FloatingCart from "@/components/FloatingCart";
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body suppressHydrationWarning>
         <AuthProvider>
-          <Navbar />
-          <main className="main-content" style={{ minHeight: 'calc(100vh - 300px)' }}>
-            {children}
-          </main>
-          <Footer />
+          <CartProvider>
+            <Navbar />
+            <main className="main-content" style={{ minHeight: 'calc(100vh - 300px)' }}>
+              {children}
+            </main>
+            <Footer />
+            <FloatingCart />
+          </CartProvider>
         </AuthProvider>
       </body>
     </html>
