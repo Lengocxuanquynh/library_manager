@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
+import { auth } from "@/lib/firebase";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -13,7 +15,7 @@ export default function ManageMembers() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [newMember, setNewMember] = useState({ name: '', email: '', phone: '' });
+  const [newMember, setNewMember] = useState({ name: '', email: '', phone: '', password: '' });
   const [submitting, setSubmitting] = useState(false);
   
   // History view state
@@ -57,22 +59,22 @@ export default function ManageMembers() {
 
   const handleAddMember = async (e) => {
     e.preventDefault();
-    if (!newMember.name || !newMember.email) return;
+    if (!newMember.name || !newMember.email || !newMember.password) return;
 
     setSubmitting(true);
     const loadToast = toast.loading("Đang thêm độc giả...");
     try {
-      const res = await fetch('/api/members', {
+      const res = await fetch('/api/admin/create-member', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newMember)
       });
 
       if (res.ok) {
-        setNewMember({ name: '', email: '', phone: '' });
+        setNewMember({ name: '', email: '', phone: '', password: '' });
         setShowForm(false);
         fetchMembers();
-        toast.success("Thêm độc giả mới thành công!", { id: loadToast });
+        toast.success("Thêm độc giả và tạo tài khoản thành công!", { id: loadToast });
       } else {
         const data = await res.json();
         toast.error(data.error || "Lỗi khi thêm độc giả", { id: loadToast });
@@ -82,6 +84,21 @@ export default function ManageMembers() {
       toast.error("Lỗi kết nối server.", { id: loadToast });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResetPassword = async (email) => {
+    if (!email) {
+      toast.error("Độc giả này chưa có email!");
+      return;
+    }
+    const loadToast = toast.loading("Đang gửi email đặt lại mật khẩu...");
+    try {
+      await sendPasswordResetEmail(auth, email);
+      toast.success("Đã gửi email đặt lại mật khẩu. Vui lòng kiểm tra hộp thư.", { id: loadToast });
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi khi gửi email đặt lại mật khẩu.", { id: loadToast });
     }
   };
 
@@ -154,7 +171,18 @@ export default function ManageMembers() {
                 required
               />
             </div>
-            <div style={{ gridColumn: 'span 2' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', opacity: 0.6 }}>Mật khẩu</label>
+              <input 
+                type="password" 
+                placeholder="Nhập mật khẩu" 
+                value={newMember.password}
+                onChange={(e) => setNewMember({...newMember, password: e.target.value})}
+                style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                required
+              />
+            </div>
+            <div>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', opacity: 0.6 }}>Số điện thoại</label>
               <input 
                 type="text" 
@@ -243,6 +271,7 @@ export default function ManageMembers() {
                       <td style={{ padding: '1rem' }}>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button onClick={() => viewHistory(member)} style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Lịch sử</button>
+                          <button onClick={() => handleResetPassword(member.email)} style={{ background: 'rgba(255, 193, 7, 0.1)', color: '#ffc107', border: '1px solid rgba(255, 193, 7, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Reset MK</button>
                           <button onClick={() => handleDelete(member.id)} style={{ background: 'rgba(255, 95, 86, 0.05)', color: '#ff5f56', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Xoá</button>
                         </div>
                       </td>

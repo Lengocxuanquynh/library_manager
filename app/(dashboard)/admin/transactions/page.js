@@ -748,8 +748,19 @@ export default function ManageLoans() {
                 ) : (
                   requests.map(req => (
                     <tr key={req.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: '1rem', fontWeight: '500' }}>{req.userName}</td>
-                      <td style={{ padding: '1rem' }}>{req.bookTitle}</td>
+                      <td style={{ padding: '1rem', fontWeight: '500' }}>
+                        {req.userName}
+                        {(req.userPhone || req.userCCCD) && (
+                          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
+                            {req.userPhone} {req.userCCCD && `- CCCD: ${req.userCCCD}`}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        {req.books && req.books.length > 0 
+                          ? req.books.map(b => b.bookTitle).join(', ') 
+                          : req.bookTitle}
+                      </td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
                         {formatDate(req.createdAt, true)}
                       </td>

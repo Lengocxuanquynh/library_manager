@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
+import { useCart } from "@/components/CartProvider";
 import styles from "./BookList.module.css";
 
 export default function BookList() {
   const { user, role } = useAuth();
+  const { addToCart, cart } = useCart();
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState(null);
@@ -39,32 +41,10 @@ export default function BookList() {
   }, []);
 
 
-  const handleBorrow = async (book) => {
+  const handleBorrow = (book) => {
     if (!user) return;
-    setBorrowing(true);
-    setBorrowResult(null);
-    try {
-      const res = await fetch('/api/borrow-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          bookId: book.id,
-          userName: user.displayName || user.email,
-          bookTitle: book.title
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setBorrowResult({ type: 'success', message: 'Đã gửi yêu cầu mượn sách. Vui lòng chờ Admin duyệt!' });
-      } else {
-        setBorrowResult({ type: 'error', message: data.error || 'Có lỗi xảy ra' });
-      }
-    } catch (error) {
-      setBorrowResult({ type: 'error', message: 'Lỗi kết nối server' });
-    } finally {
-      setBorrowing(false);
-    }
+    addToCart(book);
+    setSelectedBook(null);
   };
 
   const closeModal = () => {
@@ -265,18 +245,18 @@ export default function BookList() {
                 <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                   {user ? (
                     <>
-                      {(selectedBook.quantity > 0) && !borrowResult?.type && (
+                      {(selectedBook.quantity > 0) && (
                         <button 
                           onClick={() => handleBorrow(selectedBook)}
-                          disabled={borrowing}
+                          disabled={cart.some(b => b.id === selectedBook.id)}
                           style={{
                             padding: '0.9rem 2rem', fontSize: '1rem', borderRadius: '12px',
-                            border: 'none', fontWeight: '700', cursor: borrowing ? 'not-allowed' : 'pointer',
-                            background: borrowing ? 'rgba(187,134,252,0.3)' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                            border: 'none', fontWeight: '700', cursor: cart.some(b => b.id === selectedBook.id) ? 'not-allowed' : 'pointer',
+                            background: cart.some(b => b.id === selectedBook.id) ? 'rgba(39, 201, 63, 0.3)' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
                             color: '#fff', transition: 'all 0.2s'
                           }}
                         >
-                          {borrowing ? "Đang gửi..." : "Mượn Sách"}
+                          {cart.some(b => b.id === selectedBook.id) ? "Đã có trong giỏ" : "Thêm vào giỏ hàng"}
                         </button>
                       )}
                       <Link 
