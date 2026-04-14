@@ -248,7 +248,11 @@ export const createBorrowRecord = async (userId, bookId, userName, bookTitle, cu
     borrowDate: autoDecrement ? (customBorrowDate ? borrowDateObj : serverTimestamp()) : null,
     dueDate: autoDecrement ? dueDateObj : null,
     returnDate: null,
-    status: autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP'
+    status: autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP',
+    ...(autoDecrement ? {} : {
+      approvedAt: serverTimestamp(),
+      pickupDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    })
   });
 };
 
