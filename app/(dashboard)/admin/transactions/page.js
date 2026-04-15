@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import styles from "../../dashboard.module.css";
 import { formatDate } from "@/lib/utils";
@@ -12,6 +12,14 @@ export default function ManageLoans() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('requests');
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const intervalRef = useRef(null);
+
+  // Live clock for countdown timers
+  useEffect(() => {
+    intervalRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(intervalRef.current);
+  }, []);
   const [filterStatus, setFilterStatus] = useState('ALL'); // ALL, BORROWING, RETURNED, OVERDUE
 
   // Offline modal state
@@ -91,6 +99,9 @@ export default function ManageLoans() {
     if (!user) return;
     setLoading(true);
     try {
+      // Auto-cleanup expired pickups before loading data
+      fetch('/api/admin/clean-expired-pickups', { method: 'POST' }).catch(() => {});
+
       const [reqRes, recRes] = await Promise.all([
         fetch(`/api/admin/borrow-requests?status=PENDING&adminId=${user.uid}`),
         fetch(`/api/admin/borrow-records?adminId=${user.uid}`)
@@ -250,27 +261,45 @@ export default function ManageLoans() {
   // REQUEST ACTIONS
   // ==================
   const handleApprove = async (req) => {
+    const loadingToast = toast.loading('Đang duyệt phiếu mượn...');
     try {
+      // Detect format: batch (books[]) vs single (bookId)
+      const hasBooksArray = Array.isArray(req.books) && req.books.length > 0;
+      const hasSingleBook = req.bookId && req.bookTitle;
+
+      if (!hasBooksArray && !hasSingleBook) {
+        console.error('[handleApprove] Dữ liệu phiếu thiếu sách:', req);
+        toast.error('Phiếu không có thông tin sách. Kiểm tra console để biết thêm.', { id: loadingToast });
+        return;
+      }
+
       const res = await fetch('/api/admin/approve-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestId: req.id,
           userId: req.userId,
-          bookId: req.bookId,
           userName: req.userName,
-          bookTitle: req.bookTitle,
+          // Gửi cả 2 format — API sẽ tự nhận dạng đúng
+          books: hasBooksArray ? req.books : null,
+          bookId: hasSingleBook ? req.bookId : null,
+          bookTitle: hasSingleBook ? req.bookTitle : null,
           adminId: user.uid
         })
       });
+
       if (res.ok) {
+        const bookCount = hasBooksArray ? req.books.length : 1;
+        toast.success(`Đã duyệt phiếu (${bookCount} cuốn). Độc giả có 24h để lấy sách.`, { id: loadingToast });
         fetchData();
       } else {
         const data = await res.json();
-        alert(data.error || "Duyệt thất bại");
+        console.error('[handleApprove] Lỗi từ server:', data);
+        toast.error(data.error || 'Duyệt thất bại', { id: loadingToast });
       }
     } catch (error) {
-      console.error(error);
+      console.error('[handleApprove] Exception:', error);
+      toast.error('Lỗi kết nối server', { id: loadingToast });
     }
   };
 
@@ -310,7 +339,8 @@ export default function ManageLoans() {
   };
 
   const handleConfirmPickup = async (recordId, bookId) => {
-    if (!confirm("Xác nhận hội viên đã đến lấy sách? (Hệ thống sẽ trừ số lượng sách trong kho)")) return;
+    if (!confirm("Xác nhận hội viên đã đến lấy sách? Hệ thống sẽ trừ số lượng sách trong kho và bắt đầu tính 14 ngày mượn.")) return;
+    const loadingToast = toast.loading("Đang xác nhận lấy sách...");
     try {
       const res = await fetch('/api/admin/confirm-pickup', {
         method: 'POST',
@@ -321,14 +351,57 @@ export default function ManageLoans() {
           adminId: user.uid
         })
       });
-      if (res.ok) fetchData();
-      else {
+      if (res.ok) {
+        toast.success('Đã xác nhận! Phiếu mượn chính thức bắt đầu.', { id: loadingToast });
+        fetchData();
+      } else {
         const data = await res.json();
-        alert(data.error || "Xác nhận thất bại");
+        toast.error(data.error || "Xác nhận thất bại", { id: loadingToast });
       }
     } catch (error) {
       console.error(error);
+      toast.error("Lỗi kết nối server", { id: loadingToast });
     }
+  };
+
+  // Helper: parse any Firestore/JS date to JS Date object
+  const toJsDate = (d) => {
+    if (!d) return null;
+    if (typeof d?.toDate === 'function') return d.toDate();
+    if (d?._seconds) return new Date(d._seconds * 1000);
+    if (d?.seconds) return new Date(d.seconds * 1000);
+    return new Date(d);
+  };
+
+  // Helper: render countdown from deadline to now
+  const renderCountdown = (pickupDeadlineRaw) => {
+    const deadline = toJsDate(pickupDeadlineRaw);
+    if (!deadline) return <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>;
+
+    const diffMs = deadline - currentTime;
+    if (diffMs <= 0) {
+      return <span style={{ color: '#ff5f56', fontWeight: '700' }}>Đã quá hạn</span>;
+    }
+
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const hh = String(hours).padStart(2, '0');
+    const mm = String(minutes).padStart(2, '0');
+    const ss = String(seconds).padStart(2, '0');
+
+    const isUrgent = diffMs < 2 * 60 * 60 * 1000; // < 2 hours
+    return (
+      <span style={{
+        color: isUrgent ? '#ffb020' : '#27c93f',
+        fontWeight: '700',
+        fontVariantNumeric: 'tabular-nums',
+        fontFamily: 'monospace'
+      }}>
+        Còn {hh}:{mm}:{ss}
+      </span>
+    );
   };
 
 
@@ -369,7 +442,7 @@ export default function ManageLoans() {
               whiteSpace: 'nowrap'
             }}
           >
-            Lấy Sách ({records.filter(r => r.status === 'APPROVED_PENDING_PICKUP').length})
+            ⏳ Chờ Lấy ({records.filter(r => r.status === 'APPROVED_PENDING_PICKUP').length})
           </button>
 
           {/* Trả Sách (Active borrowing) */}
@@ -831,9 +904,15 @@ export default function ManageLoans() {
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Người Mượn</th>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Mượn</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hạn Trả</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Trả</th>
+                    {filterStatus === 'APPROVED_PENDING_PICKUP' ? (
+                      <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>⏱ Thời Hạn Còn Lại</th>
+                    ) : (
+                      <>
+                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Mượn</th>
+                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hạn Trả</th>
+                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Trả</th>
+                      </>
+                    )}
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
                     {filterStatus !== 'ALL' && <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>}
                   </tr>
@@ -905,17 +984,33 @@ export default function ManageLoans() {
 
                       return (
                         <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '1rem', fontWeight: '500' }}>{rec.memberName || rec.userName}</td>
+                          <td style={{ padding: '1rem', fontWeight: '500' }}>
+                            {rec.memberName || rec.userName}
+                            {rec.borrowerPhone && <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{rec.borrowerPhone}</div>}
+                          </td>
                           <td style={{ padding: '1rem' }}>{rec.bookTitle}</td>
-                          <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                            {rec.borrowDate ? formatDate(rec.borrowDate, true) : 'Chờ xác nhận'}
-                          </td>
-                          <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                            {rec.dueDate ? formatDate(rec.dueDate, true) : 'Chờ xác nhận'}
-                          </td>
-                          <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                            {formatDate(rec.returnDate, true)}
-                          </td>
+                          {filterStatus === 'APPROVED_PENDING_PICKUP' ? (
+                            <td style={{ padding: '1rem' }}>
+                              {renderCountdown(rec.pickupDeadline)}
+                              {rec.approvedAt && (
+                                <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.2rem' }}>
+                                  Duyệt lúc: {formatDate(rec.approvedAt, true)}
+                                </div>
+                              )}
+                            </td>
+                          ) : (
+                            <>
+                              <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+                                {rec.borrowDate ? formatDate(rec.borrowDate, true) : 'Chờ xác nhận'}
+                              </td>
+                              <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+                                {rec.dueDate ? formatDate(rec.dueDate, true) : 'Chờ xác nhận'}
+                              </td>
+                              <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+                                {formatDate(rec.returnDate, true)}
+                              </td>
+                            </>
+                          )}
                           <td style={{ padding: '1rem' }}>
                             <span style={{
                               background: isOverdue ? 'rgba(255,95,86,0.15)' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
@@ -924,15 +1019,23 @@ export default function ManageLoans() {
                               whiteSpace: 'nowrap', display: 'inline-block',
                               minWidth: '100px', textAlign: 'center'
                             }}>
-                              {isOverdue ? 'QUÁ HẠN' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : isActive ? 'ĐANG MƯỢN' : 'ĐÃ TRẢ'}
+                              {isOverdue ? 'QUÁ HẠN' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : rec.status === 'CANCELLED_EXPIRED' ? 'HẾT HẠN' : isActive ? 'ĐANG MƯỢN' : 'ĐÃ TRẢ'}
                             </span>
                           </td>
                           {filterStatus !== 'ALL' && (
                             <td style={{ padding: '1rem' }}>
-                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                 {rec.status === 'APPROVED_PENDING_PICKUP' && (
-                                  <button onClick={() => handleConfirmPickup(rec.id, rec.bookId)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.35rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }}>
-                                    Xác nhận lấy sách
+                                  <button
+                                    onClick={() => handleConfirmPickup(rec.id, rec.bookId)}
+                                    style={{
+                                      background: 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                                      color: '#fff', border: 'none', padding: '0.4rem 0.9rem',
+                                      borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    ✓ Xác nhận đã lấy sách
                                   </button>
                                 )}
                                 {isActive && (
