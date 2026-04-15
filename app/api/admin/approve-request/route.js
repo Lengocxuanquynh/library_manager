@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { approveBorrowRequest, updateBorrowRequestStatus, createBorrowRecord } from '@/services/db';
+import { doc, collection, addDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { updateBorrowRequestStatus } from '@/services/db';
 import { verifyAdmin } from '@/services/admin-check';
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { requestId, userId, bookId, userName, bookTitle, books, adminId } = body;
+    const { requestId, userId, userName, books, bookId, bookTitle, adminId } = body;
 
     if (!requestId || !userId || !adminId) {
       return NextResponse.json({ error: 'Thiếu thông tin yêu cầu hoặc quyền hạn' }, { status: 400 });
@@ -17,24 +19,78 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Bạn không có quyền thực hiện hành động này' }, { status: 403 });
     }
 
-    // Handle batch or single request
-    if (books && Array.isArray(books) && books.length > 0) {
-      await updateBorrowRequestStatus(requestId, 'APPROVED');
-      for (const b of books) {
-        await createBorrowRecord(userId, b.bookId, userName, b.bookTitle, null, null, false);
-      }
-    } else if (bookId && bookTitle) {
-      await approveBorrowRequest(requestId, userId, bookId, userName, bookTitle);
-    } else {
-      return NextResponse.json({ error: 'Không tìm thấy thông tin sách để duyệt' }, { status: 400 });
+    // Chuẩn bị pickupDeadline = hiện tại + 24 giờ
+    const approvedAt = new Date();
+    const pickupDeadline = new Date(approvedAt.getTime() + 24 * 60 * 60 * 1000);
+
+    const hasBooksArray = Array.isArray(books) && books.length > 0;
+    const hasSingleBook = bookId && bookTitle;
+
+    if (!hasBooksArray && !hasSingleBook) {
+      console.error('[approve-request] Dữ liệu thiếu sách:', body);
+      return NextResponse.json({ error: 'Không tìm thấy thông tin sách để duyệt. Kiểm tra lại cấu trúc phiếu.' }, { status: 400 });
     }
 
+    // Cập nhật trạng thái phiếu yêu cầu -> APPROVED
+    await updateBorrowRequestStatus(requestId, 'APPROVED');
+
+    if (hasBooksArray) {
+      // ── Phiếu batch từ giỏ hàng: tạo 1 borrowRecord mỗi cuốn sách ──
+      for (const b of books) {
+        if (!b.bookId || !b.bookTitle) {
+          console.warn('[approve-request] Mục sách thiếu bookId/bookTitle, bỏ qua:', b);
+          continue;
+        }
+        await addDoc(collection(db, 'borrowRecords'), {
+          userId,
+          userName,
+          bookId: b.bookId,
+          bookTitle: b.bookTitle,
+          borrowerPhone: '',
+          borrowDate: null,
+          dueDate: null,
+          returnDate: null,
+          status: 'APPROVED_PENDING_PICKUP',
+          approvedAt: serverTimestamp(),
+          pickupDeadline,
+        });
+
+        // Reserve book (Reservation model): decrement inventory immediately
+        const bookRef = doc(db, 'books', b.bookId);
+        await updateDoc(bookRef, { 
+          quantity: increment(-1)
+        });
+      }
+    } else {
+      // ── Phiếu đơn (cũ): 1 cuốn sách ──
+      await addDoc(collection(db, 'borrowRecords'), {
+        userId,
+        userName,
+        bookId,
+        bookTitle,
+        borrowerPhone: '',
+        borrowDate: null,
+        dueDate: null,
+        returnDate: null,
+        status: 'APPROVED_PENDING_PICKUP',
+        approvedAt: serverTimestamp(),
+        pickupDeadline,
+      });
+
+      // Reserve book (Reservation model): decrement inventory immediately
+      const bookRef = doc(db, 'books', bookId);
+      await updateDoc(bookRef, { 
+        quantity: increment(-1)
+      });
+    }
+
+    const count = hasBooksArray ? books.length : 1;
     return NextResponse.json({
       success: true,
-      message: 'Đã duyệt yêu cầu mượn sách.'
+      message: `Đã duyệt ${count} sách. Độc giả có 24h để lấy sách.`,
     });
   } catch (error) {
-    console.error('Error in approve-request API:', error);
+    console.error('[approve-request] Lỗi hệ thống:', error);
     return NextResponse.json({ error: 'Lỗi hệ thống khi duyệt yêu cầu.' }, { status: 500 });
   }
 }
