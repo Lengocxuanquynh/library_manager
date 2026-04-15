@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "../../../../components/AuthProvider";
 import styles from "../../dashboard.module.css";
-import { formatDate } from "@/lib/utils";
+import { formatDate } from "../../../../lib/utils";
 import { toast } from "sonner";
 
 export default function ManageLoans() {
@@ -42,6 +42,13 @@ export default function ManageLoans() {
   const [currentBorrowCount, setCurrentBorrowCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [historyFilter, setHistoryFilter] = useState("ALL");
+
+  // Return Book Modal states
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+  const [selectedReturnRecord, setSelectedReturnRecord] = useState(null);
+  const [returnNote, setReturnNote] = useState("");
+  const [penaltyFee, setPenaltyFee] = useState(0);
+  const [returning, setReturning] = useState(false);
 
   useEffect(() => {
     if (user) fetchData();
@@ -295,7 +302,7 @@ export default function ManageLoans() {
       } else {
         const data = await res.json();
         console.error('[handleApprove] Lỗi từ server:', data);
-        toast.error(data.error || 'Duyệt thất bại', { id: loadingToast });
+        toast.error(data.message || 'Duyệt thất bại', { id: loadingToast });
       }
     } catch (error) {
       console.error('[handleApprove] Exception:', error);
@@ -320,21 +327,43 @@ export default function ManageLoans() {
     }
   };
 
-  const handleReturn = async (recordId, bookId) => {
-    if (!confirm("Xác nhận thu hồi / trả sách?")) return;
+  const handleReturn = (record) => {
+    setSelectedReturnRecord(record);
+    setReturnNote("");
+    setPenaltyFee(0);
+    setIsReturnModalOpen(true);
+  };
+
+  const confirmReturn = async () => {
+    if (!selectedReturnRecord) return;
+    
+    setReturning(true);
+    const loadingToast = toast.loading("Đang xác nhận trả sách...");
     try {
       const res = await fetch('/api/return-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recordId,
-          bookId,
-          adminId: user.uid
+          recordId: selectedReturnRecord.id,
+          bookId: selectedReturnRecord.bookId,
+          adminId: user.uid,
+          returnNote: returnNote,
+          penaltyAmount: Number(penaltyFee)
         })
       });
-      if (res.ok) fetchData();
+      if (res.ok) {
+        toast.success("Trả sách thành công!", { id: loadingToast });
+        setIsReturnModalOpen(false);
+        fetchData();
+      } else {
+        const data = await res.json();
+        toast.error(data.message || "Trả sách thất bại", { id: loadingToast });
+      }
     } catch (error) {
       console.error(error);
+      toast.error("Lỗi kết nối server", { id: loadingToast });
+    } finally {
+      setReturning(false);
     }
   };
 
@@ -356,7 +385,7 @@ export default function ManageLoans() {
         fetchData();
       } else {
         const data = await res.json();
-        toast.error(data.error || "Xác nhận thất bại", { id: loadingToast });
+        toast.error(data.message || "Xác nhận thất bại", { id: loadingToast });
       }
     } catch (error) {
       console.error(error);
@@ -913,6 +942,12 @@ export default function ManageLoans() {
                         <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Trả</th>
                       </>
                     )}
+                    {(filterStatus === 'RETURNED' || (filterStatus === 'ALL' && historyFilter === 'RETURNED')) && (
+                      <>
+                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ghi chú</th>
+                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Phí bồi thường</th>
+                      </>
+                    )}
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
                     {filterStatus !== 'ALL' && <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>}
                   </tr>
@@ -1006,8 +1041,22 @@ export default function ManageLoans() {
                               <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
                                 {rec.dueDate ? formatDate(rec.dueDate, true) : 'Chờ xác nhận'}
                               </td>
-                              <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                                {formatDate(rec.returnDate, true)}
+                              <td style={{ padding: '1rem', color: '#4caf50', fontSize: '0.9rem' }}>
+                                {formatDate(rec.actualReturnDate || rec.returnDate, true)}
+                              </td>
+                            </>
+                          )}
+                          {(filterStatus === 'RETURNED' || (filterStatus === 'ALL' && historyFilter === 'RETURNED')) && (
+                            <>
+                              <td style={{ padding: '1rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', maxWidth: '200px' }}>
+                                {rec.returnNote || <span style={{ opacity: 0.3 }}>—</span>}
+                              </td>
+                              <td style={{ padding: '1rem', fontSize: '0.9rem', color: rec.penaltyAmount > 0 ? '#ff5f56' : 'rgba(255,255,255,0.4)', fontWeight: rec.penaltyAmount > 0 ? '600' : '400' }}>
+                                {rec.penaltyAmount > 0 ? (
+                                  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(rec.penaltyAmount)
+                                ) : (
+                                  "0 đ"
+                                )}
                               </td>
                             </>
                           )}
@@ -1039,7 +1088,7 @@ export default function ManageLoans() {
                                   </button>
                                 )}
                                 {isActive && (
-                                  <button onClick={() => handleReturn(rec.id, rec.bookId)} className="btn-outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.85rem' }}>
+                                  <button onClick={() => handleReturn(rec)} className="btn-outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.85rem' }}>
                                     Thu Hồi
                                   </button>
                                 )}
@@ -1056,6 +1105,95 @@ export default function ManageLoans() {
           </>
         )}
       </div>
+      {/* RETURN BOOK MODAL */}
+      {isReturnModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(10px)'
+        }}>
+          <div style={{
+            background: '#1a1a1a', width: '90%', maxWidth: '500px',
+            borderRadius: '20px', border: '1px solid rgba(255,255,255,0.1)',
+            overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{ padding: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#fff' }}>Xác nhận trả sách</h2>
+              <button onClick={() => setIsReturnModalOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+            </div>
+            
+            <div style={{ padding: '2rem' }}>
+              <div style={{ marginBottom: '1.5rem', background: 'rgba(187,134,252,0.05)', padding: '1rem', borderRadius: '12px', borderLeft: '4px solid #bb86fc' }}>
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.25rem' }}>Sách đang trả:</p>
+                <p style={{ fontSize: '1.05rem', fontWeight: '600', color: '#fff' }}>{selectedReturnRecord?.bookTitle}</p>
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.5rem' }}>Người mượn: <span style={{ color: '#bb86fc' }}>{selectedReturnRecord?.memberName || selectedReturnRecord?.userName}</span></p>
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Ghi chú tình trạng (Nếu có)</label>
+                <textarea
+                  placeholder="Ví dụ: Sách còn mới, rách trang 20, mất bìa..."
+                  value={returnNote}
+                  onChange={(e) => setReturnNote(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.8rem', borderRadius: '10px',
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                    color: '#fff', fontSize: '0.9rem', outline: 'none', minHeight: '100px', resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '2rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Phí bồi thường (VNĐ)</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={penaltyFee}
+                    onChange={(e) => setPenaltyFee(e.target.value)}
+                    style={{
+                      width: '100%', padding: '0.8rem 1rem', borderRadius: '10px',
+                      background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                      color: '#fff', fontSize: '1rem', outline: 'none', fontWeight: 'bold'
+                    }}
+                  />
+                  <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', fontWeight: '600' }}>đ</span>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.5rem' }}>* Để trống hoặc nhập 0 nếu không có hư tổn.</p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button
+                  onClick={() => setIsReturnModalOpen(false)}
+                  style={{
+                    flex: 1, padding: '0.8rem', borderRadius: '12px',
+                    background: 'rgba(255,255,255,0.05)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer',
+                    fontWeight: '600', transition: 'all 0.2s'
+                  }}
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={confirmReturn}
+                  disabled={returning}
+                  style={{
+                    flex: 1, padding: '0.8rem', borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                    color: '#fff', border: 'none', cursor: 'pointer',
+                    fontWeight: '600', boxShadow: '0 10px 20px -5px rgba(187,134,252,0.3)',
+                    opacity: returning ? 0.7 : 1
+                  }}
+                >
+                  {returning ? 'Đang thực hiện...' : 'Xác nhận trả'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

@@ -1,43 +1,34 @@
 import { NextResponse } from 'next/server';
-import { returnBorrowRecord, getBorrowRecord } from '@/services/db';
-import { verifyAdmin } from '@/services/admin-check';
+import { returnBorrowRecord } from '../../../services/db';
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { recordId, bookId, adminId, userId } = body;
+    const { recordId, bookId, returnNote, penaltyAmount } = body;
+
+    console.log(">>> [SERVER] API /api/return-book started with:", { recordId, bookId, returnNote, penaltyAmount });
 
     if (!recordId || !bookId) {
-      return NextResponse.json({ error: 'Thiếu thông tin yêu cầu' }, { status: 400 });
+      return NextResponse.json(
+        { message: 'Thiếu thông tin phiếu mượn hoặc sách.' },
+        { status: 400 }
+      );
     }
 
-    let authorized = false;
-
-    // 1. Check Admin
-    if (adminId) {
-      authorized = await verifyAdmin(adminId);
-    }
-
-    // 2. Check Owner (User)
-    if (!authorized && userId) {
-      const record = await getBorrowRecord(recordId);
-      if (record && record.userId === userId) {
-        authorized = true;
-      }
-    }
-
-    if (!authorized) {
-      return NextResponse.json({ error: 'Bạn không có quyền thực hiện thao tác này' }, { status: 403 });
-    }
-
-    await returnBorrowRecord(recordId, bookId);
+    // Process the return logic
+    await returnBorrowRecord(recordId, bookId, returnNote, penaltyAmount);
 
     return NextResponse.json({
       success: true,
-      message: 'Đã trả sách thành công.'
-    });
+      message: 'Xác nhận trả sách thành công.'
+    }, { status: 200 });
+
   } catch (error) {
-    console.error('Error in return-book API:', error);
-    return NextResponse.json({ error: 'Lỗi hệ thống khi trả sách.' }, { status: 500 });
+    console.error(">>> [CRITICAL] Lỗi API return-book:", error);
+    // Ensure we ALWAYS return JSON
+    return NextResponse.json(
+      { message: error.message || 'Lỗi hệ thống không xác định tại API trả sách' },
+      { status: 500 }
+    );
   }
 }
