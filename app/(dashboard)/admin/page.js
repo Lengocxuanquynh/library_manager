@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "../../components/AuthProvider";
-import { formatDate } from "../../lib/utils";
+import { useAuth } from "../../../components/AuthProvider";
+import { formatDate } from "../../../lib/utils";
 import styles from "../dashboard.module.css";
 
 export default function AdminDashboard() {

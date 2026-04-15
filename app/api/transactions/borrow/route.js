@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { processBorrow } from '@/services/db';
+import { processBorrow } from '../../../../services/db';
 
 export async function POST(request) {
   try {

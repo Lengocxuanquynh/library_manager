@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addMember, getMembers, getBorrowRecords } from '../../services/db';
+import { addMember, getMembers, getBorrowRecords } from '../../../services/db';
 
 export async function GET(request) {
   try {

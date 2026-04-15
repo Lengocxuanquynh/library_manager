@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateMember, deleteMember, getBorrowRecords } from '@/services/db';
+import { updateMember, deleteMember, getBorrowRecords } from '../../../../services/db';
 
 export async function PATCH(request, { params }) {
   try {
