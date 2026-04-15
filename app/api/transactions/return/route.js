@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { processReturn } from '../../../../services/db';
+import { returnBorrowRecord } from '../../../../services/db';
 
 export async function POST(request) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request) {
       );
     }
 
-    await processReturn(transactionId, bookId);
+    await returnBorrowRecord(transactionId, bookId);
 
     return NextResponse.json({
       success: true,

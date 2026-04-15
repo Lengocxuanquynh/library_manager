@@ -151,8 +151,8 @@ export default function AdminStats() {
                 </tr>
               </thead>
               <tbody>
-                {topBooks.length > 0 ? topBooks.map((book, idx) => (
-                  <tr key={idx} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.2s' }} className="table-row">
+                {topBooks.length > 0 ? topBooks.map((book) => (
+                  <tr key={book.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.2s' }} className="table-row">
                     <td style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                       <div style={{ width: '36px', height: '50px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
                         {book.image ? <img src={book.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.2 }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></div>}
@@ -187,8 +187,8 @@ export default function AdminStats() {
                 </tr>
               </thead>
               <tbody>
-                {lateReturners.length > 0 ? lateReturners.slice(0, 5).map((user, idx) => (
-                  <tr key={idx} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.2s' }} className="table-row">
+                {lateReturners.length > 0 ? lateReturners.slice(0, 5).map((user) => (
+                  <tr key={user.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.2s' }} className="table-row">
                     <td style={{ padding: '0.75rem 1rem' }}>
                       <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{user.name}</div>
                       <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{user.phone}</div>

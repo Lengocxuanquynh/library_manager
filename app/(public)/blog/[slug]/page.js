@@ -1,4 +1,4 @@
-import { getPosts, getPostBySlug } from "../../../../../services/db";
+import { getPosts, getPostBySlug } from "../../../../services/db";
 import Link from "next/link";
 import styles from "../blog.module.css";
 import { notFound } from "next/navigation";
