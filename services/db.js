@@ -12,7 +12,7 @@ import {
   serverTimestamp,
   increment
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db } from "../lib/firebase";
 
 // Helper for getting collection data
 const getCollectionData = async (colRef) => {
@@ -112,14 +112,6 @@ export const processBorrow = async (bookId, memberId, memberName, bookTitle) => 
   });
 };
 
-export const processReturn = async (transactionId, bookId) => {
-  const transRef = doc(db, "transactions", transactionId);
-  await updateDoc(transRef, { status: 'Returned', returnDate: serverTimestamp() });
-
-  const bookRef = doc(db, "books", bookId);
-  await updateDoc(bookRef, { status: 'Available' });
-};
-
 // ========================
 // POSTS (BLOG)
 // ========================
@@ -208,7 +200,7 @@ export const getBorrowRecords = async (userId = null) => {
   const now = new Date();
   return data.map(record => {
     let currentStatus = record.status;
-    
+
     // Convert dueDate to JS Date for comparison
     let dueDate = null;
     if (record.dueDate?._seconds) dueDate = new Date(record.dueDate._seconds * 1000);
@@ -226,7 +218,7 @@ export const getBorrowRecords = async (userId = null) => {
 export const createBorrowRecord = async (userId, bookId, userName, bookTitle, customBorrowDate = null, customDueDate = null, autoDecrement = true, borrowerPhone = "") => {
   const borrowDateObj = customBorrowDate ? new Date(customBorrowDate) : new Date();
   const dueDateObj = customDueDate ? new Date(customDueDate) : (customBorrowDate ? new Date(customBorrowDate) : new Date());
-  
+
   if (!customDueDate) {
     dueDateObj.setDate(dueDateObj.getDate() + 14); // Default 14 days
   }
@@ -234,7 +226,7 @@ export const createBorrowRecord = async (userId, bookId, userName, bookTitle, cu
   if (autoDecrement) {
     // Decrement book quantity atomically
     const bookRef = doc(db, "books", bookId);
-    await updateDoc(bookRef, { 
+    await updateDoc(bookRef, {
       quantity: increment(-1)
     });
   }
@@ -248,17 +240,13 @@ export const createBorrowRecord = async (userId, bookId, userName, bookTitle, cu
     borrowDate: autoDecrement ? (customBorrowDate ? borrowDateObj : serverTimestamp()) : null,
     dueDate: autoDecrement ? dueDateObj : null,
     returnDate: null,
-    status: autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP',
-    ...(autoDecrement ? {} : {
-      approvedAt: serverTimestamp(),
-      pickupDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000)
-    })
+    status: autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP'
   });
 };
 
 export const confirmBorrowPickup = async (recordId, bookId) => {
   const recordRef = doc(db, "borrowRecords", recordId);
-  
+
   const dueDateObj = new Date();
   dueDateObj.setDate(dueDateObj.getDate() + 14);
 
@@ -282,16 +270,19 @@ export const rejectBorrowRequest = async (requestId) => {
   return await updateBorrowRequestStatus(requestId, 'REJECTED');
 };
 
-export const returnBorrowRecord = async (recordId, bookId) => {
+export const returnBorrowRecord = async (recordId, bookId, returnNote = '', penaltyAmount = 0) => {
   const recordRef = doc(db, "borrowRecords", recordId);
   await updateDoc(recordRef, {
-    status: 'RETURNED',
-    returnDate: serverTimestamp()
+    status: 'returned',
+    returnDate: serverTimestamp(),
+    actualReturnDate: serverTimestamp(),
+    returnNote: returnNote || '',
+    penaltyAmount: Number(penaltyAmount) || 0,
   });
 
   // Increase book quantity atomically
   const bookRef = doc(db, "books", bookId);
-  await updateDoc(bookRef, { 
+  await updateDoc(bookRef, {
     quantity: increment(1)
   });
 };
@@ -361,14 +352,14 @@ export const deleteCategory = async (id) => {
 
 export const ensureCategoryExists = async (categoryName) => {
   if (!categoryName || categoryName === "Chưa phân loại" || categoryName === "Khác") return;
-  
+
   const q = query(collection(db, "categories"), where("name", "==", categoryName));
   const snapshot = await getDocs(q);
-  
+
   if (snapshot.empty) {
-    await addCategory({ 
-      name: categoryName, 
-      description: "Tự động tạo từ hệ thống sách" 
+    await addCategory({
+      name: categoryName,
+      description: "Tự động tạo từ hệ thống sách"
     });
   }
 };

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "../../../../components/AuthProvider";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
-import { updateUserProfile } from "@/services/auth";
+import { updateUserProfile } from "../../../../services/auth";
 
 export default function UserSettings() {
   const { user, role } = useAuth();

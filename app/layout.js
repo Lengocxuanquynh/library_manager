@@ -1,7 +1,7 @@
 import "./globals.css";
-import { AuthProvider } from "@/components/AuthProvider";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import { AuthProvider } from "../components/AuthProvider";
+import Navbar from "../components/Navbar";
+import Footer from "../components/Footer";
 import Link from "next/link";
 
 export const metadata = {

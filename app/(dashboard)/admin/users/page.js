@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "../../../../components/AuthProvider";
 import styles from "../../dashboard.module.css";
 
 export default function ManageSystemUsers() {

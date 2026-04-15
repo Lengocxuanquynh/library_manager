@@ -1,4 +1,4 @@
-import { getPosts } from "@/services/db";
+import { getPosts } from "./services/db";
 
 export default async function sitemap() {
   const baseUrl = 'https://your-production-url.com';

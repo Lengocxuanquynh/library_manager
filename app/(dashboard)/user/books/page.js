@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@/components/AuthProvider";
-import { useCart } from "@/components/CartProvider";
+import { useAuth } from "../../../../components/AuthProvider";
+import { useCart } from "../../../../components/CartProvider";
 import styles from "../../dashboard.module.css";
 import { useRouter } from "next/navigation";
 

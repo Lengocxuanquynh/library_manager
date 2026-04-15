@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateCategory, deleteCategory } from '@/services/db';
+import { updateCategory, deleteCategory } from '../../../../services/db';
 
 export async function PATCH(request, context) {
   try {

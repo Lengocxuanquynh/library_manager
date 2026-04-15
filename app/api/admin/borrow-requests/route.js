@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getBorrowRequests } from '@/services/db';
-import { verifyAdmin } from '@/services/admin-check';
+import { getBorrowRequests } from '../../../../services/db';
+import { verifyAdmin } from '../../../../services/admin-check';
 
 export async function GET(request) {
   try {

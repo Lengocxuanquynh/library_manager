@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { subscribeToAuthChanges } from "@/services/auth";
+import { subscribeToAuthChanges } from "../services/auth";
 import { useRouter, usePathname } from "next/navigation";
 
 const AuthContext = createContext({

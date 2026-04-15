@@ -1,4 +1,4 @@
-import { getPosts } from "@/services/db";
+import { getPosts } from "../../../services/db";
 import Link from "next/link";
 import styles from "./blog.module.css";
 

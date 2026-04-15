@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
-import { slugify } from "@/lib/utils";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import { slugify } from "../../../../lib/utils";
+import { uploadToCloudinary } from "../../../../lib/cloudinary";
 
 export default function ManagePosts() {
   const [posts, setPosts] = useState([]);

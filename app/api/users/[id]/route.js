@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { updateUserRole } from '@/services/db';
-import { updateUserProfile } from '@/services/auth';
+import { updateUserRole } from '../../../../services/db';
+import { updateUserProfile } from '../../../../services/auth';
 
 export async function PATCH(request, { params }) {
   try {

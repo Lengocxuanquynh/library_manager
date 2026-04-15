@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
-import { useAuth } from "@/components/AuthProvider";
-import { auth } from "@/lib/firebase";
+import { useAuth } from "../../../../components/AuthProvider";
+import { auth } from "../../../../lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -76,12 +76,12 @@ export default function ManageMembers() {
         fetchMembers();
         toast.success("Thêm độc giả và tạo tài khoản thành công!", { id: loadToast });
       } else {
-        const data = await res.json();
-        toast.error(data.error || "Lỗi khi thêm độc giả", { id: loadToast });
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Lỗi không xác định từ server");
       }
     } catch (error) {
       console.error(error);
-      toast.error("Lỗi kết nối server.", { id: loadToast });
+      toast.error(error.message || "Lỗi kết nối server.", { id: loadToast });
     } finally {
       setSubmitting(false);
     }
@@ -102,12 +102,17 @@ export default function ManageMembers() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa độc giả này không? Hành động này không thể hoàn tác.")) return;
+  const handleDelete = async (member) => {
+    const { id, uid, email } = member;
+    if (!confirm(`Bạn có chắc chắn muốn xóa độc giả "${member.name}" không? Tài khoản Authentication cũng sẽ bị xóa vĩnh viễn.`)) return;
     
-    const loadToast = toast.loading("Đàng xóa độc giả...");
+    const loadToast = toast.loading("Đang xóa độc giả và tài khoản...");
     try {
-      const res = await fetch(`/api/members/${id}`, { method: 'DELETE' });
+      const res = await fetch('/api/admin/delete-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, uid, email })
+      });
       
       // Step 1: Handle success (status 200-299)
       if (res.ok) {
@@ -272,7 +277,7 @@ export default function ManageMembers() {
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button onClick={() => viewHistory(member)} style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Lịch sử</button>
                           <button onClick={() => handleResetPassword(member.email)} style={{ background: 'rgba(255, 193, 7, 0.1)', color: '#ffc107', border: '1px solid rgba(255, 193, 7, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Reset MK</button>
-                          <button onClick={() => handleDelete(member.id)} style={{ background: 'rgba(255, 95, 86, 0.05)', color: '#ff5f56', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Xoá</button>
+                          <button onClick={() => handleDelete(member)} style={{ background: 'rgba(255, 95, 86, 0.05)', color: '#ff5f56', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Xoá</button>
                         </div>
                       </td>
                     </tr>

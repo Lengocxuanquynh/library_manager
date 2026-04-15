@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "../../../components/AuthProvider";
 import styles from "../dashboard.module.css";
 import Link from "next/link";
-import { formatDate } from "@/lib/utils";
+import { formatDate } from "../../../lib/utils";
 
 export default function UserDashboard() {
   const { user } = useAuth();

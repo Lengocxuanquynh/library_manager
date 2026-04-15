@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "../../components/AuthProvider";
 import Link from "next/link";
-import { logoutUser } from "@/services/auth";
+import { logoutUser } from "../../services/auth";
 import { useRouter, usePathname } from "next/navigation";
 import styles from "./dashboard.module.css";
 

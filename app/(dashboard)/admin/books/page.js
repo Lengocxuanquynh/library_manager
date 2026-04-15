@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import styles from "../../dashboard.module.css";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import { uploadToCloudinary } from "../../../../lib/cloudinary";
 import { useSearchParams } from "next/navigation";
 
 function ManageBooksContent() {
