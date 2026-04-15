@@ -261,27 +261,45 @@ export default function ManageLoans() {
   // REQUEST ACTIONS
   // ==================
   const handleApprove = async (req) => {
+    const loadingToast = toast.loading('Đang duyệt phiếu mượn...');
     try {
+      // Detect format: batch (books[]) vs single (bookId)
+      const hasBooksArray = Array.isArray(req.books) && req.books.length > 0;
+      const hasSingleBook = req.bookId && req.bookTitle;
+
+      if (!hasBooksArray && !hasSingleBook) {
+        console.error('[handleApprove] Dữ liệu phiếu thiếu sách:', req);
+        toast.error('Phiếu không có thông tin sách. Kiểm tra console để biết thêm.', { id: loadingToast });
+        return;
+      }
+
       const res = await fetch('/api/admin/approve-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestId: req.id,
           userId: req.userId,
-          bookId: req.bookId,
           userName: req.userName,
-          bookTitle: req.bookTitle,
+          // Gửi cả 2 format — API sẽ tự nhận dạng đúng
+          books: hasBooksArray ? req.books : null,
+          bookId: hasSingleBook ? req.bookId : null,
+          bookTitle: hasSingleBook ? req.bookTitle : null,
           adminId: user.uid
         })
       });
+
       if (res.ok) {
+        const bookCount = hasBooksArray ? req.books.length : 1;
+        toast.success(`Đã duyệt phiếu (${bookCount} cuốn). Độc giả có 24h để lấy sách.`, { id: loadingToast });
         fetchData();
       } else {
         const data = await res.json();
-        alert(data.error || "Duyệt thất bại");
+        console.error('[handleApprove] Lỗi từ server:', data);
+        toast.error(data.error || 'Duyệt thất bại', { id: loadingToast });
       }
     } catch (error) {
-      console.error(error);
+      console.error('[handleApprove] Exception:', error);
+      toast.error('Lỗi kết nối server', { id: loadingToast });
     }
   };
 
