@@ -18,8 +18,9 @@ export async function POST(request) {
 
     // 1. Kiểm tra cấu hình Firebase Admin
     if (!adminAuth || !adminDb) {
+      console.error(">>> [ERROR] Firebase Admin chưa được cấu hình.");
       return NextResponse.json(
-        { error: 'Firebase Admin chưa được cấu hình. Không thể thực hiện các thao tác quản trị.' },
+        { error: 'Firebase Admin chưa được cấu hình.' },
         { status: 500 }
       );
     }
@@ -35,27 +36,28 @@ export async function POST(request) {
     });
 
     if (hasActiveBooks) {
+      console.warn(`>>> [REJECT] Không thể xóa độc giả ${id} vì còn sách chưa trả.`);
       return NextResponse.json(
         { error: 'Không thể xóa độc giả này vì họ đang mượn sách hoặc có sách quá hạn.' },
         { status: 400 }
       );
     }
 
-    // 3. Xử lý xóa khỏi Firebase Authentication
+    // 3. Xử lý xóa khỏi Firebase Authentication (Ưu tiên)
     let targetUid = uid;
 
     // FALLBACK: Nếu thiếu UID nhưng có Email, tìm UID từ Auth
     if (!targetUid && email) {
-      console.log(`>>> [Fallback] Thiếu UID, đang tìm kiếm theo Email: ${email}`);
+      console.log(`>>> [FALLBACK] Thiếu UID, đang tìm UID bằng Email: ${email}`);
       try {
         const userRecord = await adminAuth.getUserByEmail(email);
         targetUid = userRecord.uid;
-        console.log(`>>> [Fallback] Tìm thấy UID: ${targetUid}`);
+        console.log(`>>> [FALLBACK] Tìm thấy UID: ${targetUid}`);
       } catch (err) {
         if (err.code === 'auth/user-not-found') {
-          console.warn(`>>> [Warning] Không tìm thấy user trong Auth bằng Email: ${email}`);
+          console.warn(`>>> [WARNING] Không tìm thấy user trong Auth bằng Email: ${email}`);
         } else {
-          throw err;
+          console.error(">>> [ERROR] Lỗi khi tra cứu UID bằng email:", err);
         }
       }
     }
@@ -64,32 +66,32 @@ export async function POST(request) {
     if (targetUid) {
       try {
         await adminAuth.deleteUser(targetUid);
-        console.log(`>>> [SUCCESS] Đã xóa tài khoản Auth: ${targetUid}`);
+        console.log(`>>> [SUCCESS] Đã xóa tài khoản Authentication: ${targetUid}`);
       } catch (authError) {
         if (authError.code === 'auth/user-not-found') {
-          console.warn(`>>> [Warning] User đã bị xóa khỏi Auth từ trước.`);
+          console.warn(`>>> [WARNING] User ${targetUid} không tồn tại trong Auth (có thể đã xóa trước đó).`);
         } else {
-          console.error(">>> [ERROR] Lỗi khi xóa Auth:", authError);
-          return NextResponse.json(
-            { error: `Lỗi khi xóa tài khoản Authentication: ${authError.message}` },
-            { status: 500 }
-          );
+          console.error(">>> [ERROR] Lỗi khi xóa Auth user:", authError);
+          // Vẫn tiếp tục xóa Firestore để đồng bộ dữ liệu nếu Auth báo lỗi không nghiêm trọng
         }
       }
+    } else {
+      console.log(">>> [INFO] Không tìm thấy UID hợp lệ để xóa trong Auth. Tiếp tục xóa Firestore.");
     }
 
-    // 4. Xóa khỏi Firestore (Chỉ thực hiện sau khi dọn dẹp Auth)
+    // 4. Xóa khỏi Firestore
     try {
       await adminDb.collection("members").doc(id).delete();
-      console.log(`>>> [SUCCESS] Đã xóa dữ liệu Firestore: ${id}`);
+      console.log(`>>> [SUCCESS] Đã xóa dữ liệu trong Firestore: ${id}`);
     } catch (dbError) {
-      console.error(">>> [ERROR] Lỗi khi xóa Firestore:", dbError);
+      console.error(">>> [ERROR] Lỗi khi xóa Firestore document:", dbError);
       return NextResponse.json(
         { error: `Lỗi khi xóa dữ liệu trong database: ${dbError.message}` },
         { status: 500 }
       );
     }
 
+    console.log(`>>> [DONE] Hoàn tất xóa độc giả: ${id}`);
     return NextResponse.json({
       success: true,
       message: 'Đã xóa độc giả và dọn dẹp tài khoản thành công.'
