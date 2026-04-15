@@ -17,10 +17,11 @@ export const viewport = {
 
 import { CartProvider } from "@/components/CartProvider";
 import FloatingCart from "@/components/FloatingCart";
+import { Toaster } from "sonner";
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AuthProvider>
           <CartProvider>
@@ -32,6 +33,7 @@ export default function RootLayout({ children }) {
             <FloatingCart />
           </CartProvider>
         </AuthProvider>
+        <Toaster position="top-right" richColors />
       </body>
     </html>
   );
