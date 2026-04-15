@@ -474,17 +474,20 @@ function ManageBooksContent() {
             {filteredBooks.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(book => (
 
               <div key={book.id} style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '14px',
-              overflow: 'hidden',
-              transition: 'transform 0.2s, border-color 0.2s, box-shadow 0.2s',
-              cursor: 'default'
-            }}
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '14px',
+                overflow: 'hidden',
+                transition: 'transform 0.2s, border-color 0.2s, box-shadow 0.2s',
+                cursor: 'default',
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%'
+              }}
             onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = 'rgba(187,134,252,0.3)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)'; }}
             onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.boxShadow = 'none'; }}
             >
-              <div style={{ display: 'flex', gap: '1rem', padding: '1.2rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', padding: '1.2rem', flex: 1 }}>
                 {/* Book Cover */}
                 <div style={{
                   width: '80px',
@@ -506,11 +509,11 @@ function ManageBooksContent() {
                 </div>
 
                 {/* Book Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#fff', marginBottom: '0.3rem', lineHeight: '1.3', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{book.title}</h3>
-                  <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.6rem' }}>{book.author}</p>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#fff', marginBottom: '0.3rem', lineHeight: '1.3', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', minHeight: '2.6em' }}>{book.title}</h3>
+                  <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: 'auto' }}>{book.author}</p>
 
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.8rem' }}>
                     {book.category && (
                       <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: 'rgba(187,134,252,0.15)', color: '#bb86fc', borderRadius: '4px' }}>
                         {book.category}
