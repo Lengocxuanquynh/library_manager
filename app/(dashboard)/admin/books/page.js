@@ -36,7 +36,7 @@ function ManageBooksContent() {
   });
 
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 8;
+  const itemsPerPage = 12;
 
   useEffect(() => {
     fetchBooks();

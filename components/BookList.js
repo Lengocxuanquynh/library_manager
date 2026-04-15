@@ -18,7 +18,7 @@ export default function BookList() {
 
   const [borrowResult, setBorrowResult] = useState(null); // { type: 'success' | 'error', message }
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 8;
+  const itemsPerPage = 12;
 
   useEffect(() => {
     async function fetchData() {
