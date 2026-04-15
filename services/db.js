@@ -257,17 +257,13 @@ export const confirmBorrowPickup = async (recordId, bookId) => {
     dueDate: dueDateObj
   });
 
-  // Decrement book quantity atomically only when picked up
-  const bookRef = doc(db, "books", bookId);
-  await updateDoc(bookRef, {
-    quantity: increment(-1)
-  });
+  // Quantity already decremented at approval (Reservation model)
 };
 
 export const approveBorrowRequest = async (requestId, userId, bookId, userName, bookTitle) => {
   await updateBorrowRequestStatus(requestId, 'APPROVED');
-  // For online approval, we wait for pickup to decrement quantity
-  return await createBorrowRecord(userId, bookId, userName, bookTitle, null, null, false);
+  // For online approval, we reserve the book (decrement quantity) immediately
+  return await createBorrowRecord(userId, bookId, userName, bookTitle, null, null, true);
 };
 
 export const rejectBorrowRequest = async (requestId) => {

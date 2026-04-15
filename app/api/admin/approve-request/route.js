@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { doc, collection, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../../../lib/firebase';
-import { updateBorrowRequestStatus } from '../../../../services/db';
-import { verifyAdmin } from '../../../../services/admin-check';
+import { doc, collection, addDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { updateBorrowRequestStatus } from '@/services/db';
+import { verifyAdmin } from '@/services/admin-check';
 
 export async function POST(request) {
   try {
@@ -54,6 +54,12 @@ export async function POST(request) {
           approvedAt: serverTimestamp(),
           pickupDeadline,
         });
+
+        // Reserve book (Reservation model): decrement inventory immediately
+        const bookRef = doc(db, 'books', b.bookId);
+        await updateDoc(bookRef, { 
+          quantity: increment(-1)
+        });
       }
     } else {
       // ── Phiếu đơn (cũ): 1 cuốn sách ──
@@ -69,6 +75,12 @@ export async function POST(request) {
         status: 'APPROVED_PENDING_PICKUP',
         approvedAt: serverTimestamp(),
         pickupDeadline,
+      });
+
+      // Reserve book (Reservation model): decrement inventory immediately
+      const bookRef = doc(db, 'books', bookId);
+      await updateDoc(bookRef, { 
+        quantity: increment(-1)
       });
     }
 

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "../../../components/AuthProvider";
-import { formatDate } from "../../../lib/utils";
+import { useAuth } from "@/components/AuthProvider";
+import { formatDate, getTimestamp } from "@/lib/utils";
 import styles from "../dashboard.module.css";
 
 export default function AdminDashboard() {
@@ -162,7 +162,7 @@ export default function AdminDashboard() {
                   <tbody>
                     {data.recentRecords.map(activity => {
                       const isOverdue = (activity.status === 'BORROWING' || activity.status === 'Active') && 
-                                          activity.dueDate?.toDate && activity.dueDate.toDate() < new Date();
+                                           getTimestamp(activity.dueDate) < Date.now() && getTimestamp(activity.dueDate) !== 0;
                       return (
                         <tr key={activity.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>

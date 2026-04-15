@@ -5,7 +5,6 @@ import { useAuth } from "../../components/AuthProvider";
 import Link from "next/link";
 import { logoutUser } from "../../services/auth";
 import { useRouter, usePathname } from "next/navigation";
-import { Toaster } from "sonner";
 import styles from "./dashboard.module.css";
 
 export default function DashboardLayout({ children }) {
@@ -85,7 +84,6 @@ export default function DashboardLayout({ children }) {
           {children}
         </div>
       </main>
-      <Toaster position="top-right" richColors />
     </div>
   );
 }
