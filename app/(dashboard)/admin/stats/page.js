@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "../../../../components/AuthProvider";
 
 export default function AdminStats() {
   const { user } = useAuth();

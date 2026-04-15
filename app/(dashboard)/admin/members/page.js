@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
-import { useAuth } from "@/components/AuthProvider";
-import { auth } from "@/lib/firebase";
+import { useAuth } from "../../../../components/AuthProvider";
+import { auth } from "../../../../lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";

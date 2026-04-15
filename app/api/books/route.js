@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addBook, getBooks, ensureCategoryExists } from '@/services/db';
+import { addBook, getBooks, ensureCategoryExists } from '../../services/db';
 
 export async function GET() {
   try {

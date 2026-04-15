@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { registerUser, loginWithGoogle } from "@/services/auth";
+import { registerUser, loginWithGoogle } from "../../../services/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "../auth.module.css";

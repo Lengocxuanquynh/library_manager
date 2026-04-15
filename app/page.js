@@ -1,8 +1,8 @@
 import Link from "next/link";
 import styles from "./home.module.css";
-import BookList from "@/components/BookList";
-import HomeNews from "@/components/HomeNews";
-import HeroNewsCard from "@/components/HeroNewsCard";
+import BookList from "../components/BookList";
+import HomeNews from "../components/HomeNews";
+import HeroNewsCard from "../components/HeroNewsCard";
 
 export const metadata = {
   title: "Hệ Thống Quản Lý Thư Viện Hiện Đại",

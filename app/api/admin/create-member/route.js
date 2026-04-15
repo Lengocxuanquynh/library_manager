@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase-admin';
+import { adminAuth, adminDb } from '../../../lib/firebase-admin';
 
 export async function POST(request) {
   console.log(">>> [SERVER] API /api/admin/create-member started.");

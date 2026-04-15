@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/components/AuthProvider";
-import { useCart } from "@/components/CartProvider";
+import { useAuth } from "./AuthProvider";
+import { useCart } from "./CartProvider";
 import styles from "./BookList.module.css";
 
 export default function BookList() {

@@ -8,7 +8,7 @@ import {
   GoogleAuthProvider
 } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { auth, db } from "../lib/firebase";
 
 // Register user and store role
 export const registerUser = async (email, password, name, role = "user") => {

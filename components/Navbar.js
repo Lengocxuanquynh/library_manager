@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@/components/AuthProvider";
-import { logoutUser } from "@/services/auth";
+import { useAuth } from "./AuthProvider";
+import { logoutUser } from "../services/auth";
 import { useRouter, usePathname } from "next/navigation";
 
 export default function Navbar() {

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { doc, collection, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { updateBorrowRequestStatus } from '@/services/db';
-import { verifyAdmin } from '@/services/admin-check';
+import { db } from '../../../lib/firebase';
+import { updateBorrowRequestStatus } from '../../../services/db';
+import { verifyAdmin } from '../../../services/admin-check';
 
 export async function POST(request) {
   try {
