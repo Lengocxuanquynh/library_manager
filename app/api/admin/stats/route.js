@@ -71,6 +71,7 @@ export async function GET() {
           const uid = data.userId || 'unknown';
           if (!lateUsers[uid]) {
             lateUsers[uid] = { 
+              id: uid,
               name: data.userName || 'Unknown Member', 
               phone: data.borrowerPhone || 'N/A', 
               lateCount: 0, 

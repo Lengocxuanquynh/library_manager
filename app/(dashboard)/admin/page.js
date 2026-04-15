@@ -8,6 +8,23 @@ import styles from "../dashboard.module.css";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  
+  // Helper to safely handle diverse date formats from Firestore (Timestamp, Date, or String)
+  // This prevents crashes when calling toMillis() on non-Timestamp objects
+  const getSafeTime = (dateObj) => {
+    if (!dateObj) return 0;
+    // Handle Firestore Timestamp object
+    if (typeof dateObj.toMillis === 'function') return dateObj.toMillis();
+    // Handle serializable Firestore Timestamp structure (common in API JSON)
+    if (dateObj.seconds) return dateObj.seconds * 1000;
+    if (dateObj._seconds) return dateObj._seconds * 1000;
+    // Handle standard JS Date object
+    if (typeof dateObj.getTime === 'function') return dateObj.getTime();
+    // Fallback: Parse as Date string or number
+    const t = new Date(dateObj).getTime();
+    return isNaN(t) ? 0 : t;
+  };
+
   const [stats, setStats] = useState({
     totalInventory: 0,
     activeMembers: 0,
@@ -65,7 +82,7 @@ export default function AdminDashboard() {
         });
 
         // Sách mới nhập (last 5)
-        const sortedBooks = Array.isArray(books) ? [...books].sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)) : [];
+        const sortedBooks = Array.isArray(books) ? [...books].sort((a,b) => getSafeTime(b.createdAt) - getSafeTime(a.createdAt)) : [];
 
         setData({
           recentRecords: records.slice(0, 5),
@@ -99,25 +116,25 @@ export default function AdminDashboard() {
         <>
           {/* Stats Grid */}
           <div className={styles.grid} style={{ marginBottom: '2.5rem' }}>
-            <div className={styles.card} style={{ borderLeft: '4px solid #bb86fc' }}>
+            <div className={styles.card} style={{ borderLeft: '4px solid #bb86fc' }} key="total-books">
               <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tổng số sách thư viện</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalLibraryBooks}</div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Hàng tồn + Đang mượn</div>
             </div>
             
-            <div className={styles.card} style={{ borderLeft: '4px solid #03dac6' }}>
+            <div className={styles.card} style={{ borderLeft: '4px solid #03dac6' }} key="inventory">
               <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách tồn kho</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalInventory}</div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Sẵn sàng cho mượn</div>
             </div>
 
-            <div className={styles.card} style={{ borderLeft: '4px solid #27c93f' }}>
+            <div className={styles.card} style={{ borderLeft: '4px solid #27c93f' }} key="borrowing">
               <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách đang mượn</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.borrowingCount}</div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Sách đã ra khỏi kho</div>
             </div>
 
-            <div className={styles.card} style={{ borderLeft: '4px solid #ff5f56' }}>
+            <div className={styles.card} style={{ borderLeft: '4px solid #ff5f56' }} key="overdue">
               <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách quá hạn</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.overdueCount}</div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Cần thu hồi gấp</div>
