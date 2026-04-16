@@ -359,19 +359,27 @@ export const canUserBorrow = async (userId, isAdmin = false) => {
   if (isAdmin) return { canBorrow: true }; // Admin bypass
 
   const records = await getBorrowRecords(userId);
+  
+  // 1. Quá hạn
   const overdueRecord = records.find(r => r.status === 'OVERDUE');
   if (overdueRecord) return { 
     canBorrow: false, 
-    reason: `Bạn đang có sách quá hạn chưa trả: "${overdueRecord.bookTitle}". Vui lòng trả sách trước khi mượn cuốn mới. [ID: ${overdueRecord.id}]` 
+    reason: `Bạn đang có sách quá hạn chưa trả: "${overdueRecord.bookTitle}". Vui lòng trả sách trước khi mượn sự kiện mới.` 
   };
 
-  // Check if user has a book approved but not yet picked up
+  // 2. Chờ lấy sách
   const hasPendingPickup = records.some(r => r.status === 'APPROVED_PENDING_PICKUP');
-  if (hasPendingPickup) return { canBorrow: false, reason: 'Bạn đang có sách đã được duyệt, vui lòng đến thư viện lấy sách trước.' };
+  if (hasPendingPickup) return { canBorrow: false, reason: 'Bạn đang có sách đã được duyệt, vui lòng ra quầy lấy sách trước.' };
 
-  // Also check if they already requested this book and it's pending
-  const requests = await getBorrowRequests('PENDING', userId);
-  if (requests.length > 0) return { canBorrow: false, reason: 'Bạn đang có một yêu cầu mượn sách đang chờ duyệt.' };
+  // 3. Đang mượn hợc trả thiếu (TRẢ HẾT MỚI ĐƯỢC MƯỢN MỚI)
+  const isCurrentlyHoldingBooks = records.some(r => r.status === 'BORROWING' || r.status === 'PARTIALLY_RETURNED');
+  if (isCurrentlyHoldingBooks) return { 
+    canBorrow: false, 
+    reason: 'Luật Thư Viện: Bạn đang mượn sách. Vui lòng đem trả TOÀN BỘ sách đang giữ để có thể mượn đợt mới.' 
+  };
+
+  // Tính năng Gộp Đơn (Dynamic Cart): Đã gỡ bỏ luật cấm tạo Yêu Cầu khi đang có Đơn Pending.
+  // Việc giới hạn Tổng số sách <= 3 sẽ được xử lý ở Tầng API Mượn sách hàng loạt.
 
   return { canBorrow: true };
 };

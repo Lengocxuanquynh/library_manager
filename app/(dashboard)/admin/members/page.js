@@ -14,9 +14,6 @@ export default function ManageMembers() {
   const router = useRouter();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [newMember, setNewMember] = useState({ name: '', email: '', phone: '', password: '' });
-  const [submitting, setSubmitting] = useState(false);
   
   // History view state
   const [selectedMember, setSelectedMember] = useState(null);
@@ -57,35 +54,7 @@ export default function ManageMembers() {
     }
   };
 
-  const handleAddMember = async (e) => {
-    e.preventDefault();
-    if (!newMember.name || !newMember.email || !newMember.password) return;
-
-    setSubmitting(true);
-    const loadToast = toast.loading("Đang thêm độc giả...");
-    try {
-      const res = await fetch('/api/admin/create-member', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newMember)
-      });
-
-      if (res.ok) {
-        setNewMember({ name: '', email: '', phone: '', password: '' });
-        setShowForm(false);
-        fetchMembers();
-        toast.success("Thêm độc giả và tạo tài khoản thành công!", { id: loadToast });
-      } else {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Lỗi không xác định từ server");
-      }
-    } catch (error) {
-      console.error(error);
-      toast.error(error.message || "Lỗi kết nối server.", { id: loadToast });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // Removed handAddMember due to security vulnerabilities
 
   const handleResetPassword = async (email) => {
     if (!email) {
@@ -144,63 +113,8 @@ export default function ManageMembers() {
   return (
     <div>
       <div className={styles.headerArea}>
-        <h1 className={styles.pageTitle}>Quản Lý Độc Giả</h1>
-        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? "Hủy" : "Thêm Độc Giả Mới"}
-        </button>
+        <h1 className={styles.pageTitle}>Quản Lý Độc Giả (Hợp Nhất)</h1>
       </div>
-
-      {showForm && (
-        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <h3 style={{ marginBottom: '1.5rem', fontSize: '1.1rem' }}>Đăng ký Độc giả mới</h3>
-          <form onSubmit={handleAddMember} style={{ display: 'grid', gap: '1rem', gridTemplateColumns: '1fr 1fr' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', opacity: 0.6 }}>Họ Tên</label>
-              <input 
-                type="text" 
-                placeholder="Ví dụ: Nguyễn Văn A" 
-                value={newMember.name}
-                onChange={(e) => setNewMember({...newMember, name: e.target.value})}
-                style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                required
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', opacity: 0.6 }}>Email</label>
-              <input 
-                type="email" 
-                placeholder="email@example.com" 
-                value={newMember.email}
-                onChange={(e) => setNewMember({...newMember, email: e.target.value})}
-                style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                required
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', opacity: 0.6 }}>Mật khẩu</label>
-              <input 
-                type="password" 
-                placeholder="Nhập mật khẩu" 
-                value={newMember.password}
-                onChange={(e) => setNewMember({...newMember, password: e.target.value})}
-                style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                required
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', opacity: 0.6 }}>Số điện thoại</label>
-              <input 
-                type="text" 
-                placeholder="09xx..." 
-                value={newMember.phone}
-                onChange={(e) => setNewMember({...newMember, phone: e.target.value})}
-                style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-              />
-            </div>
-            <button type="submit" className="btn-primary" style={{ gridColumn: 'span 2', padding: '1rem' }}>Lưu thông tin</button>
-          </form>
-        </div>
-      )}
 
       {/* History Modal */}
       {selectedMember && (
@@ -257,6 +171,7 @@ export default function ManageMembers() {
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                   <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Họ Tên</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Mã Độc Giả</th>
                   <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Email</th>
                   <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>SĐT</th>
                   <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>
@@ -271,6 +186,7 @@ export default function ManageMembers() {
                   members.map(member => (
                     <tr key={member.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '1rem', fontWeight: '500' }}>{member.name}</td>
+                      <td style={{ padding: '1rem', fontFamily: 'monospace', color: '#bb86fc' }}>{member.memberCode || `DG-${(member.uid || member.id).slice(-5).toUpperCase()}`}</td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>{member.email}</td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>{member.phone || '—'}</td>
                       <td style={{ padding: '1rem' }}>
