@@ -271,7 +271,12 @@ export default function ManageLoans() {
               whiteSpace: 'nowrap'
             }}
           >
-            Trả Sách
+            Trả Sách ({records.filter(rec => {
+              const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
+              const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'OVERDUE';
+              const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
+              return isActive && !isOverdue;
+            }).length})
           </button>
 
           {/* Trễ Hạn */}
@@ -285,7 +290,12 @@ export default function ManageLoans() {
               whiteSpace: 'nowrap'
             }}
           >
-            Trễ Hạn
+            Trễ Hạn ({records.filter(rec => {
+              const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
+              const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'OVERDUE';
+              const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
+              return isOverdue;
+            }).length})
           </button>
 
           {/* Lịch Sử (Read-only) */}
@@ -431,8 +441,8 @@ export default function ManageLoans() {
                 <tbody>
                   {records.filter(rec => {
                     const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
-                    const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
-                    const isOverdue = isActive && dueDate && dueDate < new Date();
+                    const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'OVERDUE';
+                    const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
 
                     // 1. Filter by Status
                     let statusMatch = true;
@@ -441,7 +451,7 @@ export default function ManageLoans() {
                     if (effectiveStatus === 'BORROWING') statusMatch = isActive && !isOverdue;
                     else if (effectiveStatus === 'APPROVED_PENDING_PICKUP') statusMatch = (rec.status === 'APPROVED_PENDING_PICKUP');
                     else if (effectiveStatus === 'OVERDUE') statusMatch = isOverdue;
-                    else if (effectiveStatus === 'RETURNED') statusMatch = (rec.status === 'RETURNED');
+                    else if (effectiveStatus === 'RETURNED') statusMatch = (rec.status === 'RETURNED' || rec.status === 'RETURNED_OVERDUE');
 
                     if (!statusMatch) return false;
 
@@ -464,8 +474,8 @@ export default function ManageLoans() {
                   ) : (
                     records.filter(rec => {
                       const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
-                      const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
-                      const isOverdue = isActive && dueDate && dueDate < new Date();
+                      const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'OVERDUE';
+                      const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
 
                       // 1. Filter by Status
                       let statusMatch = true;
@@ -474,7 +484,7 @@ export default function ManageLoans() {
                       if (effectiveStatus === 'BORROWING') statusMatch = isActive && !isOverdue;
                       else if (effectiveStatus === 'APPROVED_PENDING_PICKUP') statusMatch = (rec.status === 'APPROVED_PENDING_PICKUP');
                       else if (effectiveStatus === 'OVERDUE') statusMatch = isOverdue;
-                      else if (effectiveStatus === 'RETURNED') statusMatch = (rec.status === 'RETURNED');
+                      else if (effectiveStatus === 'RETURNED') statusMatch = (rec.status === 'RETURNED' || rec.status === 'RETURNED_OVERDUE');
 
                       if (!statusMatch) return false;
 
@@ -490,8 +500,8 @@ export default function ManageLoans() {
                       return true;
                     }).map(rec => {
                       const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
-                      const isActive = rec.status === 'Active' || rec.status === 'BORROWING';
-                      const isOverdue = isActive && dueDate && dueDate < new Date();
+                      const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'OVERDUE';
+                      const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < new Date());
 
                       return (
                         <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -538,39 +548,37 @@ export default function ManageLoans() {
                           )}
                           <td style={{ padding: '1rem' }}>
                             <span style={{
-                              background: isOverdue ? 'rgba(255,95,86,0.15)' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
-                              color: isOverdue ? '#ff5f56' : rec.status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
+                              background: isOverdue ? 'rgba(255,95,86,0.15)' : rec.status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.15)' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
+                              color: isOverdue ? '#ff5f56' : rec.status === 'RETURNED_OVERDUE' ? '#ffb020' : rec.status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
                               padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600',
                               whiteSpace: 'nowrap', display: 'inline-block',
                               minWidth: '100px', textAlign: 'center'
                             }}>
-                              {isOverdue ? 'QUÁ HẠN' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : rec.status === 'CANCELLED_EXPIRED' ? 'HẾT HẠN' : isActive ? 'ĐANG MƯỢN' : 'ĐÃ TRẢ'}
+                              {isOverdue ? 'QUÁ HẠN' : rec.status === 'RETURNED_OVERDUE' ? 'TRẢ MUỘN' : rec.status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : rec.status === 'CANCELLED_EXPIRED' ? 'HẾT HẠN' : isActive ? 'ĐANG MƯỢN' : (rec.actualReturnDate || rec.returnDate) ? 'ĐÃ TRẢ' : 'QUÁ HẠN'}
                             </span>
                           </td>
-                          {filterStatus !== 'ALL' && (
-                            <td style={{ padding: '1rem' }}>
-                              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                {rec.status === 'APPROVED_PENDING_PICKUP' && (
-                                  <button
-                                    onClick={() => handleConfirmPickup(rec.id, rec.bookId)}
-                                    style={{
-                                      background: 'linear-gradient(135deg, #bb86fc, #9965f4)',
-                                      color: '#fff', border: 'none', padding: '0.4rem 0.9rem',
-                                      borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600',
-                                      whiteSpace: 'nowrap'
-                                    }}
-                                  >
-                                    ✓ Xác nhận đã lấy sách
-                                  </button>
-                                )}
-                                {isActive && (
-                                  <button onClick={() => handleReturn(rec)} className="btn-outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.85rem' }}>
-                                    Thu Hồi
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          )}
+                          <td style={{ padding: '1rem' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              {rec.status === 'APPROVED_PENDING_PICKUP' && (
+                                <button
+                                  onClick={() => handleConfirmPickup(rec.id, rec.bookId)}
+                                  style={{
+                                    background: 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                                    color: '#fff', border: 'none', padding: '0.4rem 0.9rem',
+                                    borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  ✓ Xác nhận đã lấy sách
+                                </button>
+                              )}
+                              {(isActive || isOverdue) && filterStatus !== 'ALL' && (
+                                <button onClick={() => handleReturn(rec)} className="btn-outline" style={{ padding: '0.35rem 0.7rem', fontSize: '0.85rem' }}>
+                                  Thu Hồi
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })

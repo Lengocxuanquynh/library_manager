@@ -154,12 +154,14 @@ function ManageBooksContent() {
   });
 
   // Merge formal categories with existing book categories for backup/filter
-  const bookCategories = [...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
-  const managedNames = availableCategories.map(c => c.name);
+  const uniqueCategoryNames = [...new Set([
+    ...availableCategories.map(c => c.name),
+    ...books.map(b => b.category || "Khác").filter(Boolean)
+  ])];
+
   const filterTabs = [
     { id: 'ALL', name: 'Tất cả thể loại' },
-    ...availableCategories.map(c => ({ id: c.id, name: c.name })),
-    ...bookCategories.filter(name => !managedNames.includes(name)).map(name => ({ id: name, name }))
+    ...uniqueCategoryNames.map(name => ({ id: name, name }))
   ];
 
 

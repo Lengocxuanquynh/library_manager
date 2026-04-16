@@ -78,6 +78,7 @@ export default function FloatingCart() {
           cccd: cccd.trim(),
           books: cart.map(b => ({ bookId: b.id, bookTitle: b.title })),
           paymentStatus: "PENDING", // Will define logic
+          isAdmin: user.role === 'admin',
         }),
       });
 

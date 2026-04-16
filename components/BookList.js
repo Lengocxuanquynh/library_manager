@@ -61,8 +61,10 @@ export default function BookList() {
   const managedNames = formalCategories.map(c => c.name);
   const categories = [
     "Tất cả", 
-    ...managedNames,
-    ...bookCategories.filter(name => !managedNames.includes(name))
+    ...new Set([
+      ...managedNames,
+      ...bookCategories
+    ])
   ];
 
 
