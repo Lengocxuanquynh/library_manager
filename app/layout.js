@@ -18,6 +18,7 @@ export const viewport = {
 import { CartProvider } from "@/components/CartProvider";
 import FloatingCart from "@/components/FloatingCart";
 import { Toaster } from "sonner";
+import DevEmailToggle from "@/components/DevEmailToggle";
 
 export default function RootLayout({ children }) {
   return (
@@ -34,6 +35,7 @@ export default function RootLayout({ children }) {
           </CartProvider>
         </AuthProvider>
         <Toaster position="top-right" richColors />
+        {process.env.NODE_ENV === "development" && <DevEmailToggle />}
       </body>
     </html>
   );

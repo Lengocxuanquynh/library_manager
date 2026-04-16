@@ -84,9 +84,11 @@ export const loginWithGoogle = async () => {
   }
 };
 
-// Logout user
 export const logoutUser = async () => {
   try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("otp_verified");
+    }
     await signOut(auth);
   } catch (error) {
     throw error;
