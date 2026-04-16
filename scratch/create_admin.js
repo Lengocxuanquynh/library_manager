@@ -5,7 +5,7 @@ async function createAdmin() {
   const envContent = fs.readFileSync('.env', 'utf-8');
   let apiKey = '';
   let projectId = '';
-  
+
   envContent.split('\n').forEach(line => {
     if (line.trim().startsWith('NEXT_PUBLIC_FIREBASE_API_KEY')) {
       apiKey = line.split('=')[1].trim().replace(/['"]/g, '');
@@ -58,9 +58,9 @@ async function createAdmin() {
   console.log("Saving user role as Admin in Firestore...");
   const firestoreRes = await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${uid}`, {
     method: 'PATCH',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}` 
+      'Authorization': `Bearer ${token}`
     },
     body: JSON.stringify({
       fields: {
