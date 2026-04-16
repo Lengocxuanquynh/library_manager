@@ -48,12 +48,14 @@ export default function BookCatalog() {
   };
 
   // Merge formal categories with existing book categories for backup
-  const bookCategories = [...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
-  const managedNames = formalCategories.map(c => c.name);
+  const bookCategories = [...new Set(books.map(b => (b.category || "Khác").trim()).filter(Boolean))];
+  const managedNames = formalCategories.map(c => c.name.trim());
   const categories = [
     "Tất cả", 
-    ...managedNames,
-    ...bookCategories.filter(name => !managedNames.includes(name))
+    ...new Set([
+      ...managedNames,
+      ...bookCategories
+    ])
   ];
 
 

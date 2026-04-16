@@ -4,7 +4,7 @@ import { createBorrowRequest, canUserBorrow, isBookAvailable } from '../../../se
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { userId, bookId, userName, bookTitle } = body;
+    const { userId, bookId, userName, bookTitle, isAdmin } = body;
 
     if (!userId || !bookId) {
       return NextResponse.json({ error: 'Thiếu userId hoặc bookId' }, { status: 400 });
@@ -17,7 +17,7 @@ export async function POST(request) {
     }
 
     // 2. Check user overdue books
-    const userStatus = await canUserBorrow(userId);
+    const userStatus = await canUserBorrow(userId, isAdmin);
     if (!userStatus.canBorrow) {
       return NextResponse.json({ error: userStatus.reason }, { status: 400 });
     }

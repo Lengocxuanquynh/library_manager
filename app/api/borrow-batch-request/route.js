@@ -6,7 +6,7 @@ import { canUserBorrow, isBookAvailable } from '../../../services/db';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { userId, userName, email, phone, cccd, books, paymentStatus } = body;
+    const { userId, userName, email, phone, cccd, books, paymentStatus, isAdmin } = body;
 
     if (!userId || !books || !Array.isArray(books) || books.length === 0) {
       return NextResponse.json({ error: 'Thiếu người dùng hoặc sách trong giỏ hàng' }, { status: 400 });
@@ -29,7 +29,7 @@ export async function POST(request) {
     }
 
     // 2. Check user overdue/pending books limits
-    const userStatus = await canUserBorrow(userId);
+    const userStatus = await canUserBorrow(userId, isAdmin);
     if (!userStatus.canBorrow) {
       return NextResponse.json({ error: userStatus.reason }, { status: 400 });
     }

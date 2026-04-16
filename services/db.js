@@ -208,7 +208,7 @@ export const getBorrowRecords = async (userId = null) => {
     else if (typeof record.dueDate?.toDate === 'function') dueDate = record.dueDate.toDate();
     else if (record.dueDate) dueDate = new Date(record.dueDate);
 
-    if (currentStatus === 'BORROWING' && dueDate && dueDate < now) {
+    if ((currentStatus === 'BORROWING' || currentStatus === 'Active') && dueDate && dueDate < now) {
       currentStatus = 'OVERDUE';
     }
     return { ...record, status: currentStatus };
@@ -272,8 +272,23 @@ export const rejectBorrowRequest = async (requestId) => {
 
 export const returnBorrowRecord = async (recordId, bookId, returnNote = '', penaltyAmount = 0) => {
   const recordRef = doc(db, "borrowRecords", recordId);
+
+  // Fetch the record to check the due date
+  const recordSnap = await getDoc(recordRef);
+  let finalStatus = 'RETURNED';
+
+  if (recordSnap.exists()) {
+    const data = recordSnap.data();
+    const dueDate = data.dueDate?.toDate ? data.dueDate.toDate() : (data.dueDate ? new Date(data.dueDate) : null);
+    const now = new Date();
+
+    if (dueDate && now > dueDate) {
+      finalStatus = 'RETURNED_OVERDUE';
+    }
+  }
+
   await updateDoc(recordRef, {
-    status: 'returned',
+    status: finalStatus,
     returnDate: serverTimestamp(),
     actualReturnDate: serverTimestamp(),
     returnNote: returnNote || '',
@@ -290,10 +305,15 @@ export const returnBorrowRecord = async (recordId, bookId, returnNote = '', pena
 // ========================
 // BUSINESS RULES
 // ========================
-export const canUserBorrow = async (userId) => {
+export const canUserBorrow = async (userId, isAdmin = false) => {
+  if (isAdmin) return { canBorrow: true }; // Admin bypass
+
   const records = await getBorrowRecords(userId);
-  const hasOverdue = records.some(r => r.status === 'OVERDUE');
-  if (hasOverdue) return { canBorrow: false, reason: 'Bạn đang có sách quá hạn chưa trả.' };
+  const overdueRecord = records.find(r => r.status === 'OVERDUE');
+  if (overdueRecord) return { 
+    canBorrow: false, 
+    reason: `Bạn đang có sách quá hạn chưa trả: "${overdueRecord.bookTitle}". Vui lòng trả sách trước khi mượn cuốn mới. [ID: ${overdueRecord.id}]` 
+  };
 
   // Check if user has a book approved but not yet picked up
   const hasPendingPickup = records.some(r => r.status === 'APPROVED_PENDING_PICKUP');
