@@ -1,29 +1,39 @@
 import { NextResponse } from 'next/server';
-import { addMember, getMembers, getBorrowRecords } from '../../../services/db';
+import { addMember, getMembers, getBorrowRecords, getUsers } from '../../../services/db';
 
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const phone = searchParams.get('phone');
 
-    const members = await getMembers();
+    // Lấy độc giả từ bảng phụ (cũ do Admin tay to tạo)
+    const membersOld = await getMembers();
+    // Lấy độc giả chuẩn (hiện đại tự đăng ký)
+    const usersAll = await getUsers();
+    const usersStandard = usersAll.filter(u => u.role === 'user');
+
+    // Gộp 2 mảng lại. Nếu 1 email nằm ở cả 2 nơi (mồ côi/rác), ưu tiên giữ thằng mới.
+    const mergedList = [...usersStandard, ...membersOld];
+    const uniqueMembers = mergedList.filter((v, i, a) => a.findIndex(v2 => (v2.email === v.email)) === i);
 
     // Helper to add borrowCount to member objects
     const addBorrowCount = async (memberList) => {
       return await Promise.all(memberList.map(async (m) => {
-        const records = await getBorrowRecords(m.id);
+        // Fallback support if UID vs ID mismatch happens
+        const fetchId = m.uid || m.id;
+        const records = await getBorrowRecords(fetchId);
         const activeCount = records.filter(r => r.status === 'BORROWING' || r.status === 'OVERDUE').length;
         return { ...m, borrowCount: activeCount };
       }));
     };
 
     if (phone) {
-      const filtered = members.filter(m => m.phone === phone);
+      const filtered = uniqueMembers.filter(m => m.phone === phone);
       const enriched = await addBorrowCount(filtered);
       return NextResponse.json(enriched);
     }
 
-    const enrichedAll = await addBorrowCount(members);
+    const enrichedAll = await addBorrowCount(uniqueMembers);
     return NextResponse.json(enrichedAll);
   } catch (error) {
     console.error('Error listing members API:', error);

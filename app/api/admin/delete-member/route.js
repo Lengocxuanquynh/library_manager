@@ -82,7 +82,8 @@ export async function POST(request) {
     // 4. Xóa khỏi Firestore
     try {
       await adminDb.collection("members").doc(id).delete();
-      console.log(`>>> [SUCCESS] Đã xóa dữ liệu trong Firestore: ${id}`);
+      await adminDb.collection("users").doc(id).delete();
+      console.log(`>>> [SUCCESS] Đã dọn dẹp Document ở cả Firestore (users/members): ${id}`);
     } catch (dbError) {
       console.error(">>> [ERROR] Lỗi khi xóa Firestore document:", dbError);
       return NextResponse.json(

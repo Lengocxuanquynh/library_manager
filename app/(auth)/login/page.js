@@ -24,6 +24,12 @@ export default function Login() {
   const [pendingUserRole, setPendingUserRole] = useState(null);
 
   // Removed aggressive auto logout on component mount to prevent race conditions
+  useEffect(() => {
+    // Luôn dọn dẹp biến nhớ OTP cũ mỗi khi màn hình đăng nhập được load lại
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("otp_verified");
+    }
+  }, []);
 
   const sendOTP = async (targetEmail) => {
     setIsSendingOTP(true);
