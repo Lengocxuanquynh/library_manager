@@ -148,7 +148,7 @@ export default function ManageLoans() {
     }
   };
 
-  const handleOpenDetail = (record) => {
+const handleOpenDetail = (record) => {
     setSelectedDetailRecord(record);
     setIsDetailModalOpen(true);
   };
@@ -279,6 +279,7 @@ export default function ManageLoans() {
         <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '1.2rem' }}>
 
           {/* Chờ Duyệt (Online requests) */}
+
           <button
             className={activeTab === 'requests' ? 'btn-primary' : 'btn-outline'}
             onClick={() => setActiveTab('requests')}
@@ -643,8 +644,7 @@ export default function ManageLoans() {
           </>
         )}
       </div>
-
-      {/* DETAIL MODAL */}
+{/* DETAIL MODAL */}
       {isDetailModalOpen && selectedDetailRecord && (
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
@@ -671,7 +671,8 @@ export default function ManageLoans() {
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.2rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <h4 style={{ margin: '0 0 0.8rem 0', color: '#bb86fc', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Thông tin độc giả</h4>
                   <p style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fff', margin: '0 0 0.3rem 0' }}>{selectedDetailRecord.userName || selectedDetailRecord.memberName}</p>
-                  <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', margin: 0 }}>📞 {selectedDetailRecord.borrowerPhone || selectedDetailRecord.userPhone || "Chưa cập nhật"}</p>
+                  <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', margin: 0 }}>📞 {selectedDetailRecord.borrowerPhone || selectedDetailRecord.userPhone || "Trống"}</p>
+                  <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', margin: '0.3rem 0 0 0' }}>✉️ {selectedDetailRecord.userEmail || selectedDetailRecord.email || "Trống"}</p>
                   {selectedDetailRecord.userCCCD && <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', margin: '0.3rem 0 0 0' }}>🆔 CCCD: {selectedDetailRecord.userCCCD}</p>}
                 </div>
                 
@@ -688,7 +689,7 @@ export default function ManageLoans() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginTop: '0.2rem' }}>
                       <span style={{ color: 'rgba(255,255,255,0.5)' }}>Trạng thái:</span>
-                      <span style={{ color: '#bb86fc', fontWeight: '700' }}>{selectedDetailRecord.status === 'PARTIALLY_RETURNED' ? 'TRẢ MỘT PHẦN' : selectedDetailRecord.status}</span>
+                      <span style={{ color: '#bb86fc', fontWeight: '700' }}>{selectedDetailRecord?.status === 'PARTIALLY_RETURNED' ? 'TRẢ MỘT PHẦN' : selectedDetailRecord?.status}</span>
                     </div>
                   </div>
                 </div>
@@ -700,9 +701,9 @@ export default function ManageLoans() {
               </h3>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                {(selectedDetailRecord.books || []).map((book, idx) => {
+                {(selectedDetailRecord?.books || []).map((book, idx) => {
                   const isReturned = book.status === 'RETURNED' || book.status === 'RETURNED_OVERDUE';
-                  const isOverdue = selectedDetailRecord.status === 'OVERDUE' && !isReturned;
+                  const isOverdue = selectedDetailRecord?.status === 'OVERDUE' && !isReturned;
 
                   return (
                     <div key={idx} style={{ 
@@ -735,7 +736,7 @@ export default function ManageLoans() {
                         </div>
                       </div>
 
-                      {!isReturned && (selectedDetailRecord.status === 'BORROWING' || selectedDetailRecord.status === 'PARTIALLY_RETURNED' || selectedDetailRecord.status === 'OVERDUE') && (
+                      {!isReturned && (selectedDetailRecord?.status === 'BORROWING' || selectedDetailRecord?.status === 'PARTIALLY_RETURNED' || selectedDetailRecord?.status === 'OVERDUE') && (
                         <button
                           onClick={() => handleReturnClick(selectedDetailRecord, book)}
                           style={{
@@ -759,7 +760,7 @@ export default function ManageLoans() {
             </div>
 
             <div style={{ padding: '1.5rem 2rem', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-              {selectedDetailRecord.status === 'APPROVED_PENDING_PICKUP' && (
+              {selectedDetailRecord?.status === 'APPROVED_PENDING_PICKUP' && (
                 <button
                   onClick={() => {
                     handleConfirmPickup(selectedDetailRecord.id);
@@ -769,6 +770,56 @@ export default function ManageLoans() {
                   style={{ padding: '0.7rem 1.5rem' }}
                 >
                   Xác nhận lấy tất cả sách
+                </button>
+              )}
+              {(selectedDetailRecord?.status === 'BORROWING' || selectedDetailRecord?.status === 'PARTIALLY_RETURNED' || selectedDetailRecord?.status === 'OVERDUE') && (
+                <button
+                  onClick={async () => {
+                    if (!confirm("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?")) return;
+                    
+                    setReturning(true);
+                    const loadingToast = toast.loading("Đang thu hồi tất cả sách...");
+                    try {
+                      const res = await fetch('/api/admin/return-all', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          recordId: selectedDetailRecord.id,
+                          transactionId: selectedDetailRecord.transactionId || selectedDetailRecord.slipId,
+                          books: selectedDetailRecord.books || [],
+                          adminId: user?.uid,
+                          returnNote: "Thu hồi toàn bộ",
+                          penaltyAmount: 0 // Optional
+                        })
+                      });
+                      if (res.ok) {
+                        toast.success("Thu hồi toàn bộ sách thành công!", { id: loadingToast });
+                        setIsDetailModalOpen(false);
+                        fetchData();
+                      } else {
+                        const data = await res.json();
+                        toast.error(data.message || data.error || "Thu hồi thất bại", { id: loadingToast });
+                      }
+                    } catch (error) {
+                      console.error(error);
+                      toast.error("Lỗi kết nối server", { id: loadingToast });
+                    } finally {
+                      setReturning(false);
+                    }
+                  }}
+                  disabled={returning}
+                  style={{
+                    padding: '0.7rem 1.5rem',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #ff416c, #ff4b2b)',
+                    color: '#fff', border: 'none', cursor: 'pointer',
+                    fontWeight: '700',
+                    boxShadow: '0 6px 15px -3px rgba(255,65,108,0.4)',
+                    opacity: returning ? 0.7 : 1, transition: 'all 0.2s',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {returning ? 'Đang xử lý...' : 'Thu hồi tất cả sách'}
                 </button>
               )}
               <button 
@@ -784,7 +835,7 @@ export default function ManageLoans() {
       )}
 
       {/* RETURN BOOK MODAL */}
-      {isReturnModalOpen && (
+      {isReturnModalOpen && selectedReturnRecord && (
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center',
@@ -793,20 +844,64 @@ export default function ManageLoans() {
           <div style={{
             background: '#1a1a1a', width: '90%', maxWidth: '500px',
             borderRadius: '20px', border: '1px solid rgba(255,255,255,0.1)',
-            overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
+            overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+            display: 'flex', flexDirection: 'column', maxHeight: '90vh'
           }}>
             <div style={{ padding: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#fff' }}>Xác nhận trả sách</h2>
-              <button onClick={() => setIsReturnModalOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#fff' }}>Chi tiết Phiếu mượn</h2>
+              <button 
+                onClick={() => setIsReturnModalOpen(false)} 
+                style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer', padding: '0 0.5rem' }}
+              >
+                ×
+              </button>
             </div>
             
-            <div style={{ padding: '2rem' }}>
-              <div style={{ marginBottom: '1.5rem', background: 'rgba(187,134,252,0.05)', padding: '1rem', borderRadius: '12px', borderLeft: '4px solid #bb86fc' }}>
-                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.25rem' }}>Sách đang trả:</p>
-                <p style={{ fontSize: '1.05rem', fontWeight: '600', color: '#fff' }}>{selectedReturnRecord?.book?.bookTitle}</p>
-                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.5rem' }}>Người mượn: <span style={{ color: '#bb86fc' }}>{selectedReturnRecord?.record?.memberName || selectedReturnRecord?.record?.userName}</span></p>
+            <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+              {/* THÔNG TIN ĐỘC GIẢ */}
+              <div style={{ marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '12px' }}>
+                <h3 style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>THÔNG TIN ĐỘC GIẢ</h3>
+                <p style={{ fontSize: '1.05rem', fontWeight: '600', color: '#fff' }}>{selectedReturnRecord?.memberName || selectedReturnRecord?.userName}</p>
+                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.6rem', fontSize: '0.85rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>SĐT: </span>
+                    {selectedReturnRecord?.borrowerPhone || selectedReturnRecord?.phone ? (
+                      <span style={{ color: '#fff', fontWeight: '500' }}>{selectedReturnRecord?.borrowerPhone || selectedReturnRecord?.phone}</span>
+                    ) : (
+                      <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>📞 Trống</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>Email: </span>
+                    {selectedReturnRecord?.userEmail || selectedReturnRecord?.email ? (
+                      <span style={{ color: '#fff', fontWeight: '500' }}>{selectedReturnRecord?.userEmail || selectedReturnRecord?.email}</span>
+                    ) : (
+                      <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>✉️ Trống</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
+              {/* THÔNG TIN SÁCH */}
+              <div style={{ marginBottom: '1.5rem', background: 'rgba(187,134,252,0.05)', padding: '1rem', borderRadius: '12px', borderLeft: '4px solid #bb86fc' }}>
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem' }}>
+                  {selectedReturnRecord?.books && selectedReturnRecord.books.length > 0 ? "Danh sách sách đang mượn:" : "Sách đang mượn:"}
+                </p>
+                
+                {selectedReturnRecord?.books && selectedReturnRecord.books.length > 0 ? (
+                  <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {selectedReturnRecord.books.map((b, idx) => (
+                      <li key={idx} style={{ fontSize: '1rem', fontWeight: '600', color: '#fff', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                        <span style={{ color: '#bb86fc' }}>•</span> {b.bookTitle || b.title}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={{ fontSize: '1.05rem', fontWeight: '600', color: '#fff' }}>{selectedReturnRecord?.bookTitle}</p>
+                )}
+              </div>
+
+              {/* TÌNH TRẠNG & GHI CHÚ */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Ghi chú tình trạng (Nếu có)</label>
                 <textarea
@@ -816,12 +911,12 @@ export default function ManageLoans() {
                   style={{
                     width: '100%', padding: '0.8rem', borderRadius: '10px',
                     background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#fff', fontSize: '0.9rem', outline: 'none', minHeight: '100px', resize: 'vertical'
+                    color: '#fff', fontSize: '0.9rem', outline: 'none', minHeight: '80px', resize: 'vertical'
                   }}
                 />
               </div>
 
-              <div style={{ marginBottom: '2rem' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Phí bồi thường (VNĐ)</label>
                 <div style={{ position: 'relative' }}>
                   <input
@@ -841,30 +936,69 @@ export default function ManageLoans() {
                 <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.5rem' }}>* Để trống hoặc nhập 0 nếu không có hư tổn.</p>
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem' }}>
+              {/* ACTIONS */}
+              <div style={{ display: 'flex', gap: '1rem', flexDirection: 'column' }}>
+                {/* NÚT THU HỒI TẤT CẢ (Primary action) */}
+                <button
+                  onClick={async () => {
+                    if (!confirm("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?")) return;
+                    
+                    setReturning(true);
+                    const loadingToast = toast.loading("Đang thu hồi tất cả sách...");
+                    try {
+                      // Fetch API mới tạo
+                      const res = await fetch('/api/admin/return-all', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          recordId: selectedReturnRecord.id,
+                          transactionId: selectedReturnRecord.transactionId || selectedReturnRecord.slipId,
+                          books: selectedReturnRecord.books || (!selectedReturnRecord.books && selectedReturnRecord.bookId ? [{ bookId: selectedReturnRecord.bookId, bookTitle: selectedReturnRecord.bookTitle, recordId: selectedReturnRecord.id }] : []),
+                          adminId: user.uid,
+                          returnNote: returnNote,
+                          penaltyAmount: Number(penaltyFee) || 0
+                        })
+                      });
+                      if (res.ok) {
+                        toast.success("Thu hồi toàn bộ sách thành công!", { id: loadingToast });
+                        setIsReturnModalOpen(false);
+                        fetchData();
+                      } else {
+                        const data = await res.json();
+                        toast.error(data.message || data.error || "Thu hồi thất bại", { id: loadingToast });
+                      }
+                    } catch (error) {
+                      console.error(error);
+                      toast.error("Lỗi kết nối server", { id: loadingToast });
+                    } finally {
+                      setReturning(false);
+                    }
+                  }}
+                  disabled={returning}
+                  style={{
+                    width: '100%', padding: '0.9rem', borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #ff416c, #ff4b2b)',
+                    color: '#fff', border: 'none', cursor: 'pointer',
+                    fontWeight: '700', fontSize: '1rem',
+                    boxShadow: '0 6px 15px -3px rgba(255,65,108,0.4)',
+                    opacity: returning ? 0.7 : 1, transition: 'all 0.2s',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {returning ? 'Đang thực hiện...' : 'Thu hồi tất cả sách'}
+                </button>
+                
+                {/* Nút Đóng */}
                 <button
                   onClick={() => setIsReturnModalOpen(false)}
                   style={{
-                    flex: 1, padding: '0.8rem', borderRadius: '12px',
+                    width: '100%', padding: '0.8rem', borderRadius: '12px',
                     background: 'rgba(255,255,255,0.05)', color: '#fff',
                     border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer',
                     fontWeight: '600', transition: 'all 0.2s'
                   }}
                 >
-                  Hủy
-                </button>
-                <button
-                  onClick={confirmReturn}
-                  disabled={returning}
-                  style={{
-                    flex: 1, padding: '0.8rem', borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #bb86fc, #9965f4)',
-                    color: '#fff', border: 'none', cursor: 'pointer',
-                    fontWeight: '600', boxShadow: '0 10px 20px -5px rgba(187,134,252,0.3)',
-                    opacity: returning ? 0.7 : 1
-                  }}
-                >
-                  {returning ? 'Đang thực hiện...' : 'Xác nhận trả'}
+                  Đóng
                 </button>
               </div>
             </div>
