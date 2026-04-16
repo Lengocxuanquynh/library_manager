@@ -5,6 +5,8 @@ import { useAuth } from "./AuthProvider";
 import { useCart } from "./CartProvider";
 import { toast } from "sonner";
 import { useRouter, usePathname } from "next/navigation";
+import OTPModal from "./OTPModal";
+import { sendMail } from "../services/emailService";
 
 export default function FloatingCart() {
   const { cart, isDrawerOpen, setIsDrawerOpen, removeFromCart, clearCart } = useCart();
@@ -31,10 +33,12 @@ export default function FloatingCart() {
   };
 
   const [submitting, setSubmitting] = useState(false);
-  const [phone, setPhone] = useState("");
-  const [cccd, setCccd] = useState("");
   const [email, setEmail] = useState("");
-  const [showValidationForm, setShowValidationForm] = useState(false);
+  
+  // OTP States
+  const [showOTP, setShowOTP] = useState(false);
+  const [generatedOTP, setGeneratedOTP] = useState("");
+  const [isSendingOTP, setIsSendingOTP] = useState(false);
 
   // Initialize email from auth user if available
   useEffect(() => {
@@ -43,7 +47,7 @@ export default function FloatingCart() {
     }
   }, [user]);
 
-  const handleCheckoutClick = () => {
+  const handleCheckoutClick = async () => {
     if (!user) {
       toast.error("Vui lòng đăng nhập để mượn sách");
       router.push("/login");
@@ -51,14 +55,41 @@ export default function FloatingCart() {
       return;
     }
     
-    // Check validation
-    if (!phone.trim() || !cccd.trim() || !email.trim()) {
-      setShowValidationForm(true);
-      toast.info("Vui lòng cập nhật đù thông tin trước khi xác nhận");
-      return;
+    // Gửi OTP xác nhận
+    setIsSendingOTP(true);
+    const newOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOTP(newOTP);
+
+    try {
+      const result = await sendMail(
+        email, 
+        user.displayName || "Thành viên Thư Viện", 
+        newOTP 
+        // Dùng tạm khuôn OTP đăng nhập, tương lai có thể thay bằng Template mượn sách
+      );
+      
+      if (result.mock) {
+        toast.success(`[DEV MODE] OTP mô phỏng: ${result.otp}`, { duration: 10000 });
+      } else {
+        toast.success("Mã đóng dấu OTP đã được gửi về email của bạn!");
+      }
+      setShowOTP(true);
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể gửi OTP. Vui lòng thử lại sau.");
+    } finally {
+      setIsSendingOTP(false);
     }
-    
-    submitBorrowRequest();
+  };
+
+  const onVerifyOTP = (inputOTP) => {
+    if (inputOTP === generatedOTP) {
+      toast.success("Xác thực Chữ ký số thành công!");
+      setShowOTP(false);
+      submitBorrowRequest(); // Đi tới chốt đơn Firestore
+    } else {
+      toast.error("Mã OTP không chính xác.");
+    }
   };
 
   const submitBorrowRequest = async () => {
@@ -74,8 +105,8 @@ export default function FloatingCart() {
           userId: user.uid,
           userName: user.displayName || email || "Ẩn danh",
           email: email.trim(),
-          phone: phone.trim(),
-          cccd: cccd.trim(),
+          phone: "Xác thực OTP", // Trả về text mặc định do đã hủy form
+          cccd: "Xác thực OTP",
           books: cart.map(b => ({ bookId: b.id, bookTitle: b.title })),
           paymentStatus: "PENDING", // Will define logic
           isAdmin: user.role === 'admin',
@@ -84,10 +115,9 @@ export default function FloatingCart() {
 
       const data = await res.json();
       if (res.ok) {
-        toast.success("Đã gửi yêu cầu mượn sách thành công!", { id: loadingToast });
+        toast.success("Đã mượn sách thành công! Hệ thống đã ghi nhận.", { id: loadingToast });
         clearCart();
         setIsDrawerOpen(false);
-        setShowValidationForm(false);
       } else {
         toast.error(data.error || "Có lỗi xảy ra", { id: loadingToast });
       }
@@ -100,6 +130,18 @@ export default function FloatingCart() {
   };
 
   const isCartEmpty = cart.length === 0;
+
+  if (showOTP) {
+    return (
+      <OTPModal
+        email={email}
+        isSending={isSendingOTP}
+        onVerify={onVerifyOTP}
+        onCancel={() => setShowOTP(false)}
+        resendOTP={() => handleCheckoutClick()} // Mượn hàm để gửi lại
+      />
+    );
+  }
 
   return (
     <>
@@ -227,16 +269,6 @@ export default function FloatingCart() {
             </div>
           )}
           
-          {showValidationForm && !isCartEmpty && (
-             <div style={{ marginTop: "2rem", background: "rgba(255,95,86,0.05)", border: "1px solid rgba(255,95,86,0.3)", padding: "1rem", borderRadius: "8px", animation: "fadeIn 0.3s" }}>
-                <h4 style={{ margin: "0 0 1rem 0", color: "#ff5f56", fontSize: "0.9rem" }}>Vui lòng cập nhật thông tin:</h4>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-                  <input type="text" placeholder="Số điện thoại (*)" value={phone} onChange={e => setPhone(e.target.value)} style={{ padding: "0.8rem", borderRadius: "6px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", outline: "none" }} />
-                  <input type="text" placeholder="Số CCCD/CMND (*)" value={cccd} onChange={e => setCccd(e.target.value)} style={{ padding: "0.8rem", borderRadius: "6px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", outline: "none" }} />
-                  <input type="email" placeholder="Email (*)" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: "0.8rem", borderRadius: "6px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", outline: "none" }} />
-                </div>
-             </div>
-          )}
         </div>
 
         {/* Footer */}

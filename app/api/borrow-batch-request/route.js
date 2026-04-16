@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '../../../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, where, updateDoc, doc } from 'firebase/firestore';
 import { canUserBorrow, isBookAvailable } from '../../../services/db';
 
 export async function POST(request) {
@@ -34,7 +34,45 @@ export async function POST(request) {
       return NextResponse.json({ error: userStatus.reason }, { status: 400 });
     }
 
-    // Create a unified borrow request
+    // 3. Xử lý Gộp Đơn (Dynamic Merge)
+    const qPending = query(
+      collection(db, "borrowRequests"), 
+      where("userId", "==", userId), 
+      where("status", "==", "PENDING")
+    );
+    const pendingSnap = await getDocs(qPending);
+    
+    if (!pendingSnap.empty) {
+      const existingDoc = pendingSnap.docs[0];
+      const existingData = existingDoc.data();
+      const existingBooks = existingData.books || [];
+      
+      // Lọc các sách chưa có trong đơn Pending
+      const uniqueNewBooks = books.filter(newB => !existingBooks.some(oldB => oldB.bookId === newB.bookId));
+      
+      if (uniqueNewBooks.length === 0) {
+        return NextResponse.json({ error: 'Tất cả sách này đã nằm sẵn trong đơn chờ duyệt của bạn rồi.' }, { status: 400 });
+      }
+
+      if (existingBooks.length + uniqueNewBooks.length > 3) {
+        return NextResponse.json({ 
+          error: `Giỏ hàng bị đầy! Bạn đang có ${existingBooks.length} cuốn chờ duyệt. Tổng sách không được quá 3 cuốn.` 
+        }, { status: 400 });
+      }
+      
+      // Gộp đơn
+      await updateDoc(doc(db, "borrowRequests", existingDoc.id), {
+        books: [...existingBooks, ...uniqueNewBooks]
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Đã GỘP THÊM ${uniqueNewBooks.length} cuốn vào Đơn mượn đang chờ duyệt của bạn!`,
+        id: existingDoc.id
+      });
+    }
+
+    // 4. Nếu không có đơn Pending nào, tạo Đơn mới
     const docRef = await addDoc(collection(db, "borrowRequests"), {
       userId,
       userName: userName || 'Ẩn danh',

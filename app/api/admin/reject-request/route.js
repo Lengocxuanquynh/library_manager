@@ -8,13 +8,13 @@ export async function POST(request) {
     const { requestId, adminId } = body;
 
     if (!requestId || !adminId) {
-      return NextResponse.json({ error: 'Thiếu requestId hoặc adminId' }, { status: 400 });
+      return NextResponse.json({ message: 'Thiếu requestId hoặc adminId' }, { status: 400 });
     }
 
     // Security check
     const isAdmin = await verifyAdmin(adminId);
     if (!isAdmin) {
-      return NextResponse.json({ error: 'Bạn không có quyền thực hiện hành động này' }, { status: 403 });
+      return NextResponse.json({ message: 'Bạn không có quyền thực hiện hành động này' }, { status: 403 });
     }
 
     await rejectBorrowRequest(requestId);
@@ -25,6 +25,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('Error in reject-request API:', error);
-    return NextResponse.json({ error: 'Lỗi hệ thống khi từ chối yêu cầu.' }, { status: 500 });
+    return NextResponse.json({ message: 'Lỗi hệ thống khi từ chối yêu cầu.' }, { status: 500 });
   }
 }

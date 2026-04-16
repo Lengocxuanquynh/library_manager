@@ -75,6 +75,6 @@ export async function POST() {
     });
   } catch (error) {
     console.error('Error in clean-expired-pickups:', error);
-    return NextResponse.json({ error: 'Lỗi hệ thống khi dọn phiếu hết hạn.' }, { status: 500 });
+    return NextResponse.json({ message: 'Lỗi hệ thống khi dọn phiếu hết hạn.' }, { status: 500 });
   }
 }

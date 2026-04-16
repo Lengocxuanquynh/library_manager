@@ -201,70 +201,108 @@ export const getBorrowRecords = async (userId = null) => {
   const now = new Date();
   return data.map(record => {
     let currentStatus = record.status;
+    let books = record.books || [];
+
+    // Fallback for legacy flat records
+    if (books.length === 0 && record.bookId) {
+      books = [{
+        bookId: record.bookId,
+        bookTitle: record.bookTitle,
+        status: record.status,
+        borrowDate: record.borrowDate,
+        dueDate: record.dueDate,
+        returnDate: record.returnDate
+      }];
+    }
 
     // Convert dueDate to JS Date for comparison
     let dueDate = null;
-    if (record.dueDate?._seconds) dueDate = new Date(record.dueDate._seconds * 1000);
-    else if (record.dueDate?.seconds) dueDate = new Date(record.dueDate.seconds * 1000);
-    else if (typeof record.dueDate?.toDate === 'function') dueDate = record.dueDate.toDate();
-    else if (record.dueDate) dueDate = new Date(record.dueDate);
+    const recordDueDate = record.dueDate;
+    if (recordDueDate?._seconds) dueDate = new Date(recordDueDate._seconds * 1000);
+    else if (recordDueDate?.seconds) dueDate = new Date(recordDueDate.seconds * 1000);
+    else if (typeof recordDueDate?.toDate === 'function') dueDate = recordDueDate.toDate();
+    else if (recordDueDate) dueDate = new Date(recordDueDate);
 
-    if ((currentStatus === 'BORROWING' || currentStatus === 'Active') && dueDate && dueDate < now) {
+    // If active and past due date, mark as OVERDUE
+    const isActive = (currentStatus === 'BORROWING' || currentStatus === 'Active' || currentStatus === 'PARTIALLY_RETURNED');
+    if (isActive && dueDate && dueDate < now) {
       currentStatus = 'OVERDUE';
     }
-    return { ...record, status: currentStatus };
+
+    return { ...record, books, status: currentStatus };
   }).sort((a, b) => (b.borrowDate?.toMillis() || 0) - (a.borrowDate?.toMillis() || 0));
 };
 
-export const createBorrowRecord = async (userId, bookId, userName, bookTitle, customBorrowDate = null, customDueDate = null, autoDecrement = true, borrowerPhone = "") => {
+export const createBorrowRecord = async (userId, userName, books, customBorrowDate = null, customDueDate = null, autoDecrement = true, borrowerPhone = "") => {
   const borrowDateObj = customBorrowDate ? new Date(customBorrowDate) : new Date();
-  const dueDateObj = customDueDate ? new Date(customDueDate) : (customBorrowDate ? new Date(customBorrowDate) : new Date());
+  const dueDateObj = customDueDate ? new Date(customDueDate) : new Date(borrowDateObj);
 
   if (!customDueDate) {
     dueDateObj.setDate(dueDateObj.getDate() + 14); // Default 14 days
   }
 
+  const initialStatus = autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP';
+
+  // Process all books
+  const booksWithStatus = books.map(b => ({
+    bookId: b.bookId,
+    bookTitle: b.bookTitle,
+    status: initialStatus,
+    returnDate: null,
+    penaltyAmount: 0
+  }));
+
   if (autoDecrement) {
-    // Decrement book quantity atomically
-    const bookRef = doc(db, "books", bookId);
-    await updateDoc(bookRef, {
-      quantity: increment(-1)
-    });
+    // Decrement quantities atomically
+    for (const b of books) {
+      const bookRef = doc(db, "books", b.bookId);
+      await updateDoc(bookRef, {
+        quantity: increment(-1)
+      });
+    }
   }
 
   return await addDoc(collection(db, "borrowRecords"), {
     userId,
-    bookId,
     userName,
-    bookTitle,
+    books: booksWithStatus,
     borrowerPhone: borrowerPhone || "",
     borrowDate: autoDecrement ? (customBorrowDate ? borrowDateObj : serverTimestamp()) : null,
     dueDate: autoDecrement ? dueDateObj : null,
-    returnDate: null,
-    status: autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP'
+    status: initialStatus,
+    createdAt: serverTimestamp()
   });
 };
 
-export const confirmBorrowPickup = async (recordId, bookId) => {
+export const confirmBorrowPickup = async (recordId) => {
   const recordRef = doc(db, "borrowRecords", recordId);
+  const recordSnap = await getDoc(recordRef);
+  
+  if (!recordSnap.exists()) return;
+  const data = recordSnap.data();
 
   const dueDateObj = new Date();
   dueDateObj.setDate(dueDateObj.getDate() + 14);
+
+  // Update all books status
+  const updatedBooks = (data.books || []).map(b => ({
+    ...b,
+    status: 'BORROWING'
+  }));
 
   await updateDoc(recordRef, {
     status: 'BORROWING',
     pickupDate: serverTimestamp(),
     borrowDate: serverTimestamp(),
-    dueDate: dueDateObj
+    dueDate: dueDateObj,
+    books: updatedBooks
   });
-
-  // Quantity already decremented at approval (Reservation model)
 };
 
-export const approveBorrowRequest = async (requestId, userId, bookId, userName, bookTitle) => {
+export const approveBorrowRequest = async (requestId, userId, userName, books) => {
   await updateBorrowRequestStatus(requestId, 'APPROVED');
-  // For online approval, we reserve the book (decrement quantity) immediately
-  return await createBorrowRecord(userId, bookId, userName, bookTitle, null, null, true);
+  // For online approval, we reserve the books (decrement quantity) immediately
+  return await createBorrowRecord(userId, userName, books, null, null, true);
 };
 
 export const rejectBorrowRequest = async (requestId) => {
@@ -273,27 +311,39 @@ export const rejectBorrowRequest = async (requestId) => {
 
 export const returnBorrowRecord = async (recordId, bookId, returnNote = '', penaltyAmount = 0) => {
   const recordRef = doc(db, "borrowRecords", recordId);
-
-  // Fetch the record to check the due date
   const recordSnap = await getDoc(recordRef);
-  let finalStatus = 'RETURNED';
 
-  if (recordSnap.exists()) {
-    const data = recordSnap.data();
-    const dueDate = data.dueDate?.toDate ? data.dueDate.toDate() : (data.dueDate ? new Date(data.dueDate) : null);
-    const now = new Date();
-
-    if (dueDate && now > dueDate) {
-      finalStatus = 'RETURNED_OVERDUE';
+  if (!recordSnap.exists()) return;
+  const data = recordSnap.data();
+  const books = data.books || [];
+  
+  // Find which book is being returned
+  let allReturned = true;
+  const updatedBooks = books.map(b => {
+    if (b.bookId === bookId && b.status !== 'RETURNED' && b.status !== 'RETURNED_OVERDUE') {
+      const dueDate = data.dueDate?.toDate ? data.dueDate.toDate() : (data.dueDate ? new Date(data.dueDate) : null);
+      const now = new Date();
+      const finalStatus = (dueDate && now > dueDate) ? 'RETURNED_OVERDUE' : 'RETURNED';
+      
+      return {
+        ...b,
+        status: finalStatus,
+        actualReturnDate: new Date(),
+        returnNote: returnNote || '',
+        penaltyAmount: Number(penaltyAmount) || 0
+      };
     }
-  }
+    
+    // Check if others are still borrowed
+    if (b.status === 'BORROWING' || b.status === 'APPROVED_PENDING_PICKUP') {
+      allReturned = false;
+    }
+    return b;
+  });
 
   await updateDoc(recordRef, {
-    status: finalStatus,
-    returnDate: serverTimestamp(),
-    actualReturnDate: serverTimestamp(),
-    returnNote: returnNote || '',
-    penaltyAmount: Number(penaltyAmount) || 0,
+    books: updatedBooks,
+    status: allReturned ? 'RETURNED' : 'PARTIALLY_RETURNED'
   });
 
   // Increase book quantity atomically
@@ -310,19 +360,27 @@ export const canUserBorrow = async (userId, isAdmin = false) => {
   if (isAdmin) return { canBorrow: true }; // Admin bypass
 
   const records = await getBorrowRecords(userId);
+  
+  // 1. Quá hạn
   const overdueRecord = records.find(r => r.status === 'OVERDUE');
   if (overdueRecord) return {
     canBorrow: false,
     reason: `Bạn đang có sách quá hạn chưa trả: "${overdueRecord.bookTitle}". Vui lòng trả sách trước khi mượn cuốn mới. [ID: ${overdueRecord.id}]`
   };
 
-  // Check if user has a book approved but not yet picked up
+  // 2. Chờ lấy sách
   const hasPendingPickup = records.some(r => r.status === 'APPROVED_PENDING_PICKUP');
-  if (hasPendingPickup) return { canBorrow: false, reason: 'Bạn đang có sách đã được duyệt, vui lòng đến thư viện lấy sách trước.' };
+  if (hasPendingPickup) return { canBorrow: false, reason: 'Bạn đang có sách đã được duyệt, vui lòng ra quầy lấy sách trước.' };
 
-  // Also check if they already requested this book and it's pending
-  const requests = await getBorrowRequests('PENDING', userId);
-  if (requests.length > 0) return { canBorrow: false, reason: 'Bạn đang có một yêu cầu mượn sách đang chờ duyệt.' };
+  // 3. Đang mượn hợc trả thiếu (TRẢ HẾT MỚI ĐƯỢC MƯỢN MỚI)
+  const isCurrentlyHoldingBooks = records.some(r => r.status === 'BORROWING' || r.status === 'PARTIALLY_RETURNED');
+  if (isCurrentlyHoldingBooks) return { 
+    canBorrow: false, 
+    reason: 'Luật Thư Viện: Bạn đang mượn sách. Vui lòng đem trả TOÀN BỘ sách đang giữ để có thể mượn đợt mới.' 
+  };
+
+  // Tính năng Gộp Đơn (Dynamic Cart): Đã gỡ bỏ luật cấm tạo Yêu Cầu khi đang có Đơn Pending.
+  // Việc giới hạn Tổng số sách <= 3 sẽ được xử lý ở Tầng API Mượn sách hàng loạt.
 
   return { canBorrow: true };
 };
