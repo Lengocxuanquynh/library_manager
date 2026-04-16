@@ -14,37 +14,32 @@ export async function POST(request) {
     }
 
     // Process each book
-    const results = [];
-    for (const bookInfo of books) {
-      const { bookId, bookTitle } = bookInfo;
-      
-      // 1. Check if book is available
-      const available = await isBookAvailable(bookId);
+    // 1. Check if all books are available
+    for (const b of books) {
+      if (!b.bookId) continue;
+      const available = await isBookAvailable(b.bookId);
       if (!available) {
-        continue; // Skip unavailable books in a multi-book request or handle error
+        return NextResponse.json({ error: `Sách "${b.bookTitle}" hiện không khả dụng.` }, { status: 400 });
       }
-
-      // 2. Create the record
-      await createBorrowRecord(
-        userId || `guest_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
-        bookId, 
-        userName, 
-        bookTitle, 
-        borrowDate, 
-        dueDate,
-        true, // autoDecrement for offline
-        borrowerPhone
-      );
-      results.push(bookTitle);
     }
 
-    if (results.length === 0) {
-      return NextResponse.json({ error: 'Không có sách nào khả dụng để mượn.' }, { status: 400 });
-    }
+    const finalUserId = userId || `guest_${Date.now()}`;
+
+    // 2. Create a single grouped record
+    const result = await createBorrowRecord(
+      finalUserId,
+      userName,
+      books.map(b => ({ bookId: b.bookId, bookTitle: b.bookTitle })),
+      borrowDate, 
+      dueDate,
+      true, // autoDecrement for offline
+      borrowerPhone
+    );
 
     return NextResponse.json({
       success: true,
-      message: `Tạo phiếu mượn thành công cho ${results.length} cuốn sách.`
+      message: `Tạo phiếu mượn thành công cho ${books.length} cuốn sách.`,
+      recordId: result.id
     });
   } catch (error) {
     console.error('Error in borrow-records API:', error);
