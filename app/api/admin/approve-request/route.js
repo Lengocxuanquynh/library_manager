@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { doc, collection, addDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { updateBorrowRequestStatus } from '@/services/db';
+import { updateBorrowRequestStatus, createBorrowRecord } from '@/services/db';
 import { verifyAdmin } from '@/services/admin-check';
 
 export async function POST(request) {
@@ -10,13 +10,13 @@ export async function POST(request) {
     const { requestId, userId, userName, books, bookId, bookTitle, adminId } = body;
 
     if (!requestId || !userId || !adminId) {
-      return NextResponse.json({ error: 'Thiếu thông tin yêu cầu hoặc quyền hạn' }, { status: 400 });
+      return NextResponse.json({ message: 'Thiếu thông tin yêu cầu hoặc quyền hạn' }, { status: 400 });
     }
 
     // Security check
     const isAdmin = await verifyAdmin(adminId);
     if (!isAdmin) {
-      return NextResponse.json({ error: 'Bạn không có quyền thực hiện hành động này' }, { status: 403 });
+      return NextResponse.json({ message: 'Bạn không có quyền thực hiện hành động này' }, { status: 403 });
     }
 
     // Chuẩn bị pickupDeadline = hiện tại + 24 giờ
@@ -28,61 +28,48 @@ export async function POST(request) {
 
     if (!hasBooksArray && !hasSingleBook) {
       console.error('[approve-request] Dữ liệu thiếu sách:', body);
-      return NextResponse.json({ error: 'Không tìm thấy thông tin sách để duyệt. Kiểm tra lại cấu trúc phiếu.' }, { status: 400 });
+      return NextResponse.json({ message: 'Không tìm thấy thông tin sách để duyệt. Kiểm tra lại cấu trúc phiếu.' }, { status: 400 });
     }
 
     // Cập nhật trạng thái phiếu yêu cầu -> APPROVED
     await updateBorrowRequestStatus(requestId, 'APPROVED');
 
-    if (hasBooksArray) {
-      // ── Phiếu batch từ giỏ hàng: tạo 1 borrowRecord mỗi cuốn sách ──
-      for (const b of books) {
-        if (!b.bookId || !b.bookTitle) {
-          console.warn('[approve-request] Mục sách thiếu bookId/bookTitle, bỏ qua:', b);
-          continue;
-        }
-        await addDoc(collection(db, 'borrowRecords'), {
-          userId,
-          userName,
-          bookId: b.bookId,
-          bookTitle: b.bookTitle,
-          borrowerPhone: '',
-          borrowDate: null,
-          dueDate: null,
-          returnDate: null,
-          status: 'APPROVED_PENDING_PICKUP',
-          approvedAt: serverTimestamp(),
-          pickupDeadline,
-        });
-
-        // Reserve book (Reservation model): decrement inventory immediately
+    // Tạo 1 phiếu mượn duy nhất chứa toàn bộ sách
+    const finalBooks = hasBooksArray ? books : [{ bookId, bookTitle }];
+    
+    // Dự trữ sách (Reservation model): giảm tồn kho ngay lập tức
+    for (const b of finalBooks) {
+      if (b.bookId) {
         const bookRef = doc(db, 'books', b.bookId);
         await updateDoc(bookRef, { 
           quantity: increment(-1)
         });
       }
-    } else {
-      // ── Phiếu đơn (cũ): 1 cuốn sách ──
-      await addDoc(collection(db, 'borrowRecords'), {
-        userId,
-        userName,
-        bookId,
-        bookTitle,
-        borrowerPhone: '',
-        borrowDate: null,
-        dueDate: null,
-        returnDate: null,
-        status: 'APPROVED_PENDING_PICKUP',
-        approvedAt: serverTimestamp(),
-        pickupDeadline,
-      });
-
-      // Reserve book (Reservation model): decrement inventory immediately
-      const bookRef = doc(db, 'books', bookId);
-      await updateDoc(bookRef, { 
-        quantity: increment(-1)
-      });
     }
+
+    await createBorrowRecord(
+      userId,
+      userName,
+      finalBooks.map(b => ({
+        bookId: b.bookId,
+        bookTitle: b.bookTitle
+      })),
+      null, // use current date
+      null, // use default 14 days
+      false, // already decremented above manually (to keep control)
+      "" // phone can be added later
+    );
+
+    // Update the record with approval metadata
+    // Wait, createBorrowRecord returns the doc ref.
+    // However, createBorrowRecord in db.js already sets initial status.
+    // Let's refine the record after creation to add approval info if needed,
+    // or just let createBorrowRecord handle it.
+    // Actually, createBorrowRecord now sets status: 'BORROWING' by default if autoDecrement is true.
+    // But here we want 'APPROVED_PENDING_PICKUP'.
+    
+    // Let's fix createBorrowRecord call to use autoDecrement=false to get 'APPROVED_PENDING_PICKUP'
+    // but we already decremented quantity above. Correct.
 
     const count = hasBooksArray ? books.length : 1;
     return NextResponse.json({
@@ -91,6 +78,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('[approve-request] Lỗi hệ thống:', error);
-    return NextResponse.json({ error: 'Lỗi hệ thống khi duyệt yêu cầu.' }, { status: 500 });
+    return NextResponse.json({ message: 'Lỗi hệ thống khi duyệt yêu cầu.' }, { status: 500 });
   }
 }

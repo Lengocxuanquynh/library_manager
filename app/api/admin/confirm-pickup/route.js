@@ -5,18 +5,18 @@ import { verifyAdmin } from '../../../../services/admin-check';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { recordId, bookId, adminId } = body;
+    const { recordId, adminId } = body;
 
-    if (!recordId || !bookId || !adminId) {
-      return NextResponse.json({ error: 'Thiếu thông tin yêu cầu' }, { status: 400 });
+    if (!recordId || !adminId) {
+      return NextResponse.json({ message: 'Thiếu thông tin yêu cầu' }, { status: 400 });
     }
 
     const isAdmin = await verifyAdmin(adminId);
     if (!isAdmin) {
-      return NextResponse.json({ error: 'Bạn không có quyền thực hiện hành động này' }, { status: 403 });
+      return NextResponse.json({ message: 'Bạn không có quyền thực hiện hành động này' }, { status: 403 });
     }
 
-    await confirmBorrowPickup(recordId, bookId);
+    await confirmBorrowPickup(recordId);
 
     return NextResponse.json({
       success: true,
@@ -24,6 +24,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('Error in confirm-pickup API:', error);
-    return NextResponse.json({ error: 'Lỗi hệ thống khi xác nhận lấy sách.' }, { status: 500 });
+    return NextResponse.json({ message: 'Lỗi hệ thống khi xác nhận lấy sách.' }, { status: 500 });
   }
 }

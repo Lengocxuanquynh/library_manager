@@ -97,45 +97,67 @@ export default function UserDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions.map(tx => {
+                   {transactions.map(tx => {
+                    const books = tx.books || (tx.bookId ? [{ bookId: tx.bookId, bookTitle: tx.bookTitle, status: tx.status }] : []);
                     const isPendingPickup = tx.status === 'APPROVED_PENDING_PICKUP';
-                    const isBorrowing = tx.status === 'BORROWING';
                     const isOverdue = tx.status === 'OVERDUE';
-                    const isReturned = tx.status === 'RETURNED';
-                    const canReturn = isBorrowing || isOverdue;
+                    const isPartiallyReturned = tx.status === 'PARTIALLY_RETURNED';
 
                     return (
                       <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={{ padding: '1rem', fontWeight: '500' }}>{tx.bookTitle}</td>
-                        <td style={{ padding: '1rem' }}>{formatDate(tx.borrowDate)}</td>
-                        <td style={{ padding: '1rem' }}>{formatDate(tx.dueDate)}</td>
                         <td style={{ padding: '1rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {books.map((b, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', background: 'rgba(255,255,255,0.02)', padding: '0.4rem 0.8rem', borderRadius: '6px' }}>
+                                <span style={{ fontWeight: '500', color: (b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE') ? 'rgba(255,255,255,0.3)' : '#fff' }}>
+                                  {b.bookTitle}
+                                </span>
+                                {(b.status === 'BORROWING' || (isOverdue && b.status !== 'RETURNED')) && (
+                                  <button 
+                                    onClick={() => handleReturn(tx.id, b.bookId)} 
+                                    style={{ background: 'rgba(39, 201, 63, 0.1)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.2)', padding: '0.2rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                  >
+                                    Trả Sách
+                                  </button>
+                                )}
+                                {(b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE') && (
+                                  <span style={{ fontSize: '0.75rem', color: '#27c93f', fontStyle: 'italic' }}>✓ Đã trả</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td style={{ padding: '1rem', verticalAlign: 'top' }}>{formatDate(tx.borrowDate)}</td>
+                        <td style={{ padding: '1rem', verticalAlign: 'top' }}>{formatDate(tx.dueDate)}</td>
+                        <td style={{ padding: '1rem', verticalAlign: 'top' }}>
                           <span style={{
                             background: isOverdue ? 'rgba(255, 95, 86, 0.2)' 
-                              : isBorrowing ? 'rgba(39, 201, 63, 0.2)' 
                               : isPendingPickup ? 'rgba(187, 134, 252, 0.2)' 
+                              : isPartiallyReturned ? 'rgba(39, 201, 63, 0.1)'
+                              : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' 
                               : 'rgba(255, 255, 255, 0.1)',
                             color: isOverdue ? '#ff5f56' 
-                              : isBorrowing ? '#27c93f' 
                               : isPendingPickup ? '#bb86fc' 
+                              : isPartiallyReturned ? '#27c93f'
+                              : tx.status === 'BORROWING' ? '#27c93f'
                               : '#aaa',
                             padding: '0.25rem 0.5rem',
                             borderRadius: '4px',
-                            fontSize: '0.85rem'
+                            fontSize: '0.85rem',
+                            fontWeight: '600'
                           }}>
-                            {isBorrowing ? 'Đang Mượn' 
-                              : isOverdue ? 'Quá Hạn' 
-                              : isPendingPickup ? 'Chờ Lấy Sách' 
-                              : 'Đã Trả'}
+                            {isOverdue ? 'QUÁ HẠN' 
+                              : isPendingPickup ? 'CHỜ LẤY SÁCH' 
+                              : isPartiallyReturned ? 'ĐANG TRẢ DẦN'
+                              : tx.status === 'BORROWING' ? 'ĐANG MƯỢN'
+                              : 'ĐÃ TRẢ HẾT'}
                           </span>
                         </td>
-                        <td style={{ padding: '1rem' }}>
-                          {canReturn ? (
-                            <button onClick={() => handleReturn(tx.id, tx.bookId)} style={{ background: 'rgba(39, 201, 63, 0.1)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer' }}>Trả Sách</button>
-                          ) : isPendingPickup ? (
+                        <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                          {isPendingPickup ? (
                             <span style={{ color: '#bb86fc', fontSize: '0.85rem', fontStyle: 'italic' }}>Đến thư viện lấy sách</span>
                           ) : (
-                            <span style={{ color: '#666', fontSize: '0.9rem' }}>N/A</span>
+                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.85rem' }}>—</span>
                           )}
                         </td>
                       </tr>
