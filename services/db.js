@@ -23,6 +23,7 @@ const getCollectionData = async (colRef) => {
 // ========================
 // BOOKS
 // ========================
+
 export const getBooks = async () => {
   const q = query(collection(db, "books"), orderBy("title"));
   return await getCollectionData(q);
@@ -310,9 +311,9 @@ export const canUserBorrow = async (userId, isAdmin = false) => {
 
   const records = await getBorrowRecords(userId);
   const overdueRecord = records.find(r => r.status === 'OVERDUE');
-  if (overdueRecord) return { 
-    canBorrow: false, 
-    reason: `Bạn đang có sách quá hạn chưa trả: "${overdueRecord.bookTitle}". Vui lòng trả sách trước khi mượn cuốn mới. [ID: ${overdueRecord.id}]` 
+  if (overdueRecord) return {
+    canBorrow: false,
+    reason: `Bạn đang có sách quá hạn chưa trả: "${overdueRecord.bookTitle}". Vui lòng trả sách trước khi mượn cuốn mới. [ID: ${overdueRecord.id}]`
   };
 
   // Check if user has a book approved but not yet picked up
