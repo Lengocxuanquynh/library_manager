@@ -39,6 +39,7 @@ export default function ManageLoans() {
   const [returnNote, setReturnNote] = useState("");
   const [penaltyFee, setPenaltyFee] = useState(0);
   const [returning, setReturning] = useState(false);
+  const [isNotifying, setIsNotifying] = useState(false);
 
   useEffect(() => {
     if (user) fetchData();
@@ -230,6 +231,30 @@ const handleOpenDetail = (record) => {
     }
   };
 
+  const handleNotifyOverdue = async () => {
+    if (!confirm("Xác nhận gửi email nhắc nhở tới TẤT CẢ độc giả đang quá hạn trả sách?")) return;
+    setIsNotifying(true);
+    const loadingToast = toast.loading("Đang gửi thông báo nhắc nợ...");
+    try {
+      const res = await fetch('/api/admin/notify-overdue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: user.uid })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message, { id: loadingToast });
+      } else {
+        toast.error(data.message || "Gửi thông báo thất bại", { id: loadingToast });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi kết nối server", { id: loadingToast });
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
   // Helper: parse any Firestore/JS date to JS Date object
   const toJsDate = (d) => {
     if (!d) return null;
@@ -283,17 +308,21 @@ const handleOpenDetail = (record) => {
           <button
             className={activeTab === 'requests' ? 'btn-primary' : 'btn-outline'}
             onClick={() => setActiveTab('requests')}
-            style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}
+            style={{ 
+              padding: '0.6rem 1.1rem', fontSize: '0.9rem',
+              background: activeTab === 'requests' ? 'rgba(255, 152, 0, 0.2)' : 'transparent',
+              color: activeTab === 'requests' ? '#ff9800' : 'rgba(255,255,255,0.6)',
+              borderColor: activeTab === 'requests' ? '#ff9800' : 'rgba(255,255,255,0.1)'
+            }}
           >
-            Chờ Duyệt ({requests.length})
+            📋 Chờ Duyệt ({requests.length})
           </button>
 
-          {/* Chờ Lấy Sách */}
           <button
             onClick={() => { setActiveTab('records'); setFilterStatus('APPROVED_PENDING_PICKUP'); }}
             style={{
               background: (activeTab === 'records' && filterStatus === 'APPROVED_PENDING_PICKUP') ? 'rgba(187,134,252,0.2)' : 'transparent',
-              border: '1px solid rgba(187,134,252,0.4)',
+              border: '1px solid ' + ((activeTab === 'records' && filterStatus === 'APPROVED_PENDING_PICKUP') ? '#bb86fc' : 'rgba(187,134,252,0.3)'),
               color: '#bb86fc', padding: '0.6rem 1.1rem',
               borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem',
               whiteSpace: 'nowrap'
@@ -302,42 +331,65 @@ const handleOpenDetail = (record) => {
             ⏳ Chờ Lấy ({pendingPickupCount})
           </button>
 
-          {/* Trả Sách (Active borrowing) */}
           <button
             onClick={() => { setActiveTab('records'); setFilterStatus('BORROWING'); }}
             style={{
               background: (activeTab === 'records' && filterStatus === 'BORROWING') ? 'rgba(39,201,63,0.2)' : 'transparent',
-              border: '1px solid rgba(39,201,63,0.4)',
+              border: '1px solid ' + ((activeTab === 'records' && filterStatus === 'BORROWING') ? '#27c93f' : 'rgba(39,201,63,0.3)'),
               color: '#27c93f', padding: '0.6rem 1.1rem',
               borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem',
               whiteSpace: 'nowrap'
             }}
           >
-            Trả Sách ({borrowingCount})
+            📚 Đang Mượn ({borrowingCount})
           </button>
 
-          {/* Trễ Hạn */}
           <button
             onClick={() => { setActiveTab('records'); setFilterStatus('OVERDUE'); }}
             style={{
               background: (activeTab === 'records' && filterStatus === 'OVERDUE') ? 'rgba(255,95,86,0.2)' : 'transparent',
-              border: '1px solid rgba(255,95,86,0.4)',
+              border: '1px solid ' + ((activeTab === 'records' && filterStatus === 'OVERDUE') ? '#ff5f56' : 'rgba(255,95,86,0.3)'),
               color: '#ff5f56', padding: '0.6rem 1.1rem',
               borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem',
               whiteSpace: 'nowrap'
             }}
           >
-            Trễ Hạn ({overdueCount})
+            ⚠️ Quá Hạn ({overdueCount})
           </button>
 
-          {/* Lịch Sử (Read-only) */}
           <button
             className={(activeTab === 'records' && filterStatus === 'ALL') ? 'btn-primary' : 'btn-outline'}
             onClick={() => { setActiveTab('records'); setFilterStatus('ALL'); }}
-            style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}
+            style={{ 
+              padding: '0.6rem 1.1rem', fontSize: '0.9rem',
+              background: (activeTab === 'records' && filterStatus === 'ALL') ? 'rgba(255,255,255,0.1)' : 'transparent'
+            }}
           >
-            Lịch Sử
+            🕒 Lịch Sử
           </button>
+ 
+          {activeTab === 'records' && filterStatus === 'OVERDUE' && overdueCount > 0 && (
+            <button
+              onClick={handleNotifyOverdue}
+              disabled={isNotifying}
+              style={{
+                marginLeft: 'auto',
+                background: 'rgba(255, 176, 32, 0.15)',
+                color: '#ffb020',
+                border: '1px solid rgba(255, 176, 32, 0.3)',
+                padding: '0.6rem 1.2rem',
+                borderRadius: '8px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              {isNotifying ? "⏳ Đang gửi..." : "🔔 Gửi nhắc nợ hàng loạt"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -352,51 +404,43 @@ const handleOpenDetail = (record) => {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hội Viên</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách Yêu Cầu</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Gửi</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.length === 0 ? (
-                  <tr>
-                    <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
-                      Không có yêu cầu nào đang chờ duyệt.
-                    </td>
+                    <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Hội Viên</th>
+                    <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Nội dung mượn</th>
+                    <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Thời điểm gửi</th>
+                    <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', textAlign: 'right' }}>Hành Động</th>
                   </tr>
-                ) : (
-                  requests.map(req => (
-                    <tr key={req.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: '1rem', fontWeight: '500' }}>
-                        {req.userName}
-                        {(req.userPhone || req.userCCCD) && (
-                          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
-                            {req.userPhone} {req.userCCCD && `- CCCD: ${req.userCCCD}`}
+                </thead>
+                <tbody>
+                  {requests.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
+                        Hiện chưa có yêu cầu nào mới.
+                      </td>
+                    </tr>
+                  ) : (
+                    requests.map(req => (
+                      <tr key={req.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                        <td style={{ padding: '0.8rem 1rem' }}>
+                          <div style={{ fontWeight: '600', color: '#fff', fontSize: '0.95rem' }}>{req.userName}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem' }}>
+                            {req.userPhone || 'Không có SĐT'}
                           </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '1rem' }}>
-                        {req.books && req.books.length > 0 ? (
-                          <>
-                            <div style={{ fontWeight: '600', color: '#fff' }}>{req.books.length} cuốn sách</div>
-                            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
-                              {req.books.map(b => b.bookTitle).join(', ')}
-                            </div>
-                          </>
-                        ) : (
-                          req.bookTitle
-                        )}
-                      </td>
-                      <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                        {formatDate(req.createdAt, true)}
-                      </td>
-                      <td style={{ padding: '1rem' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button onClick={() => handleApprove(req)} style={{ background: 'rgba(39, 201, 63, 0.15)', color: '#27c93f', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '500' }}>Duyệt</button>
-                          <button onClick={() => handleReject(req.id)} style={{ background: 'rgba(255, 95, 86, 0.15)', color: '#ff5f56', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '500' }}>Từ Chối</button>
-                        </div>
-                      </td>
+                        </td>
+                        <td style={{ padding: '0.8rem 1rem' }}>
+                          <div style={{ fontSize: '0.9rem', color: '#fff' }}>{req.books?.length || 1} cuốn sách</div>
+                          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '250px' }}>
+                            {req.books ? req.books.map(b => b.bookTitle).join(', ') : req.bookTitle}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>
+                          {formatDate(req.createdAt, true)}
+                        </td>
+                        <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                            <button onClick={() => handleApprove(req)} style={{ background: 'rgba(39, 201, 63, 0.1)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.2)', padding: '0.3rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600' }}>Duyệt</button>
+                            <button onClick={() => handleReject(req.id)} style={{ background: 'rgba(255, 95, 86, 0.05)', color: '#ff5f56', border: 'none', padding: '0.3rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>Gỡ</button>
+                          </div>
+                        </td>
                     </tr>
                   ))
                 )}
@@ -455,25 +499,18 @@ const handleOpenDetail = (record) => {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Người Mượn</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách</th>
+                    <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Người Mượn</th>
+                    <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Sách</th>
                     {filterStatus === 'APPROVED_PENDING_PICKUP' ? (
-                      <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>⏱ Thời Hạn Còn Lại</th>
+                      <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>⏱ Còn Lại</th>
                     ) : (
                       <>
-                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Mượn</th>
-                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hạn Trả</th>
-                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Trả</th>
+                        <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Mượn/Hạn</th>
+                        <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Ngày Trả</th>
                       </>
                     )}
-                    {(filterStatus === 'RETURNED' || (filterStatus === 'ALL' && historyFilter === 'RETURNED')) && (
-                      <>
-                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ghi chú</th>
-                        <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Phí bồi thường</th>
-                      </>
-                    )}
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
-                    {filterStatus !== 'ALL' && <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>}
+                    <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Trạng Thái</th>
+                    {filterStatus !== 'ALL' && <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>Thao Tác</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -481,6 +518,7 @@ const handleOpenDetail = (record) => {
                     const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
                     const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'OVERDUE';
                     const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
+                    const isFinished = rec.status === 'RETURNED' || rec.status === 'RETURNED_OVERDUE';
 
                     // 1. Filter by Status
                     let statusMatch = true;
@@ -552,85 +590,53 @@ const handleOpenDetail = (record) => {
                       const status = rec.status;
                       const isActive = status === 'Active' || status === 'BORROWING' || status === 'PARTIALLY_RETURNED' || status === 'OVERDUE';
                       const isOverdue = status === 'OVERDUE' || (isActive && dueDate && dueDate < new Date());
+                      const isFinished = status === 'RETURNED' || status === 'RETURNED_OVERDUE' || status === 'CANCELLED_EXPIRED';
                       
                       const books = rec.books || [];
                       const returnedCount = books.filter(b => b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE').length;
 
                       return (
-                        <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '1rem', fontWeight: '500' }}>
-                            {rec.memberName || rec.userName}
-                            {rec.borrowerPhone && <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{rec.borrowerPhone}</div>}
+                        <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td style={{ padding: '0.8rem 1rem' }}>
+                            <div style={{ fontWeight: '600', color: '#fff', fontSize: '0.9rem' }}>{rec.memberName || rec.userName}</div>
+                            {rec.borrowerPhone && <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem' }}>{rec.borrowerPhone}</div>}
                           </td>
-                          <td style={{ padding: '1rem' }}>
-                            <div style={{ fontWeight: '600', color: '#fff' }}>{books.length} cuốn sách</div>
-                            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '0.8rem 1rem' }}>
+                            <div style={{ fontSize: '0.85rem', color: '#fff' }}>{books.length} sách</div>
+                            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {books.map(b => b.bookTitle).join(', ')}
                             </div>
-                            {returnedCount > 0 && (
-                              <div style={{ fontSize: '0.75rem', color: '#27c93f', marginTop: '0.2rem' }}>
-                                Đã trả {returnedCount}/{books.length}
-                              </div>
-                            )}
                           </td>
                           {filterStatus === 'APPROVED_PENDING_PICKUP' ? (
-                            <td style={{ padding: '1rem' }}>
+                            <td style={{ padding: '0.8rem 1rem' }}>
                               {renderCountdown(rec.pickupDeadline)}
-                              {rec.approvedAt && (
-                                <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.2rem' }}>
-                                  Duyệt lúc: {formatDate(rec.approvedAt, true)}
-                                </div>
-                              )}
                             </td>
                           ) : (
                             <>
-                              <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                                {rec.borrowDate ? formatDate(rec.borrowDate, true) : 'Chờ xác nhận'}
+                              <td style={{ padding: '0.8rem 1rem' }}>
+                                <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>{formatDate(rec.borrowDate, true)}</div>
+                                <div style={{ fontSize: '0.75rem', color: '#ffb020', marginTop: '0.1rem' }}>Hạn: {formatDate(rec.dueDate, true)}</div>
                               </td>
-                              <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                                {rec.dueDate ? formatDate(rec.dueDate, true) : 'Chờ xác nhận'}
-                              </td>
-                              <td style={{ padding: '1rem', color: '#4caf50', fontSize: '0.9rem' }}>
-                                {rec.status === 'RETURNED' || rec.status === 'RETURNED_OVERDUE' ? formatDate(rec.actualReturnDate || rec.returnDate, true) : '—'}
+                              <td style={{ padding: '0.8rem 1rem', color: '#4caf50', fontSize: '0.85rem' }}>
+                                {isFinished ? formatDate(rec.actualReturnDate || rec.returnDate, true) : '—'}
                               </td>
                             </>
                           )}
-                          {(filterStatus === 'RETURNED' || (filterStatus === 'ALL' && historyFilter === 'RETURNED')) && (
-                            <>
-                              <td style={{ padding: '1rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', maxWidth: '200px' }}>
-                                {books.map(b => b.returnNote).filter(Boolean).join('; ') || <span style={{ opacity: 0.3 }}>—</span>}
-                              </td>
-                              <td style={{ padding: '1rem', fontSize: '0.9rem', color: '#ff5f56' }}>
-                                {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(books.reduce((acc, b) => acc + (b.penaltyAmount || 0), 0))}
-                              </td>
-                            </>
-                          )}
-                          <td style={{ padding: '1rem' }}>
+                          <td style={{ padding: '0.8rem 1rem' }}>
                             <span style={{
-                              background: isOverdue ? 'rgba(255,95,86,0.15)' : status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.15)' : status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.15)' : status === 'PARTIALLY_RETURNED' ? 'rgba(39,201,63,0.1)' : isActive ? 'rgba(39,201,63,0.15)' : 'rgba(255,255,255,0.06)',
-                              color: isOverdue ? '#ff5f56' : status === 'RETURNED_OVERDUE' ? '#ffb020' : status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : status === 'PARTIALLY_RETURNED' ? '#27c93f' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
-                              padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600',
-                              whiteSpace: 'nowrap', display: 'inline-block',
-                              minWidth: '100px', textAlign: 'center'
+                              background: isOverdue ? 'rgba(255,95,86,0.1)' : status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.1)' : status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.1)' : isActive ? 'rgba(39,201,63,0.1)' : 'rgba(255,255,255,0.05)',
+                              color: isOverdue ? '#ff5f56' : status === 'RETURNED_OVERDUE' ? '#ffb020' : status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
+                              padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700',
+                              whiteSpace: 'nowrap'
                             }}>
-                              {isOverdue ? 'QUÁ HẠN' : status === 'RETURNED_OVERDUE' ? 'TRẢ MUỘN' : status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : status === 'PARTIALLY_RETURNED' ? 'TRẢ MỘT PHẦN' : (rec.status === 'RETURNED') ? 'ĐÃ TRẢ XONG' : isActive ? 'ĐANG MƯỢN' : 'KHÔNG RÕ'}
+                              {isOverdue ? 'QUÁ HẠN' : status === 'RETURNED_OVERDUE' ? 'TRẢ MUỘN' : status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : status === 'PARTIALLY_RETURNED' ? 'TRẢ MỘT PHẦN' : (rec.status === 'RETURNED') ? 'ĐÃ TRẢ' : isActive ? 'ĐANG MƯỢN' : 'KHÔNG RÕ'}
                             </span>
                           </td>
-                          <td style={{ padding: '1rem' }}>
-                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                              <button
-                                onClick={() => handleOpenDetail(rec)}
-                                style={{
-                                  background: 'rgba(187,134,252,0.1)',
-                                  color: '#bb86fc', border: '1px solid rgba(187,134,252,0.2)',
-                                  padding: '0.4rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600'
-                                }}
-                              >
-                                Chi Tiết
-                              </button>
-                              {/* Only show action buttons in active tabs, not in History */}
+                          <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                              <button onClick={() => handleOpenDetail(rec)} style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Xem</button>
                               {filterStatus !== 'ALL' && status === 'APPROVED_PENDING_PICKUP' && (
-                                <button onClick={() => handleConfirmPickup(rec.id)} className="btn-primary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>Lấy Sách</button>
+                                <button onClick={() => handleConfirmPickup(rec.id)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600' }}>Lấy Sách</button>
                               )}
                             </div>
                           </td>
@@ -861,20 +867,20 @@ const handleOpenDetail = (record) => {
               {/* THÔNG TIN ĐỘC GIẢ */}
               <div style={{ marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '12px' }}>
                 <h3 style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>THÔNG TIN ĐỘC GIẢ</h3>
-                <p style={{ fontSize: '1.05rem', fontWeight: '600', color: '#fff' }}>{selectedReturnRecord?.memberName || selectedReturnRecord?.userName}</p>
+                <p style={{ fontSize: '1.05rem', fontWeight: '600', color: '#fff' }}>{selectedReturnRecord?.record?.memberName || selectedReturnRecord?.record?.userName}</p>
                 <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.6rem', fontSize: '0.85rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <span style={{ color: 'rgba(255,255,255,0.5)' }}>SĐT: </span>
-                    {selectedReturnRecord?.borrowerPhone || selectedReturnRecord?.phone ? (
-                      <span style={{ color: '#fff', fontWeight: '500' }}>{selectedReturnRecord?.borrowerPhone || selectedReturnRecord?.phone}</span>
+                    {selectedReturnRecord?.record?.borrowerPhone || selectedReturnRecord?.record?.phone ? (
+                      <span style={{ color: '#fff', fontWeight: '500' }}>{selectedReturnRecord?.record?.borrowerPhone || selectedReturnRecord?.record?.phone}</span>
                     ) : (
                       <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>📞 Trống</span>
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <span style={{ color: 'rgba(255,255,255,0.5)' }}>Email: </span>
-                    {selectedReturnRecord?.userEmail || selectedReturnRecord?.email ? (
-                      <span style={{ color: '#fff', fontWeight: '500' }}>{selectedReturnRecord?.userEmail || selectedReturnRecord?.email}</span>
+                    {selectedReturnRecord?.record?.userEmail || selectedReturnRecord?.record?.email ? (
+                      <span style={{ color: '#fff', fontWeight: '500' }}>{selectedReturnRecord?.record?.userEmail || selectedReturnRecord?.record?.email}</span>
                     ) : (
                       <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>✉️ Trống</span>
                     )}
@@ -884,20 +890,24 @@ const handleOpenDetail = (record) => {
 
               {/* THÔNG TIN SÁCH */}
               <div style={{ marginBottom: '1.5rem', background: 'rgba(187,134,252,0.05)', padding: '1rem', borderRadius: '12px', borderLeft: '4px solid #bb86fc' }}>
-                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem' }}>
-                  {selectedReturnRecord?.books && selectedReturnRecord.books.length > 0 ? "Danh sách sách đang mượn:" : "Sách đang mượn:"}
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem' }}>Cuốn sách đang chọn:</p>
+                <p style={{ fontSize: '1.1rem', fontWeight: '700', color: '#bb86fc', margin: 0 }}>
+                  {selectedReturnRecord?.book?.bookTitle || selectedReturnRecord?.bookTitle}
                 </p>
                 
-                {selectedReturnRecord?.books && selectedReturnRecord.books.length > 0 ? (
-                  <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {selectedReturnRecord.books.map((b, idx) => (
-                      <li key={idx} style={{ fontSize: '1rem', fontWeight: '600', color: '#fff', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                        <span style={{ color: '#bb86fc' }}>•</span> {b.bookTitle || b.title}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p style={{ fontSize: '1.05rem', fontWeight: '600', color: '#fff' }}>{selectedReturnRecord?.bookTitle}</p>
+                {selectedReturnRecord?.record?.books && selectedReturnRecord.record.books.length > 1 && (
+                  <div style={{ marginTop: '0.8rem', paddingTop: '0.8rem', borderTop: '1px solid rgba(187,134,252,0.1)' }}>
+                    <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginBottom: '0.4rem' }}>Các sách khác trong phiếu:</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      {selectedReturnRecord.record.books
+                        .filter(b => b.bookId !== selectedReturnRecord.book?.bookId)
+                        .map((b, idx) => (
+                          <span key={idx} style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.5rem', borderRadius: '4px', color: 'rgba(255,255,255,0.6)' }}>
+                            {b.bookTitle}
+                          </span>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -938,55 +948,71 @@ const handleOpenDetail = (record) => {
 
               {/* ACTIONS */}
               <div style={{ display: 'flex', gap: '1rem', flexDirection: 'column' }}>
-                {/* NÚT THU HỒI TẤT CẢ (Primary action) */}
+                {/* NÚT THU HỒI CUỐN NÀY (Xác nhận trả lẻ) */}
                 <button
-                  onClick={async () => {
-                    if (!confirm("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?")) return;
-                    
-                    setReturning(true);
-                    const loadingToast = toast.loading("Đang thu hồi tất cả sách...");
-                    try {
-                      // Fetch API mới tạo
-                      const res = await fetch('/api/admin/return-all', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          recordId: selectedReturnRecord.id,
-                          transactionId: selectedReturnRecord.transactionId || selectedReturnRecord.slipId,
-                          books: selectedReturnRecord.books || (!selectedReturnRecord.books && selectedReturnRecord.bookId ? [{ bookId: selectedReturnRecord.bookId, bookTitle: selectedReturnRecord.bookTitle, recordId: selectedReturnRecord.id }] : []),
-                          adminId: user.uid,
-                          returnNote: returnNote,
-                          penaltyAmount: Number(penaltyFee) || 0
-                        })
-                      });
-                      if (res.ok) {
-                        toast.success("Thu hồi toàn bộ sách thành công!", { id: loadingToast });
-                        setIsReturnModalOpen(false);
-                        fetchData();
-                      } else {
-                        const data = await res.json();
-                        toast.error(data.message || data.error || "Thu hồi thất bại", { id: loadingToast });
-                      }
-                    } catch (error) {
-                      console.error(error);
-                      toast.error("Lỗi kết nối server", { id: loadingToast });
-                    } finally {
-                      setReturning(false);
-                    }
-                  }}
+                  onClick={confirmReturn}
                   disabled={returning}
                   style={{
                     width: '100%', padding: '0.9rem', borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #ff416c, #ff4b2b)',
-                    color: '#fff', border: 'none', cursor: 'pointer',
-                    fontWeight: '700', fontSize: '1rem',
-                    boxShadow: '0 6px 15px -3px rgba(255,65,108,0.4)',
-                    opacity: returning ? 0.7 : 1, transition: 'all 0.2s',
-                    textTransform: 'uppercase'
+                    background: 'rgba(39,201,63,0.15)',
+                    color: '#27c93f', border: '1px solid rgba(39,201,63,0.3)', 
+                    cursor: 'pointer', fontWeight: '700', fontSize: '1rem',
+                    transition: 'all 0.2s'
                   }}
                 >
-                  {returning ? 'Đang thực hiện...' : 'Thu hồi tất cả sách'}
+                  {returning ? 'Đang xử lý...' : 'Xác nhận trả cuốn này'}
                 </button>
+
+                {/* NÚT THU HỒI TẤT CẢ (Hàng loạt) */}
+                {selectedReturnRecord?.record?.books && selectedReturnRecord.record.books.length > 1 && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?")) return;
+                      
+                      setReturning(true);
+                      const loadingToast = toast.loading("Đang thu hồi tất cả sách...");
+                      try {
+                        const res = await fetch('/api/admin/return-all', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            recordId: selectedReturnRecord.record.id,
+                            transactionId: selectedReturnRecord.record.transactionId || selectedReturnRecord.record.slipId,
+                            books: selectedReturnRecord.record.books || [],
+                            adminId: user.uid,
+                            returnNote: returnNote,
+                            penaltyAmount: Number(penaltyFee) || 0
+                          })
+                        });
+                        if (res.ok) {
+                          toast.success("Thu hồi toàn bộ sách thành công!", { id: loadingToast });
+                          setIsReturnModalOpen(false);
+                          fetchData();
+                        } else {
+                          const data = await res.json();
+                          toast.error(data.message || data.error || "Thu hồi thất bại", { id: loadingToast });
+                        }
+                      } catch (error) {
+                        console.error(error);
+                        toast.error("Lỗi kết nối server", { id: loadingToast });
+                      } finally {
+                        setReturning(false);
+                      }
+                    }}
+                    disabled={returning}
+                    style={{
+                      width: '100%', padding: '0.9rem', borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #ff416c, #ff4b2b)',
+                      color: '#fff', border: 'none', cursor: 'pointer',
+                      fontWeight: '700', fontSize: '1rem',
+                      boxShadow: '0 6px 15px -3px rgba(255,65,108,0.4)',
+                      opacity: returning ? 0.7 : 1, transition: 'all 0.2s',
+                      textTransform: 'uppercase'
+                    }}
+                  >
+                    {returning ? 'Đang thực hiện...' : 'Thu hồi tất cả sách'}
+                  </button>
+                )}
                 
                 {/* Nút Đóng */}
                 <button

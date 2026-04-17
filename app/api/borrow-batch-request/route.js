@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { db } from '../../../lib/firebase';
 import { collection, addDoc, serverTimestamp, getDocs, query, where, updateDoc, doc } from 'firebase/firestore';
 import { canUserBorrow, isBookAvailable } from '../../../services/db';
+import { sendMail } from '../../../services/emailService';
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { userId, userName, email, phone, cccd, books, paymentStatus, isAdmin } = body;
+    const { userId, userName, email, phone, books, paymentStatus, isAdmin } = body;
 
     if (!userId || !books || !Array.isArray(books) || books.length === 0) {
       return NextResponse.json({ error: 'Thiếu người dùng hoặc sách trong giỏ hàng' }, { status: 400 });
@@ -16,8 +17,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Bạn chỉ được mượn tối đa 3 cuốn sách' }, { status: 400 });
     }
 
-    if (!phone || !cccd || !email) {
-      return NextResponse.json({ error: 'Vui lòng cung cấp đủ SĐT, CCCD và Email' }, { status: 400 });
+    if (!phone || !email) {
+      return NextResponse.json({ error: 'Vui lòng cung cấp đủ SĐT và Email để thư viện liên lạc khi cần.' }, { status: 400 });
     }
 
     // 1. Check book availability
@@ -65,6 +66,12 @@ export async function POST(request) {
         books: [...existingBooks, ...uniqueNewBooks]
       });
 
+      // Gửi email thông báo Gộp đơn
+      await sendMail(email, userName, {
+        subject: "Cập nhật yêu cầu mượn sách (Gộp đơn)",
+        message: `Bạn vừa gộp thêm ${uniqueNewBooks.length} cuốn sách vào đơn mượn đang chờ duyệt của mình. Tổng số sách hiện tại là ${existingBooks.length + uniqueNewBooks.length} cuốn.`
+      }).catch(err => console.error("Email notify merge failed:", err));
+
       return NextResponse.json({
         success: true,
         message: `Đã GỘP THÊM ${uniqueNewBooks.length} cuốn vào Đơn mượn đang chờ duyệt của bạn!`,
@@ -78,12 +85,17 @@ export async function POST(request) {
       userName: userName || 'Ẩn danh',
       userEmail: email,
       userPhone: phone,
-      userCCCD: cccd,
       books, // Array of { bookId, bookTitle }
       paymentStatus: paymentStatus || 'UNPAID',
       status: 'PENDING',
       createdAt: serverTimestamp()
     });
+
+    // Gửi email thông báo Đơn mới
+    await sendMail(email, userName, {
+      subject: "Xác nhận yêu cầu mượn sách thành công",
+      message: `Cảm ơn bạn đã sử dụng dịch vụ thư viện. Yêu cầu mượn ${books.length} cuốn sách của bạn đã được gửi tới quản trị viên và đang chờ phê duyệt. Chúng tôi sẽ thông báo cho bạn ngay khi có kết quả!`
+    }).catch(err => console.error("Email notify new request failed:", err));
 
     return NextResponse.json({
       success: true,

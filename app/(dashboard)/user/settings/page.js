@@ -13,9 +13,10 @@ export default function UserSettings() {
   const { user, role } = useAuth();
   
   // Basic Profile
-  const [name, setName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
+   const [name, setName] = useState("");
+   const [avatar, setAvatar] = useState("");
+   const [loading, setLoading] = useState(false);
+   const [message, setMessage] = useState({ type: '', text: '' });
 
   // Password Change State
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -39,6 +40,9 @@ export default function UserSettings() {
     if (user?.displayName) {
       setName(user.displayName);
     }
+    if (user?.photoURL) {
+      setAvatar(user.photoURL);
+    }
   }, [user]);
 
   const handleErrorStr = (err) => {
@@ -55,8 +59,8 @@ export default function UserSettings() {
     setLoading(true);
     setMessage({ type: '', text: '' });
     try {
-      await updateUserProfile(user.uid, { name });
-      setMessage({ type: 'success', text: 'Cập nhật Tên thành công!' });
+      await updateUserProfile(user.uid, { name, photoURL: avatar });
+      setMessage({ type: 'success', text: 'Cập nhật Hồ sơ thành công!' });
     } catch (error) {
       console.error(error);
       setMessage({ type: 'error', text: 'Lỗi cập nhật hồ sơ' });
@@ -91,8 +95,8 @@ export default function UserSettings() {
   // --- Start Password Change ---
   const startPasswordChange = async (e) => {
     e.preventDefault();
-    if (newPassword.length < 6) {
-      setPasswordError("Mật khẩu phải dài ít nhất 6 ký tự");
+    if (newPassword.length < 8) {
+      setPasswordError("Mật khẩu phải dài ít nhất 8 ký tự");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -195,25 +199,29 @@ export default function UserSettings() {
         {/* Profile Summary */}
         <div className={styles.card} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '2.5rem' }}>
           <div style={{ 
-            width: '90px', 
-            height: '90px', 
+            width: '100px', 
+            height: '100px', 
             borderRadius: '50%', 
-            background: 'rgba(255,255,255,0.05)', 
-            border: '2px solid rgba(255,255,255,0.1)',
+            backgroundImage: avatar ? `url(${avatar})` : 'none',
+            backgroundColor: avatar ? 'transparent' : 'rgba(255,255,255,0.05)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            border: '3px solid #bb86fc',
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center',
-            fontSize: '2.2rem',
+            fontSize: '2.5rem',
             fontWeight: 'bold',
             color: 'white',
-            marginBottom: '1.2rem'
+            marginBottom: '1.2rem',
+            boxShadow: '0 0 20px rgba(187, 134, 252, 0.2)'
           }}>
-            {name ? name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase()}
+            {!avatar && (name ? name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase())}
           </div>
-          <h2 style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>{name || "Độc giả"}</h2>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', marginBottom: '1.2rem' }}>{user?.email}</p>
-          <div style={{ padding: '0.3rem 0.8rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
-            Hạng: <strong>Thành viên Thường</strong>
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '0.4rem', color: '#fff' }}>{name || "Độc giả"}</h2>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', marginBottom: '1.2rem', fontFamily: 'monospace' }}> {user?.uid} </p>
+          <div style={{ padding: '0.4rem 1rem', background: 'rgba(187, 134, 252, 0.1)', borderRadius: '20px', fontSize: '0.8rem', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.2)' }}>
+            Hạng: <strong>Thành viên Thư Viện</strong>
           </div>
         </div>
 
@@ -222,21 +230,35 @@ export default function UserSettings() {
           
           {/* Cập Nhật Tên */}
           <div className={styles.card}>
-            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem' }}>Thay Đổi Bí Danh</h3>
-            <form onSubmit={handleUpdate} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem' }}>Thông Tin Cơ Bản</h3>
+            <form onSubmit={handleUpdate} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Họ và Tên</label>
                 <input 
                   type="text" 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  style={{ width: '100%', padding: '0.9rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'white' }}
+                  placeholder="Nhập tên của bạn..."
+                  className={styles.input}
+                  style={{ width: '100%', padding: '0.9rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
                   required
                 />
               </div>
-              <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '0.9rem 1.5rem', height: 'fit-content' }}>
-                {loading ? "Đang lưu..." : "Lưu Phù Hiệu"}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Link Ảnh Đại Diện (Avatar URL)</label>
+                <input 
+                  type="url" 
+                  value={avatar}
+                  onChange={(e) => setAvatar(e.target.value)}
+                  placeholder="https://..."
+                  style={{ width: '100%', padding: '0.9rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                />
+              </div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '0.9rem 2.5rem', width: 'fit-content' }}>
+                  {loading ? "Đang lưu..." : "Cập Nhật Hồ Sơ"}
+                </button>
+              </div>
             </form>
             {message.text && (
               <p style={{ marginTop: '1rem', color: message.type === 'success' ? '#27c93f' : '#ff5f56', fontSize: '0.9rem' }}>
@@ -261,12 +283,12 @@ export default function UserSettings() {
               <form onSubmit={startPasswordChange} style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'grid', gap: '1rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Mật khẩu mới (Tối thiểu 6 ký tự)</label>
+                    <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Mật khẩu mới (Tối thiểu 8 ký tự)</label>
                     <input 
                       type="password" 
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Nhập khóa mới..."
+                      placeholder="Nhập khóa mới (>= 8 ký tự)..."
                       style={{ padding: '0.9rem', borderRadius: '8px', border: '1px solid rgba(187, 134, 252, 0.3)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
                       required
                     />

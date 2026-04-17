@@ -320,12 +320,14 @@ export const returnBorrowRecord = async (recordId, bookId, returnNote = '', pena
   // Find which book is being returned
   let allReturned = true;
   const updatedBooks = books.map(b => {
+    let updatedBook = b;
+    
     if (b.bookId === bookId && b.status !== 'RETURNED' && b.status !== 'RETURNED_OVERDUE') {
       const dueDate = data.dueDate?.toDate ? data.dueDate.toDate() : (data.dueDate ? new Date(data.dueDate) : null);
       const now = new Date();
       const finalStatus = (dueDate && now > dueDate) ? 'RETURNED_OVERDUE' : 'RETURNED';
       
-      return {
+      updatedBook = {
         ...b,
         status: finalStatus,
         actualReturnDate: new Date(),
@@ -334,11 +336,12 @@ export const returnBorrowRecord = async (recordId, bookId, returnNote = '', pena
       };
     }
     
-    // Check if others are still borrowed
-    if (b.status === 'BORROWING' || b.status === 'APPROVED_PENDING_PICKUP') {
+    // Check if this book (after possible update) is still borrowed
+    if (updatedBook.status === 'BORROWING' || updatedBook.status === 'APPROVED_PENDING_PICKUP' || updatedBook.status === 'OVERDUE') {
       allReturned = false;
     }
-    return b;
+    
+    return updatedBook;
   });
 
   await updateDoc(recordRef, {

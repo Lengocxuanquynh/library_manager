@@ -3,6 +3,8 @@ import { doc, collection, addDoc, updateDoc, serverTimestamp, increment } from '
 import { db } from '@/lib/firebase';
 import { updateBorrowRequestStatus, createBorrowRecord } from '@/services/db';
 import { verifyAdmin } from '@/services/admin-check';
+import { sendMail } from '@/services/emailService';
+import { getDoc } from 'firebase/firestore';
 
 export async function POST(request) {
   try {
@@ -22,6 +24,11 @@ export async function POST(request) {
     // Chuẩn bị pickupDeadline = hiện tại + 24 giờ
     const approvedAt = new Date();
     const pickupDeadline = new Date(approvedAt.getTime() + 24 * 60 * 60 * 1000);
+
+    // Lấy thông tin email từ đơn yêu cầu gốc để gửi thông báo
+    const reqRef = doc(db, "borrowRequests", requestId);
+    const reqSnap = await getDoc(reqRef);
+    const userEmail = reqSnap.exists() ? reqSnap.data().userEmail : null;
 
     const hasBooksArray = Array.isArray(books) && books.length > 0;
     const hasSingleBook = bookId && bookTitle;
@@ -70,6 +77,17 @@ export async function POST(request) {
     
     // Let's fix createBorrowRecord call to use autoDecrement=false to get 'APPROVED_PENDING_PICKUP'
     // but we already decremented quantity above. Correct.
+
+    // Gửi email thông báo Phê duyệt thành công
+    if (userEmail) {
+      await sendMail(userEmail, userName, {
+        subject: "Yêu cầu mượn sách đã được DUYỆT",
+        message: `Thư viện xin thông báo: Yêu cầu mượn ${finalBooks.length} cuốn sách của bạn đã được Admin phê duyệt thành công. 
+
+Vui lòng đến thư viện nhận sách trong vòng 24 GIỜ tới (trước khi phiếu mượn tự động hết hạn). 
+Trân trọng!`
+      }).catch(err => console.error("Email notify approval failed:", err));
+    }
 
     const count = hasBooksArray ? books.length : 1;
     return NextResponse.json({
