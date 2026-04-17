@@ -4,19 +4,19 @@ import { returnBorrowRecord } from '../../../services/db';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { recordId, bookId, returnNote, penaltyAmount } = body;
+    const { recordId, bookUid, returnNote, penaltyAmount } = body;
 
-    console.log(">>> [SERVER] API /api/return-book started with:", { recordId, bookId, returnNote, penaltyAmount });
+    console.log(">>> [SERVER] API /api/return-book started with:", { recordId, bookUid, returnNote, penaltyAmount });
 
-    if (!recordId || !bookId) {
+    if (!recordId || !bookUid) {
       return NextResponse.json(
-        { message: 'Thiếu thông tin phiếu mượn hoặc sách.' },
+        { message: 'Thiếu thông tin phiếu mượn hoặc mã định danh sách (UID).' },
         { status: 400 }
       );
     }
 
     // Process the return logic
-    await returnBorrowRecord(recordId, bookId, returnNote, penaltyAmount);
+    await returnBorrowRecord(recordId, bookUid, returnNote, penaltyAmount);
 
     return NextResponse.json({
       success: true,

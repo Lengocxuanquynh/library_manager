@@ -20,6 +20,9 @@ export default function ManageMembers() {
   const [memberHistory, setMemberHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Search state
+  const [searchTerm, setSearchTerm] = useState("");
+
   useEffect(() => {
     fetchMembers();
   }, []);
@@ -116,6 +119,47 @@ export default function ManageMembers() {
         <h1 className={styles.pageTitle}>Quản Lý Độc Giả (Hợp Nhất)</h1>
       </div>
 
+      {/* 🔍 Search Bar - Premium Glassmorphism */}
+      <div style={{ 
+        background: 'rgba(255,255,255,0.02)', 
+        padding: '1.5rem', 
+        borderRadius: '16px', 
+        marginBottom: '2rem', 
+        display: 'flex', 
+        gap: '1.5rem', 
+        alignItems: 'center',
+        border: '1px solid rgba(255,255,255,0.05)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+      }}>
+        <input 
+          type="text" 
+          placeholder="Tìm độc giả theo tên, email, sđt hoặc mã..." 
+          value={searchTerm} 
+          onChange={e => setSearchTerm(e.target.value)} 
+          style={{ 
+            flex: 1, 
+            padding: '0.9rem 1.2rem', 
+            borderRadius: '12px', 
+            background: 'rgba(0,0,0,0.3)', 
+            border: '1px solid rgba(255,255,255,0.1)', 
+            color: '#fff',
+            fontSize: '0.95rem',
+            outline: 'none',
+            transition: '0.3s'
+          }} 
+          onFocus={e => e.target.style.borderColor = '#bb86fc'}
+          onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+        />
+        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>
+          Đang hiển thị {members.filter(m => 
+            m.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (m.phone && m.phone.includes(searchTerm)) ||
+            (m.memberCode && m.memberCode.toLowerCase().includes(searchTerm.toLowerCase()))
+          ).length} kết quả
+        </div>
+      </div>
+
       {/* History Modal */}
       {selectedMember && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }} onClick={() => setSelectedMember(null)}>
@@ -139,20 +183,32 @@ export default function ManageMembers() {
                     </tr>
                   </thead>
                   <tbody>
-                    {memberHistory.map(rec => (
-                      <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}>
-                        <td style={{ padding: '0.8rem' }}>{rec.bookTitle}</td>
-                        <td style={{ padding: '0.8rem', opacity: 0.6 }}>{rec.borrowDate?.toDate ? rec.borrowDate.toDate().toLocaleDateString('vi-VN') : '—'}</td>
-                        <td style={{ padding: '0.8rem' }}>
-                          <span style={{ 
-                            padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem', 
-                            background: rec.status === 'RETURNED' ? 'rgba(255,255,255,0.05)' : 'rgba(39,201,63,0.12)',
-                            color: rec.status === 'RETURNED' ? 'rgba(255,255,255,0.4)' : '#27c93f'
-                          }}>
-                            {rec.status === 'RETURNED' ? 'Đã trả' : 'Đang mượn'}
-                          </span>
-                        </td>
-                      </tr>
+                    {memberHistory.map(record => (
+                      (record.books || []).map(book => (
+                        <tr key={book.uid || `${record.id}-${book.bookId}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}>
+                          <td style={{ padding: '0.8rem' }}>{book.bookTitle}</td>
+                          <td style={{ padding: '0.8rem', opacity: 0.6 }}>
+                            {(() => {
+                              const d = record.borrowDate;
+                              if (!d) return '—';
+                              if (typeof d.toDate === 'function') return d.toDate().toLocaleDateString('vi-VN');
+                              if (d.seconds) return new Date(d.seconds * 1000).toLocaleDateString('vi-VN');
+                              if (d._seconds) return new Date(d._seconds * 1000).toLocaleDateString('vi-VN');
+                              const dt = new Date(d);
+                              return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('vi-VN');
+                            })()}
+                          </td>
+                          <td style={{ padding: '0.8rem' }}>
+                            <span style={{ 
+                              padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem', 
+                              background: (book.status === 'RETURNED' || book.status === 'RETURNED_OVERDUE') ? 'rgba(255,255,255,0.05)' : 'rgba(39,201,63,0.12)',
+                              color: (book.status === 'RETURNED' || book.status === 'RETURNED_OVERDUE') ? 'rgba(255,255,255,0.4)' : '#27c93f'
+                            }}>
+                              {(book.status === 'RETURNED' || book.status === 'RETURNED_OVERDUE') ? 'Đã trả' : 'Đang mượn'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
                     ))}
                   </tbody>
                 </table>
@@ -180,10 +236,17 @@ export default function ManageMembers() {
               <tbody>
                 {members.length === 0 ? (
                   <tr>
-                    <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', opacity: 0.3 }}>Chưa có độc giả nào.</td>
+                    <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', opacity: 0.3 }}>Chưa có độc giả nào.</td>
                   </tr>
                 ) : (
-                  members.map(member => (
+                  members
+                    .filter(m => 
+                      m.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                      m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      (m.phone && m.phone.includes(searchTerm)) ||
+                      (m.memberCode && m.memberCode.toLowerCase().includes(searchTerm.toLowerCase()))
+                    )
+                    .map(member => (
                     <tr key={member.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '1rem', fontWeight: '500' }}>{member.name}</td>
                       <td style={{ padding: '1rem', fontFamily: 'monospace', color: '#bb86fc' }}>{member.memberCode || `DG-${(member.uid || member.id).slice(-5).toUpperCase()}`}</td>

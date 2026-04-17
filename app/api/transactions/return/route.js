@@ -4,16 +4,16 @@ import { returnBorrowRecord } from '../../../../services/db';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { transactionId, bookId } = body;
+    const { transactionId, bookUid } = body;
 
-    if (!transactionId || !bookId) {
+    if (!transactionId || !bookUid) {
       return NextResponse.json(
-        { error: 'Missing transactionId or bookId' },
+        { error: 'Missing transactionId or bookUid' },
         { status: 400 }
       );
     }
 
-    await returnBorrowRecord(transactionId, bookId);
+    await returnBorrowRecord(transactionId, bookUid);
 
     return NextResponse.json({
       success: true,

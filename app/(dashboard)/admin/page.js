@@ -138,6 +138,7 @@ export default function AdminDashboard() {
         <div style={{ textAlign: 'center', padding: '4rem', color: 'rgba(255,255,255,0.5)' }}>Đang tải dữ liệu tổng quan...</div>
       ) : (
         <>
+
           {/* Stats Grid */}
           <div className={styles.grid} style={{ marginBottom: '2.5rem' }}>
             <div className={styles.card} style={{ borderLeft: '4px solid #bb86fc' }} key="total-books">

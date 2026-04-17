@@ -4,25 +4,43 @@ import { useEffect, useState, Suspense } from "react";
 import styles from "../../dashboard.module.css";
 import { uploadToCloudinary } from "../../../../lib/cloudinary";
 import { useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 
-function ManageBooksContent() {
+function InventoryHubContent() {
   const searchParams = useSearchParams();
-  const initialCategory = searchParams.get('category') || "ALL";
+  const initialTab = searchParams.get('tab') || "inventory";
 
+  // Hub States
+  const [activeTab, setActiveTab] = useState(initialTab); // 'inventory' | 'authors' | 'categories'
+  
+  // Inventory (Books) States
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [showBookForm, setShowBookForm] = useState(false);
+  const [editingBookId, setEditingBookId] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [availableCategories, setAvailableCategories] = useState([]);
   
+  // Author States
+  const [authors, setAuthors] = useState([]);
+  const [newAuthorName, setNewAuthorName] = useState("");
+  const [syncingAuthors, setSyncingAuthors] = useState(false);
+
+  // Category States
+  const [categories, setCategories] = useState([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' });
+
+  // Filtering & Search
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState(initialCategory);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("ALL");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [authorSearchTerm, setAuthorSearchTerm] = useState("");
+  const [categorySearchTerm, setCategorySearchTerm] = useState("");
+  const itemsPerPage = 8;
 
-
-
-  
-  const [formData, setFormData] = useState({
+  // Form Data for Books
+  const [bookFormData, setBookFormData] = useState({
     title: '',
     author: '',
     category: '',
@@ -35,62 +53,70 @@ function ManageBooksContent() {
     status: 'Available'
   });
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 8;
-
   useEffect(() => {
-    fetchBooks();
-    fetchCategories();
+    fetchAllData();
   }, []);
 
-  const fetchCategories = async () => {
+  const fetchAllData = async () => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/categories');
-      const data = await res.json();
-      setAvailableCategories(Array.isArray(data) ? data : []);
+      await Promise.all([
+        fetchBooks(),
+        fetchCategories(),
+        fetchAuthors()
+      ]);
     } catch (error) {
-      console.error('Error fetching categories:', error);
-    }
-  };
-
-
-  const fetchBooks = async () => {
-    try {
-      const res = await fetch('/api/books');
-      const data = await res.json();
-      setBooks(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error(error);
+      console.error("Error fetching hub data:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleImageUpload = async (e) => {
+  const fetchBooks = async () => {
+    const res = await fetch('/api/books');
+    const data = await res.json();
+    setBooks(Array.isArray(data) ? data : []);
+  };
+
+  const fetchCategories = async () => {
+    const res = await fetch('/api/categories');
+    const data = await res.json();
+    setCategories(Array.isArray(data) ? data : []);
+  };
+
+  const fetchAuthors = async () => {
+    const res = await fetch('/api/authors');
+    const data = await res.json();
+    setAuthors(Array.isArray(data) ? data : []);
+  };
+
+  // ========================
+  // BOOK HANDLERS
+  // ========================
+  const handleBookImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setUploading(true);
     try {
       const imageUrl = await uploadToCloudinary(file);
-      setFormData({ ...formData, coverImage: imageUrl });
+      setBookFormData({ ...bookFormData, coverImage: imageUrl });
+      toast.success("Đã tải ảnh lên");
     } catch (error) {
-      alert("Lỗi tải ảnh. Vui lòng thử lại.");
+      toast.error("Lỗi tải ảnh");
     } finally {
       setUploading(false);
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleBookSubmit = async (e) => {
     e.preventDefault();
-    const url = editingId ? `/api/books/${editingId}` : '/api/books';
-    const method = editingId ? 'PATCH' : 'POST';
+    const url = editingBookId ? `/api/books/${editingBookId}` : '/api/books';
+    const method = editingBookId ? 'PATCH' : 'POST';
 
-    // Auto-status based on quantity
     const finalData = {
-      ...formData,
-      quantity: parseInt(formData.quantity) || 0,
-      status: parseInt(formData.quantity) > 0 ? 'Available' : 'Out of Stock'
+      ...bookFormData,
+      quantity: parseInt(bookFormData.quantity) || 0,
+      status: parseInt(bookFormData.quantity) > 0 ? 'Available' : 'Out of Stock'
     };
 
     try {
@@ -101,18 +127,21 @@ function ManageBooksContent() {
       });
 
       if (res.ok) {
-        resetForm();
+        toast.success(editingBookId ? "Cập nhật sách thành công" : "Thêm sách mới thành công");
+        resetBookForm();
         fetchBooks();
+        fetchAuthors(); // Might have added a new author
+        fetchCategories(); // Might have added a new category
       } else {
-        alert("Có lỗi xảy ra khi lưu thông tin sách.");
+        toast.error("Lỗi khi lưu sách");
       }
     } catch (error) {
       console.error(error);
     }
   };
 
-  const handleEdit = (book) => {
-    setFormData({
+  const handleEditBook = (book) => {
+    setBookFormData({
       title: book.title || '',
       author: book.author || '',
       category: book.category || '',
@@ -124,495 +153,488 @@ function ManageBooksContent() {
       year: book.year || '',
       status: book.status || 'Available'
     });
-    setEditingId(book.id);
-    setShowForm(true);
+    setEditingBookId(book.id);
+    setShowBookForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const resetForm = () => {
-    setFormData({ title: '', author: '', category: '', quantity: 1, coverImage: '', description: '', isbn: '', publisher: '', year: '', status: 'Available' });
-    setEditingId(null);
-    setShowForm(false);
+  const resetBookForm = () => {
+    setBookFormData({ title: '', author: '', category: '', quantity: 1, coverImage: '', description: '', isbn: '', publisher: '', year: '', status: 'Available' });
+    setEditingBookId(null);
+    setShowBookForm(false);
   };
 
-  const handleDelete = async (id) => {
-    if (confirm("Bạn có chắc chắn muốn xóa cuốn sách này không?")) {
-      if (confirm("XÁC NHẬN LẦN 2: Hành động này không thể hoàn tác. Bạn vẫn muốn xóa chứ?")) {
-        await fetch(`/api/books/${id}`, { method: 'DELETE' });
-        fetchBooks();
+  const handleDeleteBook = async (id) => {
+    if (!confirm("Xác nhận xóa cuốn sách này?")) return;
+    await fetch(`/api/books/${id}`, { method: 'DELETE' });
+    fetchBooks();
+    toast.success("Đã xóa sách");
+  };
+
+  // ========================
+  // AUTHOR HANDLERS
+  // ========================
+  const handleAddAuthor = async (e) => {
+    e.preventDefault();
+    if (!newAuthorName.trim()) return;
+    try {
+      const res = await fetch('/api/authors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newAuthorName })
+      });
+      if (res.ok) {
+        setNewAuthorName("");
+        fetchAuthors();
+        toast.success("Đã thêm tác giả");
       }
+    } catch (error) {
+      toast.error("Lỗi thêm tác giả");
     }
   };
 
+  const handleDeleteAuthor = async (id) => {
+    if (!confirm("Xóa tác giả này?")) return;
+    await fetch(`/api/authors/${id}`, { method: 'DELETE' });
+    fetchAuthors();
+    toast.success("Đã xóa tác giả");
+  };
+
+  const handleSyncAuthors = async () => {
+    setSyncingAuthors(true);
+    const tid = toast.loading("Đang đồng bộ tác giả...");
+    try {
+      const currentAuthors = [...new Set(books.map(b => b.author).filter(Boolean))];
+      let count = 0;
+      for (const name of currentAuthors) {
+        const res = await fetch('/api/authors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        if (res.ok) count++;
+      }
+      fetchAuthors();
+      toast.success(`Đã đồng bộ ${count} tác giả mới`, { id: tid });
+    } catch (error) {
+      toast.error("Lỗi đồng bộ", { id: tid });
+    } finally {
+      setSyncingAuthors(false);
+    }
+  };
+
+  // ========================
+  // CATEGORY HANDLERS
+  // ========================
+  const handleCategorySubmit = async (e) => {
+    e.preventDefault();
+    const url = editingCategoryId ? `/api/categories/${editingCategoryId}` : '/api/categories';
+    const method = editingCategoryId ? 'PATCH' : 'POST';
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(categoryFormData)
+      });
+      if (res.ok) {
+        toast.success(editingCategoryId ? "Cập nhật thành công" : "Thêm mới thành công");
+        resetCategoryForm();
+        fetchCategories();
+      }
+    } catch (error) {
+      toast.error("Lỗi thao tác");
+    }
+  };
+
+  const handleEditCategory = (cat) => {
+    setCategoryFormData({ name: cat.name, description: cat.description || '' });
+    setEditingCategoryId(cat.id);
+    setShowCategoryForm(true);
+  };
+
+  const resetCategoryForm = () => {
+    setCategoryFormData({ name: '', description: '' });
+    setEditingCategoryId(null);
+    setShowCategoryForm(false);
+  };
+
+  const handleDeleteCategory = async (id) => {
+    if (!confirm("Xóa thể loại này?")) return;
+    await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    fetchCategories();
+    toast.success("Đã xóa thể loại");
+  };
+
+  // ========================
+  // MAGIC UI COMPONENTS
+  // ========================
+  const MagicSelect = ({ label, value, options, onChange, placeholder = "Chọn..." }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+      <div style={{ position: 'relative', width: '100%' }}>
+        {label && <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>{label}</label>}
+        <div 
+          onClick={() => setIsOpen(!isOpen)}
+          style={{ 
+            width: '100%', 
+            padding: '0.9rem 1.2rem', 
+            borderRadius: '12px', 
+            background: 'rgba(0,0,0,0.3)', 
+            border: `1px solid ${isOpen ? '#bb86fc' : '#333'}`, 
+            color: value ? '#fff' : 'rgba(255,255,255,0.4)',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            transition: '0.3s',
+            boxShadow: isOpen ? '0 0 15px rgba(187,134,252,0.1)' : 'none'
+          }}
+        >
+          <span>{options.find(o => o.name === value)?.name || placeholder}</span>
+          <span style={{ 
+            fontSize: '0.8rem', 
+            transition: '0.3s', 
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' 
+          }}>▼</span>
+        </div>
+
+        {isOpen && (
+          <>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={() => setIsOpen(false)} />
+            <ul style={{ 
+              position: 'absolute', 
+              top: 'calc(100% + 8px)', 
+              left: 0, 
+              right: 0, 
+              background: 'rgba(20, 20, 22, 0.95)', 
+              backdropFilter: 'blur(15px)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '12px',
+              padding: '0.5rem',
+              margin: 0,
+              listStyle: 'none',
+              zIndex: 999,
+              maxHeight: '250px',
+              overflowY: 'auto',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+              animation: 'slideDown 0.2s ease-out'
+            }}>
+              <style jsx>{`
+                @keyframes slideDown {
+                  from { opacity: 0; transform: translateY(-10px); }
+                  to { opacity: 1; transform: translateY(0); }
+                }
+                ul::-webkit-scrollbar { width: 4px; }
+                ul::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+              `}</style>
+              <li 
+                onClick={() => { onChange(""); setIsOpen(false); }}
+                style={{ padding: '0.8rem 1rem', borderRadius: '8px', cursor: 'pointer', transition: '0.2s', color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem' }}
+                onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                onMouseLeave={e => e.target.style.background = 'transparent'}
+              >
+                — Trống —
+              </li>
+              {options.map(opt => (
+                <li 
+                  key={opt.id}
+                  onClick={() => { onChange(opt.name); setIsOpen(false); }}
+                  style={{ 
+                    padding: '0.8rem 1rem', 
+                    borderRadius: '8px', 
+                    cursor: 'pointer', 
+                    transition: '0.2s', 
+                    fontSize: '0.9rem',
+                    background: value === opt.name ? 'rgba(187,134,252,0.1)' : 'transparent',
+                    color: value === opt.name ? '#bb86fc' : '#fff'
+                  }}
+                  onMouseEnter={e => {
+                    if(value !== opt.name) e.target.style.background = 'rgba(255,255,255,0.05)';
+                  }}
+                  onMouseLeave={e => {
+                    if(value !== opt.name) e.target.style.background = 'transparent';
+                  }}
+                >
+                  {opt.name}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ========================
+  // RENDER HELPERS
+  // ========================
   const filteredBooks = books.filter(book => {
     const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (book.isbn && book.isbn.includes(searchTerm));
-    
-    const matchesCategory = selectedFilter === "ALL" || book.category === selectedFilter;
-    
+    const matchesCategory = selectedCategoryFilter === "ALL" || book.category === selectedCategoryFilter;
     return matchesSearch && matchesCategory;
   });
 
-  // Merge formal categories with existing book categories for backup/filter
-  const uniqueCategoryNames = [...new Set([
-    ...availableCategories.map(c => c.name),
-    ...books.map(b => b.category || "Khác").filter(Boolean)
-  ])];
-
-  const filterTabs = [
-    { id: 'ALL', name: 'Tất cả thể loại' },
-    ...uniqueCategoryNames.map(name => ({ id: name, name }))
-  ];
-
-
-
   return (
-    <div>
+    <div className="inventory-hub">
+      <style jsx>{`
+        .tab-button {
+          padding: 1rem 2rem;
+          background: transparent;
+          border: none;
+          color: rgba(255,255,255,0.5);
+          font-weight: 700;
+          cursor: pointer;
+          position: relative;
+          transition: 0.3s;
+          font-size: 0.9rem;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+        }
+        .tab-button.active {
+          color: #bb86fc;
+        }
+        .tab-button.active::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 20%;
+          right: 20%;
+          height: 3px;
+          background: #bb86fc;
+          border-radius: 10px;
+          box-shadow: 0 0 10px rgba(187, 134, 252, 0.5);
+        }
+        .tab-container {
+          display: flex;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          margin-bottom: 2rem;
+        }
+        .fade-in {
+            animation: fadeIn 0.4s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
       <div className={styles.headerArea}>
-        <h1 className={styles.pageTitle}>Quản Lý Kho Sách</h1>
-        <button className="btn-primary" onClick={() => { if (showForm) resetForm(); else setShowForm(true); }}>
-          {showForm ? "Đóng Form" : "Thêm Sách Mới"}
-        </button>
+        <h1 className={styles.pageTitle}>Tổng Kho Tài Nguyên Sách</h1>
       </div>
 
-      {showForm && (
-        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '2rem', borderRadius: '16px', marginBottom: '2.5rem', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>{editingId ? "Cập Nhật Thông Tin Sách" : "Đăng Ký Sách Mới"}</h2>
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Tiêu đề sách</label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: Đắc Nhân Tâm"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                  required
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Mã ISBN</label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: 978-604-..."
-                  value={formData.isbn}
-                  onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Nhà xuất bản</label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: NXB Trẻ"
-                  value={formData.publisher}
-                  onChange={(e) => setFormData({ ...formData, publisher: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Năm xuất bản</label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: 2024"
-                  value={formData.year}
-                  onChange={(e) => setFormData({ ...formData, year: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Tác giả</label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: Dale Carnegie"
-                  value={formData.author}
-                  onChange={(e) => setFormData({ ...formData, author: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                  required
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Thể loại / Hạng mục</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', cursor: 'pointer' }}
-                >
-                  <option value="" style={{ background: '#2a2a2d' }}>Chọn thể loại...</option>
-                  <option value="Chưa phân loại" style={{ background: '#2a2a2d' }}>Chưa phân loại</option>
-                  {availableCategories.map(cat => (
-                    <option key={cat.id} value={cat.name} style={{ background: '#2a2a2d' }}>{cat.name}</option>
-                  ))}
-                  {/* Handle legacy categories not in the new system */}
-                  {formData.category && formData.category !== "Chưa phân loại" && !availableCategories.find(c => c.name === formData.category) && (
-                    <option value={formData.category} style={{ background: '#2a2a2d' }}>{formData.category} (Cũ)</option>
-                  )}
-                </select>
-              </div>
+      <div className="tab-container">
+        <button className={`tab-button ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => setActiveTab('inventory')}>📦 Kho Sách</button>
+        <button className={`tab-button ${activeTab === 'authors' ? 'active' : ''}`} onClick={() => setActiveTab('authors')}>✒️ Tác Giả</button>
+        <button className={`tab-button ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>📂 Thể Loại</button>
+      </div>
 
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Số lượng trong kho</label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={formData.quantity}
-                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white' }}
-                  min="0"
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Trạng thái lưu kho</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', cursor: 'pointer' }}
-                >
-                  <option value="Available">Sẵn sàng cho mượn</option>
-                  <option value="Warehouse">Chuyển vào Kho (Bảo trì/Ẩn)</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'min-content 1fr', gap: '2rem', alignItems: 'start' }}>
-              <div style={{ textAlign: 'center' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Ảnh bìa</label>
-                <div style={{ 
-                  width: '140px', 
-                  height: '200px', 
-                  background: 'rgba(255,255,255,0.05)', 
-                  borderRadius: '12px', 
-                  border: '2px dashed rgba(255,255,255,0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  marginBottom: '1rem',
-                  position: 'relative'
-                }}>
-                  {formData.coverImage ? (
-                    <img src={formData.coverImage} alt="Cover Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span style={{ fontSize: '1rem', opacity: 0.2, color: 'rgba(255,255,255,0.3)' }}>No Cover</span>
-                  )}
-                  {uploading && (
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}>
-                      Đang tải...
-                    </div>
-                  )}
-                </div>
-                <input type="file" id="book-cover" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <label htmlFor="book-cover" className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-block', textAlign: 'center' }}> Tải ảnh từ máy </label>
-                  <div style={{ fontSize: '0.8rem', opacity: 0.7, textAlign: 'center' }}>hoặc URL:</div>
-                  <input
-                    type="text"
-                    placeholder="Nhập link ảnh..."
-                    value={formData.coverImage}
-                    onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', fontSize: '0.8rem', textAlign: 'center' }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.7 }}>Mô tả tóm tắt</label>
-                <textarea
-                  placeholder="Nhập giới thiệu ngắn về cuốn sách..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  style={{ width: '100%', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: 'white', minHeight: '160px', fontFamily: 'inherit' }}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-              <button type="submit" className="btn-primary" style={{ padding: '1rem 2.5rem' }}>{editingId ? "Lưu Thay Đổi" : "Đăng Ký Sách"}</button>
-              <button type="button" className="btn-outline" onClick={resetForm} style={{ padding: '1rem 2.5rem' }}>Hủy bỏ</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Search & Filter Bar */}
-      <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column',
-        gap: '1.5rem', 
-        marginBottom: '2.5rem', 
-        background: 'rgba(255,255,255,0.02)', 
-        padding: '1.5rem', 
-        borderRadius: '20px',
-        border: '1px solid rgba(255,255,255,0.06)',
-      }}>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '300px', position: 'relative' }}>
-            <input 
-              type="text" 
-              placeholder="Tìm theo tên, tác giả hoặc ISBN..." 
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              style={{ 
-                width: '100%', 
-                padding: '0.9rem 1rem', 
-                paddingLeft: '3rem',
-                borderRadius: '12px', 
-                background: 'rgba(255,255,255,0.04)', 
-                border: '1px solid rgba(255,255,255,0.08)', 
-                color: 'white',
-                fontSize: '0.95rem',
-                outline: 'none',
-                transition: 'border-color 0.2s'
-              }}
-              onFocus={e => e.target.style.borderColor = 'rgba(187,134,252,0.4)'}
-              onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
-            />
-            <span style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.3, fontSize: '1.2rem' }}>🔍</span>
-          </div>
-          <div style={{ fontSize: '0.9rem', opacity: 0.5 }}>
-            Tìm thấy <strong>{filteredBooks.length}</strong> cuốn sách
-          </div>
-        </div>
+      <div className="hub-content fade-in" key={activeTab}>
         
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px' }}>Lọc theo thể loại</div>
-          <div style={{ 
-            display: 'flex', 
-            gap: '0.8rem', 
-            overflowX: 'auto', 
-            padding: '0.5rem 0',
-            scrollBehavior: 'smooth',
-            WebkitOverflowScrolling: 'touch',
-            position: 'relative'
-          }} className="category-scroll-container">
-            <style jsx>{`
-              .category-scroll-container::-webkit-scrollbar {
-                height: 6px;
-              }
-              .category-scroll-container::-webkit-scrollbar-track {
-                background: rgba(255, 255, 255, 0.05);
-                border-radius: 10px;
-              }
-              .category-scroll-container::-webkit-scrollbar-thumb {
-                background: rgba(187, 134, 252, 0.3);
-                border-radius: 10px;
-              }
-              .category-scroll-container::-webkit-scrollbar-thumb:hover {
-                background: rgba(187, 134, 252, 0.5);
-              }
-            `}</style>
-            {filterTabs.map(tab => {
-              const isActive = (tab.id === 'ALL' && selectedFilter === 'ALL') || (selectedFilter === tab.name);
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => { setSelectedFilter(tab.name === 'Tất cả thể loại' ? 'ALL' : tab.name); setCurrentPage(1); }}
-                  style={{
-                    padding: '0.6rem 1.4rem',
-                    borderRadius: '99px',
-                    border: 'none',
-                    background: isActive 
-                      ? 'linear-gradient(135deg, #bb86fc, #9965f4)' 
-                      : 'rgba(255,255,255,0.05)',
-                    color: isActive ? '#000' : 'rgba(255,255,255,0.7)',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.3s ease',
-                    boxShadow: isActive ? '0 4px 15px rgba(153, 101, 244, 0.4)' : 'none',
-                    fontSize: '0.85rem',
-                    flexShrink: 0
-                  }}
-                >
-                  {tab.name}
+        {/* ================= INVENTORY TAB ================= */}
+        {activeTab === 'inventory' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Quản Lý Đầu Sách</h2>
+                <button className="btn-primary" onClick={() => setShowBookForm(!showBookForm)}>
+                    {showBookForm ? "Đóng Form" : "+ Đăng Ký Sách Mới"}
                 </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Book Stats Bar */}
-
-      {!loading && books.length > 0 && (
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '1rem 1.5rem', flex: '1', minWidth: '140px' }}>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.3rem' }}>Tổng sách</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#bb86fc' }}>{books.length}</div>
-          </div>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '1rem 1.5rem', flex: '1', minWidth: '140px' }}>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.3rem' }}>Tổng bản sách</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#03dac6' }}>{books.reduce((s, b) => s + (b.quantity || 0), 0)}</div>
-          </div>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '1rem 1.5rem', flex: '1', minWidth: '140px' }}>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.3rem' }}>Còn sách</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#27c93f' }}>{books.filter(b => (b.quantity || 0) > 0).length}</div>
-          </div>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '1rem 1.5rem', flex: '1', minWidth: '140px' }}>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.3rem' }}>Hết sách</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#ff5f56' }}>{books.filter(b => (b.quantity || 0) <= 0).length}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Book Cards Grid */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '4rem', color: 'rgba(255,255,255,0.5)' }}>
-
-          Đang tải danh sách sách...
-        </div>
-      ) : books.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '4rem', color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.03)', borderRadius: '16px' }}>
-
-          <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Chưa có cuốn sách nào trong hệ thống.</p>
-          <p style={{ fontSize: '0.9rem', opacity: 0.6 }}>Nhấn "Thêm Sách Mới" để bắt đầu.</p>
-        </div>
-      ) : (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.2rem' }}>
-            {filteredBooks.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(book => (
-
-              <div key={book.id} style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '14px',
-                overflow: 'hidden',
-                transition: 'transform 0.2s, border-color 0.2s, box-shadow 0.2s',
-                cursor: 'default',
-                display: 'flex',
-                flexDirection: 'column',
-                height: '100%'
-              }}
-            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = 'rgba(187,134,252,0.3)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)'; }}
-            onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.boxShadow = 'none'; }}
-            >
-              <div style={{ display: 'flex', gap: '1rem', padding: '1.2rem', flex: 1 }}>
-                {/* Book Cover */}
-                <div style={{
-                  width: '80px',
-                  height: '110px',
-                  flexShrink: 0,
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                  background: 'linear-gradient(135deg, rgba(187,134,252,0.15), rgba(3,218,198,0.1))',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  {book.coverImage ? (
-                    <img src={book.coverImage} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span style={{ fontSize: '0.7rem', opacity: 0.3, color: 'rgba(255,255,255,0.3)' }}>N/A</span>
-                  )}
-                </div>
-
-                {/* Book Info */}
-                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#fff', marginBottom: '0.3rem', lineHeight: '1.3', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', minHeight: '2.6em' }}>{book.title}</h3>
-                  <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: 'auto' }}>{book.author}</p>
-
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.8rem' }}>
-                    {book.category && (
-                      <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: 'rgba(187,134,252,0.15)', color: '#bb86fc', borderRadius: '4px' }}>
-                        {book.category}
-                      </span>
-                    )}
-                    <span style={{
-                      fontSize: '0.75rem',
-                      padding: '0.2rem 0.5rem',
-                      background: (book.quantity > 0 && book.status !== 'Warehouse') ? 'rgba(39, 201, 63, 0.12)' : 'rgba(255, 95, 86, 0.12)',
-                      color: (book.quantity > 0 && book.status !== 'Warehouse') ? '#27c93f' : '#ff5f56',
-                      borderRadius: '4px',
-                      fontWeight: '600'
-                    }}>
-                      {book.status === 'Warehouse' ? 'Trong kho (Bảo trì)' : (book.quantity > 0) ? `${book.quantity} bản` : 'Hết sách'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Actions Footer */}
-              <div style={{ display: 'flex', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.15)' }}>
-                <button
-                  onClick={() => handleEdit(book)}
-                  style={{
-                    flex: 1,
-                    padding: '0.7rem',
-                    background: 'transparent',
-                    border: 'none',
-                    borderRight: '1px solid rgba(255,255,255,0.06)',
-                    color: '#bb86fc',
-                    cursor: 'pointer',
-                    fontSize: '0.85rem',
-                    fontWeight: '500',
-                    transition: 'background 0.2s'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(187,134,252,0.1)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  Chỉnh sửa
-                </button>
-                <button
-                  onClick={() => handleDelete(book.id)}
-                  style={{
-                    flex: 1,
-                    padding: '0.7rem',
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#ff5f56',
-                    cursor: 'pointer',
-                    fontSize: '0.85rem',
-                    fontWeight: '500',
-                    transition: 'background 0.2s'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,95,86,0.1)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  Xoá
-                </button>
-              </div>
             </div>
-          ))}
-        </div>
 
-        {/* Pagination Controls */}
-        {filteredBooks.length > itemsPerPage && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '2.5rem', marginBottom: '1rem' }}>
-            <button 
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(curr => curr - 1)}
-              className="btn-outline"
-              style={{ opacity: currentPage === 1 ? 0.3 : 1 }}
-            >
-              ← Trang trước
-            </button>
-            <span style={{ fontSize: '0.9rem', opacity: 0.6 }}>Trang {currentPage} / {Math.ceil(filteredBooks.length / itemsPerPage)}</span>
-            <button 
-              disabled={currentPage >= Math.ceil(filteredBooks.length / itemsPerPage)}
-              onClick={() => setCurrentPage(curr => curr + 1)}
-              className="btn-outline"
-              style={{ opacity: currentPage >= Math.ceil(filteredBooks.length / itemsPerPage) ? 0.3 : 1 }}
-            >
-              Trang sau →
-            </button>
+            {showBookForm && (
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '20px', marginBottom: '2.5rem', border: '1px solid rgba(255,255,255,0.06)' }}>
+                   <form onSubmit={handleBookSubmit} style={{ display: 'grid', gap: '1.5rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>Tiêu đề sách</label>
+                                <input type="text" value={bookFormData.title} onChange={e => setBookFormData({...bookFormData, title: e.target.value})} placeholder="Ví dụ: Đắc Nhân Tâm" required style={{ width: '100%', padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>Tác giả</label>
+                                <input type="text" value={bookFormData.author} onChange={e => setBookFormData({...bookFormData, author: e.target.value})} list="hub-authors" placeholder="Chọn hoặc nhập tên..." required style={{ width: '100%', padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} />
+                                <datalist id="hub-authors">
+                                    {authors.map(a => <option key={a.id} value={a.name} />)}
+                                </datalist>
+                            </div>
+                            <div>
+                                <MagicSelect 
+                                    label="Thể loại"
+                                    value={bookFormData.category}
+                                    options={categories}
+                                    onChange={(val) => setBookFormData({...bookFormData, category: val})}
+                                    placeholder="Chọn thể loại..."
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>Số lượng</label>
+                                <input type="number" value={bookFormData.quantity} onChange={e => setBookFormData({...bookFormData, quantity: e.target.value})} min="0" required style={{ width: '100%', padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '2rem' }}>
+                            <div style={{ width: '150px' }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>Ảnh bìa</label>
+                                <div style={{ height: '200px', background: '#1a1a1a', borderRadius: '12px', border: '2px dashed #333', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
+                                    {bookFormData.coverImage ? <img src={bookFormData.coverImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ opacity: 0.2 }}>No Cover</span>}
+                                    {uploading && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>...</div>}
+                                </div>
+                                <input type="file" id="hub-cover" onChange={handleBookImageUpload} style={{ display: 'none' }} />
+                                <label htmlFor="hub-cover" className="btn-outline" style={{ display: 'block', marginTop: '1rem', textAlign: 'center', padding: '0.5rem' }}>Upload</label>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>Mô tả chi tiết</label>
+                                <textarea value={bookFormData.description} onChange={e => setBookFormData({...bookFormData, description: e.target.value})} style={{ width: '100%', height: '200px', padding: '1rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff', resize: 'none' }} />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button type="submit" className="btn-primary" style={{ padding: '1rem 3rem' }}>{editingBookId ? "Lưu thay đổi" : "Thêm sách"}</button>
+                            <button type="button" className="btn-outline" onClick={resetBookForm}>Hủy</button>
+                        </div>
+                   </form>
+                </div>
+            )}
+
+            {/* Search & Filter */}
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.2rem 1.5rem', borderRadius: '16px', marginBottom: '2rem', display: 'flex', gap: '1.5rem', alignItems: 'center', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <input type="text" placeholder="Tìm kiếm sách, tác giả, ISBN..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ flex: 1, padding: '0.8rem 1.2rem', borderRadius: '10px', background: 'rgba(0,0,0,0.2)', border: '1px solid #333', color: '#fff', outline: 'none' }} />
+                <div style={{ width: '250px' }}>
+                    <MagicSelect 
+                        value={selectedCategoryFilter === "ALL" ? "" : selectedCategoryFilter}
+                        options={categories}
+                        onChange={(val) => setSelectedCategoryFilter(val || "ALL")}
+                        placeholder="Tất cả thể loại"
+                    />
+                </div>
+            </div>
+
+            {loading ? <p style={{ textAlign: 'center', opacity: 0.5 }}>Đang tải kho sách...</p> : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.2rem' }}>
+                    {filteredBooks.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(book => (
+                        <div key={book.id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                            <div style={{ display: 'flex', gap: '1rem', padding: '1.2rem' }}>
+                                <img src={book.coverImage || 'https://via.placeholder.com/80x110'} style={{ width: '80px', height: '110px', objectFit: 'cover', borderRadius: '8px' }} />
+                                <div style={{ flex: 1 }}>
+                                    <h3 style={{ fontSize: '1rem', margin: '0 0 0.3rem', color: '#fff' }}>{book.title}</h3>
+                                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>{book.author}</p>
+                                    <div style={{ marginTop: '0.8rem', display: 'flex', gap: '0.5rem' }}>
+                                        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'rgba(187,134,252,0.1)', color: '#bb86fc', borderRadius: '4px' }}>{book.category}</span>
+                                        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: book.quantity > 0 ? 'rgba(39,201,63,0.1)' : 'rgba(255,95,86,0.1)', color: book.quantity > 0 ? '#27c93f' : '#ff5f56', borderRadius: '4px' }}>{book.quantity} bản</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                <button onClick={() => handleEditBook(book)} style={{ flex: 1, padding: '0.8rem', background: 'transparent', border: 'none', color: '#bb86fc', cursor: 'pointer', fontSize: '0.85rem' }}>Sửa</button>
+                                <button onClick={() => handleDeleteBook(book.id)} style={{ flex: 1, padding: '0.8rem', background: 'transparent', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '0.85rem' }}>Xóa</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Pagination */}
+            {filteredBooks.length > itemsPerPage && (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '2rem' }}>
+                    <button disabled={currentPage === 1} onClick={() => setCurrentPage(c => c - 1)} className="btn-outline">← Trước</button>
+                    <span>Trang {currentPage}</span>
+                    <button disabled={currentPage * itemsPerPage >= filteredBooks.length} onClick={() => setCurrentPage(c => c + 1)} className="btn-outline">Sau →</button>
+                </div>
+            )}
           </div>
         )}
 
-      </>
-      )}
+        {/* ================= AUTHORS TAB ================= */}
+        {activeTab === 'authors' && (
+           <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem' }}>
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <h3 style={{ margin: '0 0 1.5rem' }}>Thêm Tác Giả</h3>
+                    <form onSubmit={handleAddAuthor} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <input type="text" placeholder="Tên tác giả..." value={newAuthorName} onChange={e => setNewAuthorName(e.target.value)} style={{ padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} />
+                        <button type="submit" className="btn-primary">Lưu Tác Giả</button>
+                    </form>
+                    <div style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <p style={{ fontSize: '0.85rem', opacity: 0.5 }}>Chức năng đặc biệt:</p>
+                        <button className="btn-outline" onClick={handleSyncAuthors} disabled={syncingAuthors} style={{ width: '100%', borderColor: '#bb86fc', color: '#bb86fc' }}>
+                            {syncingAuthors ? "Đang xử lý..." : "🔄 Đồng bộ từ Kho Sách"}
+                        </button>
+                    </div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h3 style={{ margin: 0 }}>Danh Mục Tác Giả</h3>
+                        <input 
+                            type="text" 
+                            placeholder="Tìm tác giả..." 
+                            value={authorSearchTerm} 
+                            onChange={e => setAuthorSearchTerm(e.target.value)} 
+                            style={{ padding: '0.6rem 1rem', borderRadius: '10px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '0.85rem', width: '200px' }} 
+                        />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+                        {authors
+                          .filter(a => a.name.toLowerCase().includes(authorSearchTerm.toLowerCase()))
+                          .map(a => (
+                            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span>{a.name}</span>
+                                <button onClick={() => handleDeleteAuthor(a.id)} style={{ background: 'transparent', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+           </div>
+        )}
+
+        {/* ================= CATEGORIES TAB ================= */}
+        {activeTab === 'categories' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem' }}>
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <h3 style={{ margin: '0 0 1.5rem' }}>{editingCategoryId ? "Sửa Thể Loại" : "Thêm Thể Loại"}</h3>
+                    <form onSubmit={handleCategorySubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <input type="text" placeholder="Tên thể loại..." value={categoryFormData.name} onChange={e => setCategoryFormData({...categoryFormData, name: e.target.value})} style={{ padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} required />
+                        <textarea placeholder="Mô tả ngắn..." value={categoryFormData.description} onChange={e => setCategoryFormData({...categoryFormData, description: e.target.value})} style={{ padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff', height: '120px', resize: 'none' }} />
+                        <div style={{ display: 'flex', gap: '0.8rem' }}>
+                            <button type="submit" className="btn-primary" style={{ flex: 1 }}>Lưu</button>
+                            {editingCategoryId && <button type="button" className="btn-outline" onClick={resetCategoryForm}>Hủy</button>}
+                        </div>
+                    </form>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem 1.5rem', borderRadius: '15px', display: 'flex', alignItems: 'center', gap: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span style={{ opacity: 0.5 }}>🔍</span>
+                        <input 
+                            type="text" 
+                            placeholder="Tìm kiếm nhanh thể loại..." 
+                            value={categorySearchTerm} 
+                            onChange={e => setCategorySearchTerm(e.target.value)} 
+                            style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.9rem' }} 
+                        />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.2rem' }}>
+                        {categories
+                          .filter(c => c.name.toLowerCase().includes(categorySearchTerm.toLowerCase()) || (c.description && c.description.toLowerCase().includes(categorySearchTerm.toLowerCase())))
+                          .map(cat => (
+                        <div key={cat.id} style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div style={{ fontWeight: '700', fontSize: '1.1rem', marginBottom: '0.5rem' }}>{cat.name}</div>
+                            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', margin: '0 0 1.5rem' }}>{cat.description || "Không có mô tả"}</p>
+                            <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
+                                <button onClick={() => handleEditCategory(cat)} style={{ background: 'none', border: 'none', color: '#bb86fc', cursor: 'pointer', fontWeight: '600' }}>Sửa</button>
+                                <button onClick={() => handleDeleteCategory(cat.id)} style={{ background: 'none', border: 'none', color: '#ff5f56', cursor: 'pointer', fontWeight: '600' }}>Xóa</button>
+                            </div>
+                        </div>
+                    ))}
+                    </div>
+                </div>
+            </div>
+        )}
+
+      </div>
     </div>
   );
 }
 
-export default function ManageBooks() {
+export default function InventoryHub() {
   return (
-    <Suspense fallback={<div className={styles.container}><p>Đang tải...</p></div>}>
-      <ManageBooksContent />
+    <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center' }}>Đang tải trung tâm điều hành...</div>}>
+      <InventoryHubContent />
     </Suspense>
   );
 }
-

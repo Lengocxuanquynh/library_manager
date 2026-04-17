@@ -30,10 +30,9 @@ export default function DashboardLayout({ children }) {
 
   const navLinks = role === "admin" ? [
     { href: "/admin", label: "Dashboard (Tổng quan)" },
-    { href: "/admin/books", label: "Quản lý Sách" },
+    { href: "/admin/books", label: "📦 Tổng Kho Sách" },
     { href: "/admin/transactions", label: "Quản lý Phiếu Mượn" },
     { href: "/admin/members", label: "Quản lý Độc giả" },
-    { href: "/admin/categories", label: "Thể loại Sách" },
     { href: "/admin/stats", label: "Thống kê" },
     { href: "/admin/posts", label: "Tin Tức & Blog" },
   ] : [

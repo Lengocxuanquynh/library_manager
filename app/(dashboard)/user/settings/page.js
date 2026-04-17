@@ -8,6 +8,7 @@ import { updateUserProfile, updateUserPassword, updateUserEmail, logoutUser } fr
 import { sendMail } from "../../../../services/emailService";
 import OTPModal from "../../../../components/OTPModal";
 import { toast } from "sonner";
+import { createNotification } from "../../../../services/db";
 
 export default function UserSettings() {
   const { user, role } = useAuth();
@@ -36,6 +37,10 @@ export default function UserSettings() {
   const [isSendingOTP, setIsSendingOTP] = useState(false);
   const [customEmailTarget, setCustomEmailTarget] = useState(""); 
 
+  // Phone Change State
+  const [newPhone, setNewPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+
   useEffect(() => {
     if (user?.displayName) {
       setName(user.displayName);
@@ -60,6 +65,12 @@ export default function UserSettings() {
     setMessage({ type: '', text: '' });
     try {
       await updateUserProfile(user.uid, { name, photoURL: avatar });
+      
+      // Thông báo vào Hộp thư
+      if (name !== user.displayName) {
+        await createNotification(user.uid, "📝 Thay đổi họ tên", `Bạn đã đổi tên thành: ${name}`, "info");
+      }
+      
       setMessage({ type: 'success', text: 'Cập nhật Hồ sơ thành công!' });
     } catch (error) {
       console.error(error);
@@ -124,6 +135,18 @@ export default function UserSettings() {
     // Bước 1: Gửi vào email cũ để xác minh chủ cũ
     await triggerSendOTP(user.email, "yêu cầu Đổi Email (Vòng 1/2)");
   };
+  
+  // --- Start Phone Change ---
+  const startPhoneChange = async (e) => {
+    e.preventDefault();
+    if (!/^\d{10}$/.test(newPhone)) {
+      setPhoneError("Số điện thoại phải có đúng 10 chữ số");
+      return;
+    }
+    setPhoneError("");
+    setOtpMode('PHONE');
+    await triggerSendOTP(user.email, "yêu cầu Đổi Số điện thoại");
+  };
 
   // --- OTP Verification Logic ---
   const onVerifyOTP = async (inputOTP) => {
@@ -135,6 +158,10 @@ export default function UserSettings() {
     if (otpMode === 'PASSWORD') {
       try {
         await updateUserPassword(newPassword);
+        
+        // Thông báo vào Hộp thư
+        await createNotification(user.uid, "🔐 Bảo mật tài khoản", "Bạn đã thay đổi mật khẩu thành công.", "success");
+
         toast.success("Đổi mật khẩu thành công! Hệ thống sẽ Đăng Xuất sau 2 giây để bảo mật...");
         setNewPassword("");
         setConfirmPassword("");
@@ -154,6 +181,10 @@ export default function UserSettings() {
     else if (otpMode === 'EMAIL_STEP_2') {
       try {
         await updateUserEmail(user.uid, newEmail);
+
+        // Thông báo vào Hộp thư
+        await createNotification(user.uid, "📧 Thay đổi Email", `Bạn đã đổi địa chỉ Email thành: ${newEmail}`, "success");
+
         toast.success("Đổi Email thành công! Hệ thống sẽ Đăng Xuất sau 2 giây để áp dụng quyền...");
         setNewEmail("");
         setShowEmailForm(false);
@@ -162,6 +193,21 @@ export default function UserSettings() {
         toast.error(handleErrorStr(err));
       }
       setOtpMode(null);
+    }
+    else if (otpMode === 'PHONE') {
+      try {
+        await updateUserProfile(user.uid, { phone: newPhone });
+
+        // Thông báo vào Hộp thư
+        await createNotification(user.uid, "📞 Cập nhật Số điện thoại", `Bạn đã đổi số điện thoại thành: ${newPhone}`, "success");
+
+        toast.success("Cập nhật Số điện thoại thành công!");
+        setNewPhone("");
+        setOtpMode(null);
+      } catch (err) {
+        toast.error(handleErrorStr(err));
+        setOtpMode(null);
+      }
     }
   };
 
@@ -176,6 +222,7 @@ export default function UserSettings() {
     if (otpMode === 'PASSWORD') modeText = "Đổi Mật Khẩu";
     if (otpMode === 'EMAIL_STEP_1') modeText = "Bước 1/2 - Chứng Thực Mất Email";
     if (otpMode === 'EMAIL_STEP_2') modeText = "Bước 2/2 - Liên Kết Email Mới";
+    if (otpMode === 'PHONE') modeText = "Đổi Số Điện Thoại";
 
     return (
       <OTPModal
@@ -219,7 +266,7 @@ export default function UserSettings() {
             {!avatar && (name ? name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase())}
           </div>
           <h2 style={{ fontSize: '1.5rem', marginBottom: '0.4rem', color: '#fff' }}>{name || "Độc giả"}</h2>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', marginBottom: '1.2rem', fontFamily: 'monospace' }}> {user?.uid} </p>
+          <p style={{ color: 'rgba(255,193,7,0.8)', fontSize: '1.1rem', marginBottom: '1.2rem', fontWeight: '800', fontFamily: 'monospace', letterSpacing: '2px' }}> {user?.memberCode} </p>
           <div style={{ padding: '0.4rem 1rem', background: 'rgba(187, 134, 252, 0.1)', borderRadius: '20px', fontSize: '0.8rem', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.2)' }}>
             Hạng: <strong>Thành viên Thư Viện</strong>
           </div>
@@ -345,6 +392,33 @@ export default function UserSettings() {
                 </button>
               </form>
             )}
+          </div>
+
+          {/* Cập Nhật Số Điện Thoại */}
+          <div className={styles.card} style={{ border: '1px solid rgba(39, 201, 63, 0.1)', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#27c93f' }}></div>
+            <div>
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '0.3rem', color: '#27c93f' }}>Cập Nhật Số Điện Thoại</h3>
+              <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '1.5rem' }}>Số điện thoại hiện tại: <strong>{user?.phone || "Chưa có"}</strong></p>
+              
+              <form onSubmit={startPhoneChange} style={{ display: 'grid', gap: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Nhập Số Điện Thoại Mới (10 số)</label>
+                  <input 
+                    type="tel" 
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    placeholder="09xx..."
+                    style={{ width: '100%', padding: '0.9rem', borderRadius: '8px', border: '1px solid rgba(39, 201, 63, 0.3)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                    required
+                  />
+                </div>
+                {phoneError && <p style={{ color: '#ff5f56', fontSize: '0.9rem', margin: 0 }}>{phoneError}</p>}
+                <button type="submit" className="btn-primary" style={{ background: 'rgba(39, 201, 63, 0.1)', color: '#27c93f', width: 'fit-content' }}>
+                  Xác Thực OTP Qua Email
+                </button>
+              </form>
+            </div>
           </div>
 
         </div>

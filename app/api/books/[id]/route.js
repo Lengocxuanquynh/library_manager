@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBook, updateBook, deleteBook, ensureCategoryExists } from '../../../../services/db';
+import { getBook, updateBook, deleteBook, ensureCategoryExists, ensureAuthorExists } from '../../../../services/db';
 
 export async function GET(request, { params }) {
   try {
@@ -18,6 +18,7 @@ export async function PATCH(request, { params }) {
     const { id } = await params;
     const body = await request.json();
     if (body.category) await ensureCategoryExists(body.category);
+    if (body.author) await ensureAuthorExists(body.author);
     await updateBook(id, body);
 
     return NextResponse.json({ success: true });

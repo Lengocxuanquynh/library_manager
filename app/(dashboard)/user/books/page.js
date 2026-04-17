@@ -1,26 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../../../components/AuthProvider";
 import { useCart } from "../../../../components/CartProvider";
 import styles from "../../dashboard.module.css";
 import { useRouter } from "next/navigation";
+import { toggleAuthorFavorite } from "../../../../services/db";
+import { toast } from "sonner";
 
 export default function BookCatalog() {
   const { user } = useAuth();
   const { addToCart, cart } = useCart();
   const router = useRouter();
+  
+  // State
   const [books, setBooks] = useState([]);
-  const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("Tất cả");
   const [formalCategories, setFormalCategories] = useState([]);
-  const [selectedBook, setSelectedBook] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
+  // Filters
+  const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("TRANG CHỦ"); // TRANG CHỦ, TÁC GIẢ, THỂ LOẠI, THƯ VIỆN
+  const [filterAuthor, setFilterAuthor] = useState("Tất cả");
+  const [filterCategory, setFilterCategory] = useState("Tất cả");
+  const [filterYear, setFilterYear] = useState("Tất cả");
+
+  // Nav Dropdowns state
+  const [activeDropdown, setActiveDropdown] = useState(null);
 
   useEffect(() => {
     fetchData();
-  }, []);
+    if (user) fetchUserProfile();
+  }, [user]);
 
   const fetchData = async () => {
     try {
@@ -29,9 +42,9 @@ export default function BookCatalog() {
         fetch('/api/categories')
       ]);
       const booksData = await booksRes.json();
-      setBooks(Array.isArray(booksData) ? booksData : []);
+      setBooks(booksData);
       const catsData = await catsRes.json();
-      setFormalCategories(Array.isArray(catsData) ? catsData : []);
+      setFormalCategories(catsData);
     } catch (error) {
       console.error(error);
     } finally {
@@ -39,186 +52,404 @@ export default function BookCatalog() {
     }
   };
 
-
-  const handleBorrow = (book, e) => {
-    if (e) e.stopPropagation(); // Prevents opening modal when clicking borrow
-    if (!user) return;
-    addToCart(book);
-    setSelectedBook(null); // Optional: close modal when added
+  const fetchUserProfile = async () => {
+    try {
+      const res = await fetch(`/api/user/profile/${user.uid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUserProfile(data);
+      }
+    } catch (err) {
+      console.error("Fetch profile failed", err);
+    }
   };
 
-  // Merge formal categories with existing book categories for backup
-  const bookCategories = [...new Set(books.map(b => (b.category || "Khác").trim()).filter(Boolean))];
-  const managedNames = formalCategories.map(c => c.name.trim());
-  const categories = [
-    "Tất cả", 
-    ...new Set([
-      ...managedNames,
-      ...bookCategories
-    ])
-  ];
+  const handleToggleStar = async (authorName, e) => {
+    if (e) e.stopPropagation();
+    if (!user) return toast.error("Vui lòng đăng nhập");
+    
+    try {
+      const newFavs = await toggleAuthorFavorite(user.uid, authorName);
+      setUserProfile(prev => ({ ...prev, favoriteAuthors: newFavs }));
+      toast.success(newFavs.includes(authorName) ? `Đã gắn sao tác giả ${authorName}` : `Đã bỏ gắn sao tác giả ${authorName}`);
+    } catch (err) {
+      toast.error("Lỗi khi xử lý");
+    }
+  };
 
+  // Data Aggregation
+  const authors = useMemo(() => ["Tất cả", ...new Set(books.map(b => b.author).filter(Boolean))], [books]);
+  const categories = useMemo(() => ["Tất cả", ...new Set(books.map(b => b.category).filter(Boolean))], [books]);
+  const years = useMemo(() => ["Tất cả", ...new Set(books.map(b => b.year).filter(Boolean))].sort((a,b) => b-a), [books]);
 
   const filteredBooks = books.filter(b => {
     const matchesSearch = b.title.toLowerCase().includes(search.toLowerCase()) || 
                          b.author?.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = selectedCategory === "Tất cả" || (b.category || "Khác") === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesCategory = filterCategory === "Tất cả" || b.category === filterCategory;
+    const matchesAuthor = filterAuthor === "Tất cả" || b.author === filterAuthor;
+    const matchesYear = filterYear === "Tất cả" || b.year === filterYear;
+    
+    // Logic cho Tab Yêu thích
+    if (activeTab === "THƯ VIỆN") {
+        return matchesSearch && matchesCategory && matchesAuthor && matchesYear && userProfile?.favoriteAuthors?.includes(b.author);
+    }
+
+    return matchesSearch && matchesCategory && matchesAuthor && matchesYear;
   });
 
+  const handleSelectFromModal = (type, value) => {
+    if (type === 'author') {
+        setFilterAuthor(value);
+        setActiveTab("TRANG CHỦ"); // Quay về trang chính để thấy kết quả lọc
+    } else if (type === 'category') {
+        setFilterCategory(value);
+        setActiveTab("TRANG CHỦ");
+    }
+    setSelectedBook(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
-    <div>
-      <div className={styles.headerArea}>
-        <h1 className={styles.pageTitle}>Danh Mục Sách</h1>
-      </div>
-
-      <div style={{ marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <input 
-          type="text" 
-          placeholder="Tìm kiếm sách theo tên hoặc tác giả..." 
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: '100%', maxWidth: '500px', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'white', fontSize: '1rem' }}
-        />
-
-        {/* Category Tabs */}
-        <div style={{ 
-          display: 'flex', 
-          gap: '0.8rem', 
-          overflowX: 'auto', 
-          paddingBottom: '0.5rem', 
-          paddingLeft: '0.2rem',
-          paddingRight: '1.5rem',
-          scrollbarWidth: 'none',
-          WebkitOverflowScrolling: 'touch'
-        }}>
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              style={{
-                padding: '0.65rem 1.4rem',
-                borderRadius: '99px',
-                border: 'none',
-                background: selectedCategory === cat 
-                  ? 'linear-gradient(135deg, #bb86fc, #9965f4)' 
-                  : 'rgba(255,255,255,0.06)',
-                color: selectedCategory === cat ? '#000' : 'rgba(255,255,255,0.7)',
-                fontWeight: '700',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.3s ease',
-                boxShadow: selectedCategory === cat 
-                  ? '0 6px 18px rgba(153, 101, 244, 0.4)' 
-                  : 'none',
-                fontSize: '0.9rem',
-                flexShrink: 0
-              }}
+    <div style={{ minHeight: '100vh', color: '#fff' }}>
+      
+      {/* Anime-Style Sub Navbar */}
+      <nav style={{ 
+        position: 'sticky', 
+        top: 0, 
+        zIndex: 100, 
+        backgroundColor: '#0a0a0a', 
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        padding: '0 2rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        height: '60px',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+      }}>
+        <div style={{ display: 'flex', gap: '2rem', alignItems: 'center', height: '100%' }}>
+            <span 
+                onClick={() => { setActiveTab("TRANG CHỦ"); setFilterAuthor("Tất cả"); setFilterCategory("Tất cả"); setFilterYear("Tất cả"); }} 
+                style={{ fontWeight: '800', cursor: 'pointer', color: activeTab === "TRANG CHỦ" ? 'var(--primary)' : '#fff', transition: '0.3s' }}
             >
-              {cat}
-            </button>
-          ))}
+                TRANG CHỦ
+            </span>
 
+            {/* Dropdown Tác Giả */}
+            <div 
+                onMouseEnter={() => setActiveDropdown('author')} 
+                onMouseLeave={() => setActiveDropdown(null)}
+                style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+            >
+                <span style={{ color: filterAuthor !== "Tất cả" ? 'var(--primary)' : '#fff' }}>TÁC GIẢ ▾</span>
+                {activeDropdown === 'author' && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#111', border: '1px solid #333', borderRadius: '0 0 8px 8px', width: '250px', maxHeight: '400px', overflowY: 'auto', boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
+                        {authors.map(a => (
+                            <div 
+                                key={a} 
+                                onClick={() => { setFilterAuthor(a); setActiveDropdown(null); }}
+                                style={{ padding: '0.8rem 1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #222', transition: '0.2s', backgroundColor: filterAuthor === a ? '#222' : 'transparent' }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#222'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = filterAuthor === a ? '#222' : 'transparent'}
+                            >
+                                <span style={{ fontSize: '0.9rem' }}>{a}</span>
+                                {a !== "Tất cả" && (
+                                    <span 
+                                        onClick={(e) => handleToggleStar(a, e)}
+                                        style={{ color: userProfile?.favoriteAuthors?.includes(a) ? '#ffcc00' : 'rgba(255,255,255,0.2)', fontSize: '1.2rem' }}
+                                    >
+                                        ★
+                                    </span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Dropdown Thể Loại */}
+            <div 
+                onMouseEnter={() => setActiveDropdown('category')} 
+                onMouseLeave={() => setActiveDropdown(null)}
+                style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+            >
+                <span style={{ color: filterCategory !== "Tất cả" ? 'var(--primary)' : '#fff' }}>THỂ LOẠI ▾</span>
+                {activeDropdown === 'category' && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#111', border: '1px solid #333', borderRadius: '0 0 8px 8px', width: '200px', boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
+                        {categories.map(c => (
+                            <div 
+                                key={c} 
+                                onClick={() => { setFilterCategory(c); setActiveDropdown(null); }}
+                                style={{ padding: '0.8rem 1.2rem', borderBottom: '1px solid #222', fontSize: '0.9rem', backgroundColor: filterCategory === c ? '#222' : 'transparent' }}
+                            >
+                                {c}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Dropdown Năm */}
+            <div 
+                onMouseEnter={() => setActiveDropdown('year')} 
+                onMouseLeave={() => setActiveDropdown(null)}
+                style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+            >
+                <span style={{ color: filterYear !== "Tất cả" ? 'var(--primary)' : '#fff' }}>NĂM ▾</span>
+                {activeDropdown === 'year' && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#111', border: '1px solid #333', borderRadius: '0 0 8px 8px', width: '150px', boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
+                        {years.map(y => (
+                            <div 
+                                key={y} 
+                                onClick={() => { setFilterYear(y); setActiveDropdown(null); }}
+                                style={{ padding: '0.8rem 1.2rem', borderBottom: '1px solid #222', fontSize: '0.9rem', backgroundColor: filterYear === y ? '#222' : 'transparent' }}
+                            >
+                                {y}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <span 
+                onClick={() => setActiveTab("THƯ VIỆN")} 
+                style={{ cursor: 'pointer', color: activeTab === "THƯ VIỆN" ? '#ffcc00' : '#fff', position: 'relative' }}
+            >
+                THƯ VIỆN ⭐
+                {userProfile?.favoriteAuthors?.length > 0 && (
+                    <span style={{ position: 'absolute', top: '-8px', right: '-12px', background: '#ffcc00', color: '#000', borderRadius: '50%', width: '16px', height: '16px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                        {userProfile.favoriteAuthors.length}
+                    </span>
+                )}
+            </span>
+        </div>
+
+        {/* Search Bar */}
+        <div style={{ position: 'relative' }}>
+            <input 
+                type="text" 
+                placeholder="Tìm tên sách..." 
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ width: '250px', padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid #333', backgroundColor: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: '0.85rem' }}
+            />
+        </div>
+      </nav>
+
+      {/* Hero / Filter Status Buffer */}
+      <div style={{ padding: '2rem' }}>
+        <div style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <h1 className={styles.pageTitle} style={{ margin: 0 }}>{activeTab === "THƯ VIỆN" ? "Tác giả tôi theo dõi" : "Danh Mục Sách"}</h1>
+            {(filterAuthor !== "Tất cả" || filterCategory !== "Tất cả" || filterYear !== "Tất cả" || search !== "") && (
+                <button 
+                  onClick={() => { setFilterAuthor("Tất cả"); setFilterCategory("Tất cả"); setFilterYear("Tất cả"); setSearch(""); setActiveTab("TRANG CHỦ"); }}
+                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  Xóa toàn bộ lọc ✕
+                </button>
+            )}
+        </div>
+
+        <div className={styles.grid} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '2rem' }}>
+            {loading ? (
+            <div style={{ textAlign: 'center', padding: '4rem', gridColumn: '1/-1' }}>
+                <div className={styles.loader} style={{ margin: '0 auto' }}></div>
+                <p style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.5)' }}>Đang chuẩn bị kho sách...</p>
+            </div>
+            ) : filteredBooks.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '4rem', gridColumn: '1/-1', background: 'rgba(255,255,255,0.02)', borderRadius: '20px' }}>
+                <p style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.5)' }}>Không tìm thấy sách nào khớp với lựa chọn của bạn.</p>
+            </div>
+            ) : (
+            filteredBooks.map(book => {
+                const isAvailable = (book.quantity || 0) > 0;
+                const isFan = userProfile?.favoriteAuthors?.includes(book.author);
+                return (
+                <div 
+                    key={book.id} 
+                    className={styles.card} 
+                    onClick={() => setSelectedBook(book)}
+                    style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: '0.8rem', 
+                        padding: '0', 
+                        cursor: 'pointer', 
+                        overflow: 'hidden',
+                        position: 'relative',
+                        transition: 'transform 0.3s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-10px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                    <div style={{ 
+                        height: '300px', 
+                        width: '100%', 
+                        backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/200x300?text=Book'})`, 
+                        backgroundSize: 'cover', 
+                        backgroundPosition: 'center',
+                        position: 'relative'
+                    }}>
+                        {/* THE LOAI BADGE ON CARD */}
+                        <div style={{ 
+                            position: 'absolute', 
+                            top: '10px', 
+                            right: '10px', 
+                            backgroundColor: 'rgba(187, 134, 252, 0.9)', 
+                            color: '#000', 
+                            padding: '3px 10px', 
+                            borderRadius: '4px', 
+                            fontSize: '0.65rem', 
+                            fontWeight: '900',
+                            textTransform: 'uppercase',
+                            boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+                            zIndex: 2
+                        }}>
+                            {book.category}
+                        </div>
+
+                        {isFan && (
+                            <div style={{ position: 'absolute', top: '10px', left: '10px', backgroundColor: '#ffcc00', color: '#000', padding: '3px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', zIndex: 2 }}>STARred ★</div>
+                        )}
+                        <div style={{ 
+                            position: 'absolute', 
+                            bottom: 0, 
+                            left: 0, 
+                            right: 0, 
+                            padding: '1.5rem 1rem 0.5rem', 
+                            background: 'linear-gradient(to top, rgba(0,0,0,0.95), transparent)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.3rem'
+                         }}>
+                            <h3 style={{ fontSize: '1rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{book.title}</h3>
+                            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', margin: 0 }}>{book.author}</p>
+                        </div>
+                    </div>
+                </div>
+                );
+            })
+            )}
         </div>
       </div>
 
-      <div className={styles.grid} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-        {loading ? (
-          <p>Đang tải dữ liệu...</p>
-        ) : filteredBooks.length === 0 ? (
-          <p>Không tìm thấy sách nào khớp với tìm kiếm.</p>
-        ) : (
-          filteredBooks.map(book => {
-            const isAvailable = (book.quantity || 0) > 0;
-            return (
-              <div 
-                key={book.id} 
-                className={styles.card} 
-                onClick={() => setSelectedBook(book)}
-                style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1rem', cursor: 'pointer' }}
-              >
-                <div style={{ height: '220px', width: '100%', borderRadius: '8px', backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/200x300?text=Book'})`, backgroundSize: 'cover', backgroundPosition: 'center', marginBottom: '0.5rem' }}></div>
-                <h3 style={{ fontSize: '1.2rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{book.title}</h3>
-                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', margin: 0 }}><strong>Tác Giả:</strong> {book.author}</p>
-                
-                <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-                  <span style={{ 
-                    display: 'inline-block',
-                    background: isAvailable ? 'rgba(39, 201, 63, 0.2)' : 'rgba(255, 95, 86, 0.2)',
-                    color: isAvailable ? '#27c93f' : '#ff5f56',
-                    padding: '0.3rem 0.6rem',
-                    borderRadius: '4px',
-                    fontSize: '0.85rem'
-                   }}>
-                    {isAvailable ? `Còn ${book.quantity} cuốn` : 'Hết Sách'}
-                  </span>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* Book Details Modal */}
+      {/* PREMIUM DETAIL MODAL (ANIME STYLE) */}
       {selectedBook && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-          <div style={{ backgroundColor: '#1e1e1e', maxWidth: '800px', width: '100%', borderRadius: '24px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', maxHeight: '90vh', position: 'relative' }}>
-            <button onClick={() => setSelectedBook(null)} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', zIndex: 10 }}>✕</button>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ 
+            backgroundColor: '#161616', 
+            maxWidth: '1000px', 
+            width: '100%', 
+            borderRadius: '16px', 
+            overflow: 'hidden', 
+            border: '1px solid rgba(255,255,255,0.08)', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            maxHeight: '90vh', 
+            position: 'relative',
+            boxShadow: '0 30px 60px rgba(0,0,0,0.6)'
+          }}>
+            <button onClick={() => setSelectedBook(null)} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', width: '45px', height: '45px', borderRadius: '50%', cursor: 'pointer', zIndex: 10, fontSize: '1.2rem', transition: '0.2s' }}>✕</button>
             
-            <div style={{ display: 'flex', flexDirection: 'row', gap: '2rem', padding: '2.5rem', overflowY: 'auto' }}>
-              <div style={{ flexShrink: 0, width: '240px', height: '360px', borderRadius: '12px', backgroundImage: `url(${selectedBook.coverImage || 'https://via.placeholder.com/200x300?text=Book'})`, backgroundSize: 'cover', backgroundPosition: 'center', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}></div>
+            <div style={{ display: 'flex', gap: '3rem', padding: '3rem', overflowY: 'auto' }}>
+              <div style={{ 
+                flexShrink: 0, 
+                width: '320px', 
+                height: '480px', 
+                borderRadius: '8px', 
+                backgroundImage: `url(${selectedBook.coverImage || 'https://via.placeholder.com/200x300?text=Book'})`, 
+                backgroundSize: 'cover', 
+                backgroundPosition: 'center', 
+                boxShadow: '0 10px 40px rgba(0,0,0,0.8)',
+                border: '1px solid rgba(255,255,255,0.1)'
+              }}></div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <span style={{ color: 'var(--primary)', fontWeight: '600', fontSize: '0.9rem', textTransform: 'uppercase' }}>{selectedBook.category || "Chưa phân loại"}</span>
-                <h2 style={{ fontSize: '2.5rem', fontWeight: '800', margin: 0 }}>{selectedBook.title}</h2>
-                <p style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.6)' }}>Tác giả: <span style={{ color: '#fff' }}>{selectedBook.author}</span></p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1 }}>
+                <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '0.5rem' }}>
+                        <span 
+                            onClick={() => handleSelectFromModal('category', selectedBook.category)}
+                            style={{ 
+                                backgroundColor: 'rgba(187, 134, 252, 0.15)', 
+                                color: '#bb86fc', 
+                                padding: '4px 12px', 
+                                borderRadius: '6px', 
+                                border: '1px solid rgba(187, 134, 252, 0.3)',
+                                fontWeight: '800', 
+                                fontSize: '0.85rem', 
+                                letterSpacing: '1px', 
+                                textTransform: 'uppercase', 
+                                cursor: 'pointer',
+                                transition: '0.3s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(187, 134, 252, 0.25)'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(187, 134, 252, 0.15)'}
+                        >
+                            {selectedBook.category || "CÔNG NGHỆ"}
+                        </span>
+                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>• ID: {selectedBook.id.slice(0,6)}</span>
+                    </div>
+                    <h2 style={{ fontSize: '3.5rem', fontWeight: '900', margin: '0 0 0.5rem', lineHeight: 1.1 }}>{selectedBook.title}</h2>
+                    <p style={{ fontSize: '1.3rem', color: 'rgba(255,255,255,0.5)' }}>
+                        Tác giả: <span onClick={() => handleSelectFromModal('author', selectedBook.author)} style={{ color: '#fff', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '4px' }}>{selectedBook.author}</span>
+                        {userProfile?.favoriteAuthors?.includes(selectedBook.author) && <span style={{ color: '#ffcc00', marginLeft: '10px' }}>★</span>}
+                    </p>
+                </div>
                 
-                <div style={{ margin: '1rem 0', height: '1px', background: 'rgba(255,255,255,0.1)' }}></div>
+                <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)' }}></div>
                 
-                <h4 style={{ margin: 0, color: 'rgba(255,255,255,0.8)' }}>Giới thiệu nội dung</h4>
-                <p style={{ lineHeight: 1.8, color: 'rgba(255,255,255,0.7)', fontSize: '1rem' }}>
-                  {selectedBook.description || "Cuốn sách này hiện chưa có mô tả chi tiết từ quản trị viên. Vui lòng liên hệ quầy hỗ trợ để biết thêm thông tin."}
-                </p>
+                <div>
+                    <h4 style={{ margin: '0 0 0.8rem', color: 'rgba(255,255,255,0.9)', fontSize: '1.1rem' }}>Giới thiệu nội dung</h4>
+                    <p style={{ lineHeight: 1.8, color: 'rgba(255,255,255,0.6)', fontSize: '1rem', fontStyle: 'italic' }}>
+                        {selectedBook.description || "Cuốn sách này hiện chưa có mô tả chi tiết từ quản trị viên. Vui lòng liên hệ quầy hỗ trợ để biết thêm thông tin về tác phẩm này."}
+                    </p>
+                </div>
 
-                <div style={{ marginTop: '2rem' }}>
-                  <button 
-                    onClick={(e) => handleBorrow(selectedBook, e)}
-                    disabled={(selectedBook.quantity || 0) <= 0 || cart.some(b => b.id === selectedBook.id)}
-                    className="btn-primary" 
-                    style={{ padding: '1rem 2.5rem', fontSize: '1.1rem', width: 'fit-content', background: cart.some(b => b.id === selectedBook.id) ? 'rgba(39, 201, 63, 0.3)' : undefined }}
-                  >
-                    {(selectedBook.quantity || 0) <= 0 
-                      ? "Tạm hết sách" 
-                      : cart.some(b => b.id === selectedBook.id) 
-                        ? "Đã có trong giỏ" 
-                        : "Thêm vào giỏ hàng"}
-                  </button>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: 'auto' }}>
+                    <button 
+                        onClick={() => addToCart(selectedBook)}
+                        disabled={(selectedBook.quantity || 0) <= 0 || cart.length >= 3}
+                        style={{ 
+                            padding: '1.2rem 3rem', 
+                            fontSize: '1.1rem', 
+                            fontWeight: '700',
+                            borderRadius: '12px',
+                            border: 'none',
+                            background: cart.some(b => b.id === selectedBook.id) ? 'transparent' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                            color: cart.some(b => b.id === selectedBook.id) ? '#bb86fc' : '#000',
+                            border: cart.some(b => b.id === selectedBook.id) ? '1px solid #bb86fc' : 'none',
+                            cursor: 'pointer',
+                            flex: 1,
+                            transition: '0.3s'
+                        }}
+                    >
+                        {cart.some(b => b.id === selectedBook.id) ? "ĐÃ CÓ TRONG GIỎ" : "THÊM VÀO GIỎ HÀNG"}
+                    </button>
+
+                    <button 
+                        onClick={() => handleToggleStar(selectedBook.author)}
+                        style={{ 
+                            width: '60px', 
+                            height: '60px', 
+                            borderRadius: '12px', 
+                            background: 'rgba(255,255,255,0.05)', 
+                            border: userProfile?.favoriteAuthors?.includes(selectedBook.author) ? '1px solid #ffcc00' : '1px solid rgba(255,255,255,0.1)', 
+                            color: userProfile?.favoriteAuthors?.includes(selectedBook.author) ? '#ffcc00' : '#fff',
+                            fontSize: '1.5rem',
+                            cursor: 'pointer'
+                        }}
+                        title="Theo dõi tác giả"
+                    >
+                        {userProfile?.favoriteAuthors?.includes(selectedBook.author) ? '★' : '☆'}
+                    </button>
                 </div>
               </div>
             </div>
-            
-            {/* Added mobile responsiveness check within Modal */}
+
             <style jsx>{`
-              @media (max-width: 600px) {
-                div[style*="flexDirection: row"] {
-                  flex-direction: column !important;
-                  align-items: center;
-                  padding: 1.5rem !important;
-                }
-                div[style*="width: 240px"] {
-                  width: 160px !important;
-                  height: 240px !important;
-                }
-                h2 {
-                  font-size: 1.8rem !important;
-                  text-align: center;
-                }
-                p {
-                  text-align: center;
-                }
-                button[className="btn-primary"] {
-                  width: 100% !important;
-                }
+              @media (max-width: 900px) {
+                div[style*="flexDirection: row"] { flex-direction: column !important; padding: 2rem !important; }
+                div[style*="width: 320px"] { width: 100% !important; height: 300px !important; }
+                h2 { font-size: 2rem !important; }
               }
             `}</style>
           </div>

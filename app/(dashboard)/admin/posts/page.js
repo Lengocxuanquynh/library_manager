@@ -12,6 +12,7 @@ export default function ManagePosts() {
   const [editingId, setEditingId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   
   const [formData, setFormData] = useState({
     title: '',
@@ -128,6 +129,39 @@ export default function ManagePosts() {
         >
           {showForm ? "Đóng Form" : "Viết Bài Mới"}
         </button>
+      </div>
+
+      {/* 🔍 Search Bar - Premium Glassmorphism */}
+      <div style={{ 
+        background: 'rgba(255,255,255,0.02)', 
+        padding: '1.5rem', 
+        borderRadius: '16px', 
+        marginBottom: '2rem', 
+        display: 'flex', 
+        gap: '1.5rem', 
+        alignItems: 'center',
+        border: '1px solid rgba(255,255,255,0.05)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+      }}>
+        <input 
+          type="text" 
+          placeholder="Tìm bài viết theo tiêu đề, tác giả..." 
+          value={searchTerm} 
+          onChange={e => setSearchTerm(e.target.value)} 
+          style={{ 
+            flex: 1, 
+            padding: '0.9rem 1.2rem', 
+            borderRadius: '12px', 
+            background: 'rgba(0,0,0,0.3)', 
+            border: '1px solid rgba(255,255,255,0.1)', 
+            color: '#fff',
+            fontSize: '0.95rem',
+            outline: 'none',
+            transition: '0.3s'
+          }} 
+          onFocus={e => e.target.style.borderColor = '#bb86fc'}
+          onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+        />
       </div>
 
       {showForm && (
@@ -284,12 +318,16 @@ export default function ManagePosts() {
                 {posts.length === 0 ? (
                   <tr>
                     <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
-                      
                       Chưa có bài viết nào được tạo. Hãy bắt đầu viết ngay!
                     </td>
                   </tr>
                 ) : (
-                  posts.map(post => (
+                  posts
+                    .filter(p => 
+                      p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                      (p.author && p.author.toLowerCase().includes(searchTerm.toLowerCase()))
+                    )
+                    .map(post => (
                     <tr key={post.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
                       <td style={{ padding: '1.2rem' }}>
                         <div style={{ 

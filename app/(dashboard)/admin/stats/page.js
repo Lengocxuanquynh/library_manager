@@ -7,6 +7,8 @@ import { toast } from "sonner";
 export default function AdminStats() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeModal, setActiveModal] = useState(null); // 'books', 'members', 'borrows', 'revenue'
+  const [selectedEntity, setSelectedEntity] = useState(null); // { type: 'book'|'member', data: any }
 
   // Helper to safely handle diverse date formats from Firestore (Timestamp, Date, or String)
   // This prevents crashes when calling toMillis() on non-Timestamp objects
@@ -81,6 +83,197 @@ export default function AdminStats() {
         <p style={{ opacity: 0.5, fontSize: '0.9rem', marginTop: '0.5rem' }}>Dữ liệu tổng hợp thời gian thực từ thư viện</p>
       </div>
 
+      {selectedEntity && (
+        <div 
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}
+          onClick={() => setSelectedEntity(null)}
+        >
+          <div 
+            style={{ 
+              background: 'rgba(30, 30, 32, 0.95)', 
+              borderRadius: '24px', 
+              width: '100%', 
+              maxWidth: '600px', 
+              border: '1px solid rgba(255,255,255,0.1)', 
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.2rem' }}>
+                {selectedEntity.type === 'book' ? '📖 Thông tin Sách' : '👤 Hồ sơ Độc giả'}
+              </h2>
+              <button onClick={() => setSelectedEntity(null)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.8rem', cursor: 'pointer', opacity: 0.5 }}>×</button>
+            </div>
+            <div style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                {selectedEntity.type === 'book' && selectedEntity.data.image && (
+                   <img src={selectedEntity.data.image} style={{ width: '100px', borderRadius: '12px' }} />
+                )}
+                <div>
+                   <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{selectedEntity.data.name || selectedEntity.data.title}</h3>
+                   <p style={{ opacity: 0.6 }}>{selectedEntity.type === 'book' ? `ID: ${selectedEntity.data.id}` : `SĐT: ${selectedEntity.data.phone}`}</p>
+                </div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
+                  {selectedEntity.type === 'book' 
+                    ? `Cuốn sách này đã được mượn tổng cộng ${selectedEntity.data.borrowCount} lần. Đây là một trong những đầu sách thu hút độc giả nhất của thư viện.`
+                    : `Độc giả này đã có ${selectedEntity.data.lateCount} lần trả sách trễ hạn với tổng phí bồi thường là ${formatCurrency(selectedEntity.data.totalPenalty)}. Cần lưu ý nhắc nhở khi mượn tiếp.`}
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedEntity(null)} 
+                className="btn-primary" 
+                style={{ width: '100%', marginTop: '2rem', padding: '1rem' }}
+              >
+                Đóng chi tiết
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Modals System */}
+      {activeModal && (
+        <div 
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}
+          onClick={() => setActiveModal(null)}
+        >
+          <div 
+            style={{ 
+              background: 'rgba(30, 30, 32, 0.95)', 
+              borderRadius: '24px', 
+              width: '100%', 
+              maxWidth: '800px', 
+              maxHeight: '90vh', 
+              border: '1px solid rgba(255,255,255,0.1)', 
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.4rem' }}>
+                {activeModal === 'books' && '📊 Phân tích Kho Sách'}
+                {activeModal === 'members' && '⭐ Độc giả tích cực nhất (Top Fans)'}
+                {activeModal === 'borrows' && '⏳ Danh sách Đang mượn'}
+                {activeModal === 'revenue' && '💸 Chi tiết Thu phí bồi thường'}
+              </h2>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.8rem', cursor: 'pointer', opacity: 0.5 }}>×</button>
+            </div>
+            
+            <div style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ opacity: 0.5, fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    {activeModal === 'borrows' && (
+                      <>
+                        <th style={{ padding: '1rem' }}>Độc giả</th>
+                        <th style={{ padding: '1rem' }}>Tên sách</th>
+                        <th style={{ padding: '1rem' }}>Hạn trả</th>
+                      </>
+                    )}
+                    {activeModal === 'members' && (
+                      <>
+                        <th style={{ padding: '1rem' }}>Độc giả</th>
+                        <th style={{ padding: '1rem' }}>SĐT</th>
+                        <th style={{ padding: '1rem', textAlign: 'right' }}>Lượt mượn</th>
+                      </>
+                    )}
+                    {activeModal === 'books' && (
+                       <th style={{ padding: '1rem' }}>Phân tích Cơ cấu Thể loại</th>
+                    )}
+                    {activeModal === 'revenue' && (
+                      <>
+                        <th style={{ padding: '1rem' }}>Độc giả</th>
+                        <th style={{ padding: '1rem' }}>Tên sách</th>
+                        <th style={{ padding: '1rem', textAlign: 'right' }}>Tiền phạt</th>
+                        <th style={{ padding: '1rem' }}>Ngày thu</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeModal === 'books' && (
+                    <tr>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'grid', gap: '1.5rem' }}>
+                          <div>
+                            <h4 style={{ marginBottom: '1rem', fontSize: '1rem', opacity: 0.8 }}>📊 Tỉ lệ theo Thể loại</h4>
+                            <div style={{ display: 'grid', gap: '1rem' }}>
+                              {Object.entries(data?.categoryFreq || {}).sort((a,b) => b[1]-a[1]).map(([cat, count]) => {
+                                const percent = Math.round((count / data.summary.totalBooks) * 100);
+                                return (
+                                  <div key={cat}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+                                      <span>{cat}</span>
+                                      <span style={{ opacity: 0.6 }}>{count} cuốn ({percent}%)</span>
+                                    </div>
+                                    <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: `${percent}%`, background: 'linear-gradient(90deg, #6366f1, #a855f7)', borderRadius: '10px' }}></div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                          <div style={{ marginTop: '1rem' }}>
+                            <h4 style={{ marginBottom: '1rem', fontSize: '1rem', opacity: 0.8 }}>🆕 Sách mới nhập gần đây</h4>
+                            <div style={{ display: 'grid', gap: '0.6rem' }}>
+                              {data?.newestBooks?.map(b => (
+                                <div key={b.id} style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space_between' }}>
+                                  <span style={{ fontWeight: '500' }}>{b.title}</span>
+                                  <span style={{ fontSize: '0.75rem', opacity: 0.4 }}>{b.author}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {activeModal === 'revenue' && data?.penaltyRecords?.map(rec => (
+                    <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1rem' }}>{rec.userName}</td>
+                      <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>{rec.bookTitle}</td>
+                      <td style={{ padding: '1rem', textAlign: 'right', color: '#10b981', fontWeight: 'bold' }}>{formatCurrency(rec.penaltyAmount)}</td>
+                      <td style={{ padding: '1rem', opacity: 0.6 }}>
+                        {rec.actualReturnDate?.seconds ? new Date(rec.actualReturnDate.seconds * 1000).toLocaleDateString('vi-VN') : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  {activeModal === 'borrows' && data?.activeLoans?.map(loan => (
+                    <tr key={loan.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1rem' }}>{loan.userName}</td>
+                      <td style={{ padding: '1rem', color: '#bb86fc' }}>{loan.bookTitle}</td>
+                      <td style={{ padding: '1rem', opacity: 0.6 }}>
+                        {loan.dueDate?.seconds ? new Date(loan.dueDate.seconds * 1000).toLocaleDateString('vi-VN') : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  {activeModal === 'members' && data?.topMembers?.map(m => (
+                    <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1rem', fontWeight: '600' }}>{m.name}</td>
+                      <td style={{ padding: '1rem', opacity: 0.6 }}>{m.phone}</td>
+                      <td style={{ padding: '1rem', textAlign: 'right', color: '#bb86fc', fontWeight: '700' }}>{m.borrowCount}</td>
+                    </tr>
+                  ))}
+                  {((activeModal === 'books' || activeModal === 'revenue') && (
+                    <tr>
+                      <td colSpan="3" style={{ padding: '3rem', textAlign: 'center', opacity: 0.3 }}>Dữ liệu chi tiết đang được tổng hợp.</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Overview Cards Area */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
         <StatCard 
@@ -88,6 +281,7 @@ export default function AdminStats() {
           value={formatNumber(summary.totalBooks)} 
           sub="Đầu sách trong thư viện" 
           color="#6366f1"
+          onClick={() => setActiveModal('books')}
           svg={
             <>
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -100,6 +294,7 @@ export default function AdminStats() {
           value={formatNumber(summary.totalMembers)} 
           sub="Thành viên đã đăng ký" 
           color="#a855f7"
+          onClick={() => setActiveModal('members')}
           svg={
             <>
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -112,6 +307,7 @@ export default function AdminStats() {
           value={formatNumber(summary.activeBorrows)} 
           sub="Sách chưa hoàn trả" 
           color="#f59e0b"
+          onClick={() => setActiveModal('borrows')}
           svg={
             <>
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
@@ -124,6 +320,7 @@ export default function AdminStats() {
           value={formatCurrency(summary.totalRevenue)} 
           sub="Phí bồi thường thu hồi" 
           color="#10b981"
+          onClick={() => setActiveModal('revenue')}
           svg={
             <>
               <line x1="12" y1="1" x2="12" y2="23" />
@@ -152,7 +349,12 @@ export default function AdminStats() {
               </thead>
               <tbody>
                 {topBooks.length > 0 ? topBooks.map((book) => (
-                  <tr key={book.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.2s' }} className="table-row">
+                  <tr 
+                    key={book.id} 
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.2s', cursor: 'pointer' }} 
+                    className="table-row"
+                    onClick={() => setSelectedEntity({ type: 'book', data: book })}
+                  >
                     <td style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                       <div style={{ width: '36px', height: '50px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
                         {book.image ? <img src={book.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.2 }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></div>}
@@ -188,7 +390,12 @@ export default function AdminStats() {
               </thead>
               <tbody>
                 {lateReturners.length > 0 ? lateReturners.slice(0, 5).map((user) => (
-                  <tr key={user.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.2s' }} className="table-row">
+                  <tr 
+                    key={user.id} 
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.2s', cursor: 'pointer' }} 
+                    className="table-row"
+                    onClick={() => setSelectedEntity({ type: 'member', data: user })}
+                  >
                     <td style={{ padding: '0.75rem 1rem' }}>
                       <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{user.name}</div>
                       <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{user.phone}</div>
@@ -223,31 +430,34 @@ export default function AdminStats() {
   );
 }
 
-function StatCard({ title, value, sub, color, svg }) {
+function StatCard({ title, value, sub, color, svg, onClick }) {
   return (
-    <div className="stat-card" style={{
+    <div className="stat-card" onClick={onClick} style={{
       background: 'rgba(255,255,255,0.03)',
       padding: '1.5rem',
       borderRadius: '24px',
       border: '1px solid rgba(255,255,255,0.08)',
       position: 'relative',
       overflow: 'hidden',
-      transition: 'transform 0.3s ease, border-color 0.3s ease',
-      cursor: 'default'
+      transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+      cursor: 'pointer'
     }}>
       <div style={{ position: 'relative', zIndex: 10 }}>
         <div style={{ 
           width: '44px', height: '44px', background: `${color}15`, color: color, 
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          borderRadius: '12px', marginBottom: '1.25rem'
-        }}>
+          borderRadius: '12px', marginBottom: '1.25rem',
+          transition: 'all 0.4s ease'
+        }} className="icon-container">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             {svg}
           </svg>
         </div>
         <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', marginBottom: '0.25rem' }}>{title}</div>
         <div style={{ fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em' }}>{value}</div>
-        <div style={{ fontSize: '0.75rem', opacity: 0.3, marginTop: '0.5rem' }}>{sub}</div>
+        <div style={{ fontSize: '0.75rem', opacity: 0.3, marginTop: '0.5rem' }}>{sub} 
+            <span style={{ color: color, marginLeft: '5px', opacity: 0.8 }}>→</span>
+        </div>
       </div>
       
       {/* Glow Effect */}
@@ -259,14 +469,27 @@ function StatCard({ title, value, sub, color, svg }) {
         height: '100px',
         background: color,
         filter: 'blur(50px)',
-        opacity: 0.05,
-        borderRadius: '50%'
-      }}></div>
+        opacity: 0,
+        borderRadius: '50%',
+        transition: 'opacity 0.4s ease'
+      }} className="glow-bubble"></div>
       
       <style jsx>{`
         .stat-card:hover {
-          transform: translateY(-5px);
-          border-color: ${color}40;
+          transform: translateY(-8px) scale(1.02);
+          border-color: ${color}60;
+          background: rgba(255,255,255,0.05);
+          box-shadow: 0 20px 40px -20px ${color}40;
+        }
+        .stat-card:hover .glow-bubble {
+          opacity: 0.15;
+        }
+        .stat-card:hover .icon-container {
+          transform: scale(1.1) rotate(5deg);
+          box-shadow: 0 0 20px ${color}30;
+        }
+        .stat-card:active {
+          transform: translateY(-4px) scale(0.98);
         }
       `}</style>
     </div>

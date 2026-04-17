@@ -13,6 +13,7 @@ export default function ManageLoans() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('requests');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [renewalRequests, setRenewalRequests] = useState([]);
   const intervalRef = useRef(null);
 
   // Live clock for countdown timers
@@ -28,6 +29,7 @@ export default function ManageLoans() {
   const [pendingPickupCount, setPendingPickupCount] = useState(0);
   const [borrowingCount, setBorrowingCount] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
+  const [timeRange, setTimeRange] = useState("ALL"); // ALL, TODAY, WEEK, MONTH
 
   // Detail Modal states
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -50,18 +52,26 @@ export default function ManageLoans() {
     if (!user) return;
     setLoading(true);
     try {
-      // Auto-cleanup expired pickups before loading data
+      // Auto-cleanup and notify background tasks
       fetch('/api/admin/clean-expired-pickups', { method: 'POST' }).catch(() => {});
+      fetch('/api/admin/notify-overdue', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: user.uid })
+      }).catch(err => console.error("Silent notify failed:", err));
 
-      const [reqRes, recRes] = await Promise.all([
+      const [reqRes, recRes, renRes] = await Promise.all([
         fetch(`/api/admin/borrow-requests?status=PENDING&adminId=${user.uid}`),
-        fetch(`/api/admin/borrow-records?adminId=${user.uid}`)
+        fetch(`/api/admin/borrow-records?adminId=${user.uid}`),
+        fetch(`/api/admin/renewal/list?adminId=${user.uid}`)
       ]);
       const requestsData = await reqRes.json();
       setRequests(Array.isArray(requestsData) ? requestsData : []);
       const recordsData = await recRes.json();
       const recs = Array.isArray(recordsData) ? recordsData : [];
       setRecords(recs);
+      const renewalsData = await renRes.json();
+      setRenewalRequests(Array.isArray(renewalsData) ? renewalsData : []);
 
       // Update counts
       setPendingPickupCount(recs.filter(r => r.status === 'APPROVED_PENDING_PICKUP').length);
@@ -133,19 +143,47 @@ export default function ManageLoans() {
   };
 
   const handleReject = async (id) => {
-    if (!confirm("Xác nhận từ chối yêu cầu này?")) return;
+    if (!confirm("Từ chối yêu cầu mượn này?")) return;
     try {
       const res = await fetch('/api/admin/reject-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestId: id,
-          adminId: user.uid
-        })
+        body: JSON.stringify({ requestId: id, adminId: user.uid })
       });
-      if (res.ok) fetchData();
+      if (res.ok) {
+        toast.success("Đã từ chối yêu cầu.");
+        fetchData();
+      }
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleRenewAction = async (requestId, isApproved) => {
+    const actionText = isApproved ? "duyệt" : "từ chối";
+    if (!confirm(`Xác nhận ${actionText} yêu cầu gia hạn này?`)) return;
+
+    const loadingToast = toast.loading(`Đang ${actionText} yêu cầu...`);
+    try {
+      const res = await fetch('/api/admin/renewal/handle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          requestIds: Array.isArray(requestId) ? requestId : [requestId],
+          isApproved, 
+          adminId: user.uid 
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message, { id: loadingToast });
+        fetchData();
+      } else {
+        toast.error(data.error || "Thao tác thất bại", { id: loadingToast });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi kết nối server", { id: loadingToast });
     }
   };
 
@@ -157,7 +195,18 @@ const handleOpenDetail = (record) => {
   const handleReturnClick = (record, book) => {
     setSelectedReturnRecord({ record, book });
     setReturnNote("");
-    setPenaltyFee(0);
+    
+    // Tự động tính tiền phạt: 5.000đ/ngày trễ
+    const dueDate = toJsDate(record.dueDate);
+    if (dueDate && currentTime > dueDate) {
+      const diffMs = currentTime - dueDate;
+      // Làm tròn lên số ngày trễ (ví dụ trễ 1 phút cũng tính 1 ngày)
+      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      setPenaltyFee(diffDays * 5000);
+    } else {
+      setPenaltyFee(0);
+    }
+    
     setIsReturnModalOpen(true);
   };
 
@@ -172,7 +221,7 @@ const handleOpenDetail = (record) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recordId: selectedReturnRecord.record.id,
-          bookId: selectedReturnRecord.book.bookId,
+          bookUid: selectedReturnRecord.book.uid, // Thay bookId bằng bookUid
           adminId: user.uid,
           returnNote: returnNote,
           penaltyAmount: Number(penaltyFee)
@@ -295,16 +344,161 @@ const handleOpenDetail = (record) => {
     );
   };
 
+  // Helper: Check if record date matches the selected time range
+  const isWithinTimeRange = (dateRaw) => {
+    if (timeRange === "ALL") return true;
+    const date = toJsDate(dateRaw);
+    if (!date) return false;
+
+    const now = new Date();
+    
+    if (timeRange === "TODAY") {
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return date >= startOfDay;
+    }
+
+    if (timeRange === "WEEK") {
+      const startOfWeek = new Date(now);
+      const day = startOfWeek.getDay();
+      const diffToMonday = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+      startOfWeek.setDate(diffToMonday);
+      startOfWeek.setHours(0, 0, 0, 0);
+      return date >= startOfWeek;
+    }
+
+    if (timeRange === "MONTH") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      return date >= startOfMonth;
+    }
+
+    return true;
+  };
+
+  // Helper: Centralized Filter Logic for Search & Time
+  const getFilteredData = (data, type) => {
+    return data.filter(item => {
+      // 1. Time Filter
+      // Chế độ 'requests' dùng createdAt, 'records' dùng borrowDate, 'renewals' dùng createdAt
+      const dateField = type === 'record' ? item.borrowDate : item.createdAt;
+      if (!isWithinTimeRange(dateField)) return false;
+
+      // 2. Search Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const slipId = (item.id || "").toLowerCase();
+        
+        if (type === 'request') {
+          const name = (item.userName || "").toLowerCase();
+          const phone = (item.userPhone || "").toLowerCase();
+          const books = (item.books || []).map(b => b.bookTitle.toLowerCase()).join(" ");
+          return name.includes(q) || phone.includes(q) || books.includes(q) || slipId.includes(q);
+        }
+
+        if (type === 'renewal') {
+          const name = (item.userName || "").toLowerCase();
+          const books = (item.bookTitles || "").toLowerCase();
+          return name.includes(q) || books.includes(q) || slipId.includes(q);
+        }
+
+        if (type === 'record') {
+          const name = (item.memberName || item.userName || "").toLowerCase();
+          const phone = (item.borrowerPhone || "").toLowerCase();
+          const books = (item.books || []).map(b => b.bookTitle.toLowerCase()).join(" ");
+          return name.includes(q) || phone.includes(q) || books.includes(q) || slipId.includes(q);
+        }
+      }
+
+      return true;
+    });
+  };
+
 
 
   return (
     <div style={{ position: 'relative' }}>
       <div className={styles.headerArea} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
         <h1 className={styles.pageTitle}>Quản Lý Mượn Trả</h1>
+        
+        {/* 🔍 FILTER BAR - REAL VERSION */}
+        <div style={{
+          width: '100%',
+          display: 'flex',
+          gap: '1rem',
+          background: 'rgba(255,255,255,0.02)',
+          padding: '1.25rem',
+          borderRadius: '16px',
+          border: '1px solid rgba(255,255,255,0.05)',
+          marginTop: '1.5rem',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
+        }}>
+          {/* SEARCH BOX - PREMIUM POLISHED */}
+          <div style={{ flex: 1, minWidth: '350px', position: 'relative' }}>
+            <span style={{ position: 'absolute', left: '18px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5, fontSize: '1.1rem' }}>🔍</span>
+            <input
+              type="text"
+              placeholder="Tìm theo Mã phiếu, Tên hội viên, SĐT hoặc Tên sách..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '1rem 1.2rem 1rem 3.2rem',
+                borderRadius: '14px',
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: '#fff',
+                fontSize: '0.95rem',
+                outline: 'none',
+                transition: 'all 0.3s ease',
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#bb86fc';
+                e.target.style.boxShadow = '0 0 15px rgba(187, 134, 252, 0.15)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '1.4rem' }}
+              >×</button>
+            )}
+          </div>
+
+          {/* TIME RANGE SELECT */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+            <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>Thời gian:</span>
+            <select
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+              style={{
+                padding: '0.8rem 1.2rem',
+                borderRadius: '12px',
+                background: 'rgba(187, 134, 252, 0.08)',
+                border: '1px solid rgba(187, 134, 252, 0.2)',
+                color: '#bb86fc',
+                fontWeight: '700',
+                fontSize: '0.9rem',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="ALL" style={{ background: '#1a1a1a' }}>Tất cả thời gian</option>
+              <option value="TODAY" style={{ background: '#1a1a1a' }}>Hôm nay</option>
+              <option value="WEEK" style={{ background: '#1a1a1a' }}>Tuần này</option>
+              <option value="MONTH" style={{ background: '#1a1a1a' }}>Tháng này</option>
+            </select>
+          </div>
+        </div>
+
         <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '1.2rem' }}>
-
-          {/* Chờ Duyệt (Online requests) */}
-
+          {/* TAB BUTTONS */}
           <button
             className={activeTab === 'requests' ? 'btn-primary' : 'btn-outline'}
             onClick={() => setActiveTab('requests')}
@@ -316,6 +510,19 @@ const handleOpenDetail = (record) => {
             }}
           >
             📋 Chờ Duyệt ({requests.length})
+          </button>
+
+          <button
+            className={activeTab === 'renewals' ? 'btn-primary' : 'btn-outline'}
+            onClick={() => setActiveTab('renewals')}
+            style={{ 
+              padding: '0.6rem 1.1rem', fontSize: '0.9rem',
+              background: activeTab === 'renewals' ? 'rgba(0, 188, 212, 0.2)' : 'transparent',
+              color: activeTab === 'renewals' ? '#00bcd4' : 'rgba(255,255,255,0.6)',
+              borderColor: activeTab === 'renewals' ? '#00bcd4' : 'rgba(255,255,255,0.1)'
+            }}
+          >
+            ⏳ Gia Hạn ({renewalRequests.length})
           </button>
 
           <button
@@ -418,7 +625,7 @@ const handleOpenDetail = (record) => {
                       </td>
                     </tr>
                   ) : (
-                    requests.map(req => (
+                    getFilteredData(requests, 'request').map(req => (
                       <tr key={req.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                         <td style={{ padding: '0.8rem 1rem' }}>
                           <div style={{ fontWeight: '600', color: '#fff', fontSize: '0.95rem' }}>{req.userName}</div>
@@ -447,54 +654,115 @@ const handleOpenDetail = (record) => {
               </tbody>
             </table>
           </div>
+        ) : activeTab === 'renewals' ? (
+          /* RENEWAL REQUESTS */
+          <div className="table-container">
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Độc giả</th>
+                  <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Lý do gia hạn</th>
+                  <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Thời điểm</th>
+                  <th style={{ padding: '0.8rem 1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', textAlign: 'right' }}>Hành Động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getFilteredData(renewalRequests, 'renewal').length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
+                      Không có yêu cầu gia hạn nào đang chờ xử lý.
+                    </td>
+                  </tr>
+                ) : (
+                  // Group renewals by userId
+                  Object.values(getFilteredData(renewalRequests, 'renewal').reduce((acc, ren) => {
+                    const uid = ren.userId;
+                    if (!acc[uid]) acc[uid] = { 
+                      userId: uid, 
+                      userName: ren.userName || "Độc giả", 
+                      items: [] 
+                    };
+                    acc[uid].items.push(ren);
+                    return acc;
+                  }, {})).map(group => (
+                    <tr key={group.userId} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                      <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                        <div style={{ fontWeight: '700', color: '#fff', fontSize: '1rem' }}>{group.userName}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>ID: {group.userId.slice(0,8)}</div>
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                          {group.items.map(ren => (
+                            <div key={ren.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '0.8rem', borderRadius: '10px', borderLeft: '3px solid #00bcd4' }}>
+                              <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#00bcd4', marginBottom: '0.3rem' }}>
+                                📖 {ren.bookTitles || "Không rõ tên sách"}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', fontStyle: 'italic' }}>
+                                "{ren.reason}"
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.4rem' }}>
+                                Gửi lúc: {formatDate(ren.createdAt, true)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ padding: '1rem', verticalAlign: 'middle', textAlign: 'right' }} colSpan={2}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', alignItems: 'flex-end' }}>
+                          <button 
+                            onClick={() => handleRenewAction(group.items.map(i => i.id), true)}
+                            style={{ 
+                              background: 'linear-gradient(135deg, #00bcd4, #0097a7)', 
+                              color: '#fff', 
+                              border: 'none', 
+                              padding: '0.6rem 1.2rem', 
+                              borderRadius: '8px', 
+                              cursor: 'pointer', 
+                              fontSize: '0.9rem', 
+                              fontWeight: '700',
+                              boxShadow: '0 4px 12px rgba(0, 188, 212, 0.3)'
+                            }}
+                          >
+                            Duyệt tất cả của {group.userName} ({group.items.length})
+                          </button>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button 
+                              onClick={() => handleRenewAction(group.items.map(i => i.id), false)}
+                              style={{ background: 'transparent', color: 'rgba(255, 95, 86, 0.6)', border: '1px solid rgba(255, 95, 86, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
+                            >
+                              Từ chối tất cả
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         ) : (
           /* BORROW RECORDS */
           <>
-            <div style={{
-              display: 'flex', gap: '1rem', marginBottom: '1.5rem',
-              background: 'rgba(255,255,255,0.02)', padding: '1rem',
-              borderRadius: '12px', alignItems: 'center', flexWrap: 'wrap'
-            }}>
-              <div style={{ flex: 1, minWidth: '300px', position: 'relative' }}>
-                <input
-                  type="text"
-                  placeholder="Tìm kiếm theo tên hội viên, SĐT hoặc tên sách..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+            {filterStatus === 'ALL' && (
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Bộ lọc lịch sử:</span>
+                <select
+                  value={historyFilter}
+                  onChange={(e) => setHistoryFilter(e.target.value)}
                   style={{
-                    width: '100%', padding: '0.7rem 1rem', borderRadius: '8px',
-                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#fff', fontSize: '0.9rem', outline: 'none'
+                    background: 'rgba(255, 255, 255, 0.08)', color: '#fff', 
+                    border: '1px solid rgba(187, 134, 252, 0.3)',
+                    padding: '0.6rem 1rem', borderRadius: '8px', outline: 'none', 
+                    fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer'
                   }}
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '1.2rem' }}
-                  >×</button>
-                )}
+                >
+                  <option value="ALL" style={{ background: '#1a1a1a' }}>Tất cả lịch sử</option>
+                  <option value="RETURNED" style={{ background: '#1a1a1a' }}>Sách đã trả xong</option>
+                  <option value="CANCELLED_EXPIRED" style={{ background: '#1a1a1a' }}>Hết hạn/Hủy bỏ</option>
+                </select>
               </div>
-
-              {filterStatus === 'ALL' && (
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Xem nhanh:</span>
-                  <select
-                    value={historyFilter}
-                    onChange={(e) => setHistoryFilter(e.target.value)}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.08)', color: '#000000ff', 
-                      border: '1px solid rgba(187, 134, 252, 0.3)',
-                      padding: '0.6rem 1rem', borderRadius: '8px', outline: 'none', 
-                      fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer'
-                    }}
-                  >
-                    <option value="ALL">Tất cả lịch sử</option>
-                    <option value="RETURNED">Sách đã trả xong</option>
-                    <option value="CANCELLED_EXPIRED">Hết hạn/Hủy bỏ</option>
-                  </select>
-                </div>
-              )}
-            </div>
+            )}
             <div className="table-container">
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
@@ -514,11 +782,10 @@ const handleOpenDetail = (record) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.filter(rec => {
-                    const dueDate = rec.dueDate?.toDate ? rec.dueDate.toDate() : (rec.dueDate ? new Date(rec.dueDate) : null);
+                  {getFilteredData(records, 'record').filter(rec => {
+                    const dueDate = toJsDate(rec.dueDate);
                     const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'OVERDUE';
                     const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
-                    const isFinished = rec.status === 'RETURNED' || rec.status === 'RETURNED_OVERDUE';
 
                     // 1. Filter by Status
                     let statusMatch = true;
@@ -528,19 +795,9 @@ const handleOpenDetail = (record) => {
                     else if (effectiveStatus === 'APPROVED_PENDING_PICKUP') statusMatch = (rec.status === 'APPROVED_PENDING_PICKUP');
                     else if (effectiveStatus === 'OVERDUE') statusMatch = isOverdue;
                     else if (effectiveStatus === 'RETURNED') statusMatch = (rec.status === 'RETURNED' || rec.status === 'RETURNED_OVERDUE');
+                    else if (effectiveStatus === 'CANCELLED_EXPIRED') statusMatch = (rec.status === 'CANCELLED_EXPIRED');
 
-                    if (!statusMatch) return false;
-
-                    // 2. Filter by Search Query
-                    if (searchQuery.trim()) {
-                      const q = searchQuery.toLowerCase();
-                      const name = (rec.memberName || rec.userName || "").toLowerCase();
-                      const phone = (rec.borrowerPhone || "").toLowerCase();
-                      const book = (rec.bookTitle || "").toLowerCase();
-                      return name.includes(q) || phone.includes(q) || book.includes(q);
-                    }
-
-                    return true;
+                    return statusMatch;
                   }).length === 0 ? (
                     <tr>
                       <td colSpan="7" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>
@@ -548,7 +805,7 @@ const handleOpenDetail = (record) => {
                       </td>
                     </tr>
                   ) : (
-                    records.filter(rec => {
+                    getFilteredData(records, 'record').filter(rec => {
                       const dueDate = toJsDate(rec.dueDate);
                       const status = rec.status;
                       const isActive = status === 'Active' || status === 'BORROWING' || status === 'PARTIALLY_RETURNED' || status === 'OVERDUE';
@@ -573,18 +830,7 @@ const handleOpenDetail = (record) => {
                         statusMatch = (status === 'CANCELLED_EXPIRED');
                       }
 
-                      if (!statusMatch) return false;
-
-                      // 2. Filter by Search Query
-                      if (searchQuery.trim()) {
-                        const q = searchQuery.toLowerCase();
-                        const name = (rec.memberName || rec.userName || "").toLowerCase();
-                        const phone = (rec.borrowerPhone || "").toLowerCase();
-                        const books = (rec.books || []).map(b => b.bookTitle.toLowerCase()).join(" ");
-                        return name.includes(q) || phone.includes(q) || books.includes(q);
-                      }
-
-                      return true;
+                      return statusMatch;
                     }).map(rec => {
                       const dueDate = toJsDate(rec.dueDate);
                       const status = rec.status;
@@ -900,7 +1146,7 @@ const handleOpenDetail = (record) => {
                     <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginBottom: '0.4rem' }}>Các sách khác trong phiếu:</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                       {selectedReturnRecord.record.books
-                        .filter(b => b.bookId !== selectedReturnRecord.book?.bookId)
+                        .filter(b => b.uid !== selectedReturnRecord.book?.uid) // Lọc theo UID thay vì bookId
                         .map((b, idx) => (
                           <span key={idx} style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.5rem', borderRadius: '4px', color: 'rgba(255,255,255,0.6)' }}>
                             {b.bookTitle}
@@ -943,7 +1189,9 @@ const handleOpenDetail = (record) => {
                   />
                   <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', fontWeight: '600' }}>đ</span>
                 </div>
-                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.5rem' }}>* Để trống hoặc nhập 0 nếu không có hư tổn.</p>
+                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.5rem' }}>
+                  * Tính tự động: 5.000đ/ngày trễ. Có thể sửa nếu sách hỏng/mất.
+                </p>
               </div>
 
               {/* ACTIONS */}
