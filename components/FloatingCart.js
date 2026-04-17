@@ -106,7 +106,6 @@ export default function FloatingCart() {
           userName: user.displayName || email || "Ẩn danh",
           email: email.trim(),
           phone: "Xác thực OTP", // Trả về text mặc định do đã hủy form
-          cccd: "Xác thực OTP",
           books: cart.map(b => ({ bookId: b.id, bookTitle: b.title })),
           paymentStatus: "PENDING", // Will define logic
           isAdmin: user.role === 'admin',

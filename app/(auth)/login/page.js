@@ -17,6 +17,17 @@ export default function Login() {
   const router = useRouter();
   const { user, role } = useAuth();
 
+  // Real-time validation
+  useEffect(() => {
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Định dạng Email không hợp lệ (ví dụ: name@gmail.com)");
+    } else if (password && password.length < 8) {
+      setError("Mật khẩu phải chứa ít nhất 8 ký tự");
+    } else {
+      setError("");
+    }
+  }, [email, password]);
+
   // OTP States
   const [showOTP, setShowOTP] = useState(false);
   const [generatedOTP, setGeneratedOTP] = useState("");
@@ -59,6 +70,17 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    
+    // Final check before submission
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Vui lòng nhập Email đúng định dạng trước khi tiếp tục.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Mật khẩu chưa đủ 8 ký tự an toàn.");
+      return;
+    }
+
     setError("");
     try {
       const { role } = await loginUser(email, password);
@@ -127,11 +149,27 @@ export default function Login() {
     <div className={styles.container}>
       <div className={styles.card}>
         <h1 className={styles.title}>Đăng Nhập</h1>
-        {error && <p className={styles.error}>{error}</p>}
+        
+        {error && (
+          <div style={{
+            background: 'rgba(255, 95, 86, 0.2)',
+            border: '1px solid #ff5f56',
+            color: '#ff5f56',
+            padding: '1rem',
+            borderRadius: '8px',
+            marginBottom: '1.5rem',
+            fontSize: '0.9rem',
+            textAlign: 'center',
+            fontWeight: '500'
+          }}>
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleLogin} className={styles.form}>
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Email (ví dụ: user@gmail.com)"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -139,13 +177,13 @@ export default function Login() {
           />
           <input
             type="password"
-            placeholder="Mật khẩu"
+            placeholder="Mật khẩu (tối thiểu 8 ký tự)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             className={styles.input}
           />
-          <button type="submit" className={styles.button} disabled={isSendingOTP}>
+          <button type="submit" className={styles.button} disabled={isSendingOTP || !!error}>
             {isSendingOTP ? "Đang gửi thông tin..." : "Đăng Nhập"}
           </button>
         </form>

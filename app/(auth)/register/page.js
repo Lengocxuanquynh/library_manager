@@ -18,6 +18,17 @@ export default function Register() {
   const router = useRouter();
   const { user, role } = useAuth();
 
+  // Real-time validation
+  useEffect(() => {
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Định dạng Email không hợp lệ (ví dụ: name@gmail.com)");
+    } else if (password && password.length < 8) {
+      setError("Mật khẩu phải chứa ít nhất 8 ký tự");
+    } else {
+      setError("");
+    }
+  }, [email, password]);
+
   // OTP States
   const [showOTP, setShowOTP] = useState(false);
   const [generatedOTP, setGeneratedOTP] = useState("");
@@ -54,6 +65,17 @@ export default function Register() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+
+    // Final check before submission
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Vui lòng nhập Email đúng định dạng trước khi tiếp tục.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Mật khẩu phải dài ít nhất 8 ký tự để đảm bảo an toàn.");
+      return;
+    }
+
     setError("");
     try {
       // By default new signups are 'user' role
@@ -126,7 +148,23 @@ export default function Register() {
     <div className={styles.container}>
       <div className={styles.card}>
         <h1 className={styles.title}>Đăng Ký</h1>
-        {error && <p className={styles.error}>{error}</p>}
+        
+        {error && (
+          <div style={{
+            background: 'rgba(255, 95, 86, 0.2)',
+            border: '1px solid #ff5f56',
+            color: '#ff5f56',
+            padding: '1rem',
+            borderRadius: '8px',
+            marginBottom: '1.5rem',
+            fontSize: '0.9rem',
+            textAlign: 'center',
+            fontWeight: '500'
+          }}>
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleRegister} className={styles.form}>
           <input
             type="text"
@@ -138,7 +176,7 @@ export default function Register() {
           />
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Email (ví dụ: user@gmail.com)"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -146,14 +184,13 @@ export default function Register() {
           />
           <input
             type="password"
-            placeholder="Mật khẩu (ít nhất 6 ký tự)"
+            placeholder="Mật khẩu (tối thiểu 8 ký tự)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={6}
             className={styles.input}
           />
-          <button type="submit" className={styles.button} disabled={isSendingOTP}>
+          <button type="submit" className={styles.button} disabled={isSendingOTP || !!error}>
             {isSendingOTP ? "Đang gửi thông tin..." : "Đăng Ký"}
           </button>
         </form>

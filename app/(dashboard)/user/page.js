@@ -32,21 +32,6 @@ export default function UserDashboard() {
     }
   };
 
-  const handleReturn = async (recordId, bookId) => {
-    if (confirm("Xác nhận trả cuốn sách này?")) {
-      const res = await fetch('/api/return-book', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId, bookId, userId: user.uid })
-      });
-      if (res.ok) {
-        loadRecords();
-      } else {
-        const result = await res.json();
-        alert(result.error || "Có lỗi xảy ra khi gọi API trả sách.");
-      }
-    }
-  };
 
   const handleCancelRequest = async (requestId) => {
     if (!confirm("Bạn có chắc chắn muốn HỦY LƯU toàn bộ yêu cầu mượn này?")) return;
@@ -89,6 +74,26 @@ export default function UserDashboard() {
       <div className={styles.headerArea}>
         <h1 className={styles.pageTitle}>Xin chào, {user?.displayName || "Độc giả"}</h1>
       </div>
+
+      {transactions.some(tx => (tx.status === 'BORROWING' || tx.status === 'OVERDUE' || tx.status === 'PARTIALLY_RETURNED') && (tx.dueDate?.toDate ? tx.dueDate.toDate() : new Date(tx.dueDate)) < new Date()) && (
+        <div style={{
+          background: 'rgba(255, 95, 86, 0.1)',
+          border: '1px solid rgba(255, 95, 86, 0.3)',
+          borderRadius: '12px',
+          padding: '1.2rem',
+          marginBottom: '2rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          color: '#ff5f56'
+        }}>
+          <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+          <div>
+            <h4 style={{ margin: 0, fontWeight: '700' }}>Cảnh báo: Bạn đang có sách QUÁ HẠN!</h4>
+            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.9rem', opacity: 0.8 }}>Vui lòng hoàn trả sách sớm nhất có thể để tránh phát sinh phí bồi thường và khôi phục quyền mượn sách mới.</p>
+          </div>
+        </div>
+      )}
 
       <div className={styles.grid}>
         <div className={styles.card}>
@@ -228,7 +233,6 @@ export default function UserDashboard() {
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Mượn</th>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Hết Hạn</th>
                     <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
-                    <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Hành Động</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -247,14 +251,6 @@ export default function UserDashboard() {
                                 <span style={{ fontWeight: '500', color: (b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE') ? 'rgba(255,255,255,0.3)' : '#fff' }}>
                                   {b.bookTitle}
                                 </span>
-                                {(b.status === 'BORROWING' || (isOverdue && b.status !== 'RETURNED')) && (
-                                  <button 
-                                    onClick={() => handleReturn(tx.id, b.bookId)} 
-                                    style={{ background: 'rgba(39, 201, 63, 0.1)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.2)', padding: '0.2rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}
-                                  >
-                                    Trả Sách
-                                  </button>
-                                )}
                                 {(b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE') && (
                                   <span style={{ fontSize: '0.75rem', color: '#27c93f', fontStyle: 'italic' }}>✓ Đã trả</span>
                                 )}
@@ -287,13 +283,6 @@ export default function UserDashboard() {
                               : tx.status === 'BORROWING' ? 'ĐANG MƯỢN'
                               : 'ĐÃ TRẢ HẾT'}
                           </span>
-                        </td>
-                        <td style={{ padding: '1rem', verticalAlign: 'top' }}>
-                          {isPendingPickup ? (
-                            <span style={{ color: '#bb86fc', fontSize: '0.85rem', fontStyle: 'italic' }}>Đến thư viện lấy sách</span>
-                          ) : (
-                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.85rem' }}>—</span>
-                          )}
                         </td>
                       </tr>
                     );
