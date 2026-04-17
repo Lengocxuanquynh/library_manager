@@ -16,76 +16,129 @@ export async function GET() {
     const totalBooks = booksSnap.size;
     const totalMembers = membersSnap.size;
 
-    // 3. Active Borrows (BORROWING, APPROVED_PENDING_PICKUP, OVERDUE)
-    // Note: OVERDUE is often calculated dynamically, but we check if ReturnDate is null
-    const activeRecords = recordsSnap.docs.filter(doc => {
-      const data = doc.data();
-      const s = data.status;
-      return (s === 'BORROWING' || s === 'APPROVED_PENDING_PICKUP' || s === 'Active') && !data.returnDate;
-    });
-    const activeBorrowsCount = activeRecords.length;
-
-    // 4. Revenue (Total penalties from returned books)
-    const returnedRecords = recordsSnap.docs.filter(doc => doc.data().status === 'returned');
-    const totalRevenue = returnedRecords.reduce((acc, doc) => acc + (Number(doc.data().penaltyAmount) || 0), 0);
-
-    // 5. Top 5 Most Borrowed Books
+    // 3. Centralized Aggregation (Multi-book aware)
+    let activeBorrowsCount = 0;
+    let totalRevenue = 0;
+    const activeLoansDetails = [];
+    const penaltyRecords = [];
     const bookFreq = {};
-    recordsSnap.docs.forEach(doc => {
-      const data = doc.data();
-      const bid = data.bookId;
-      if (!bid) return;
-      if (!bookFreq[bid]) {
-        bookFreq[bid] = { count: 0, title: data.bookTitle || 'Untitled Book' };
-      }
-      bookFreq[bid].count++;
-    });
+    const memberFreq = {};
+    const categoryFreq = {};
+    const lateUsers = {};
+    const nowServer = new Date();
 
-    // Map images from books collection
+    // Map for book images
     const bookData = {};
     booksSnap.docs.forEach(doc => {
-      bookData[doc.id] = doc.data();
+      const b = doc.data();
+      bookData[doc.id] = b;
+      const cat = b.category || 'Khác';
+      categoryFreq[cat] = (categoryFreq[cat] || 0) + 1;
     });
 
-    const topBooks = Object.keys(bookFreq)
-      .map(bid => ({
-        id: bid,
-        title: bookFreq[bid].title,
-        borrowCount: bookFreq[bid].count,
-        image: bookData[bid]?.image || null
-      }))
-      .sort((a, b) => b.borrowCount - a.borrowCount)
-      .slice(0, 5);
+    recordsSnap.docs.forEach(doc => {
+      const record = doc.data();
+      let books = record.books || [];
+      const uid = record.userId || 'unknown';
+      const userName = record.userName || 'Ẩn danh';
+      const userPhone = record.borrowerPhone || 'N/A';
 
-    // 6. Late Returners Analysis
-    // Criteria: status is 'returned' AND actualReturnDate > dueDate
-    const lateUsers = {};
-    returnedRecords.forEach(doc => {
-      const data = doc.data();
-      if (data.actualReturnDate && data.dueDate) {
-        // Convert Firestore Timestamps or strings to Date
-        const retDate = data.actualReturnDate.toDate ? data.actualReturnDate.toDate() : new Date(data.actualReturnDate);
-        const dueDate = data.dueDate.toDate ? data.dueDate.toDate() : new Date(data.dueDate);
+      // Fallback for legacy flat records (pre-multi-book system)
+      if (books.length === 0 && record.bookId) {
+        books = [{
+          bookId: record.bookId,
+          bookTitle: record.bookTitle,
+          status: record.status,
+          penaltyAmount: record.penaltyAmount,
+          actualReturnDate: record.actualReturnDate || record.returnDate,
+          uid: 'legacy-' + doc.id
+        }];
+      }
 
-        if (retDate > dueDate) {
-          const uid = data.userId || 'unknown';
+      if (uid !== 'unknown') {
+        if (!memberFreq[uid]) memberFreq[uid] = { count: 0, name: userName, phone: userPhone };
+        memberFreq[uid].count++;
+      }
+
+      books.forEach(book => {
+        // Book popularity
+        const bid = book.bookId;
+        if (bid) {
+          if (!bookFreq[bid]) bookFreq[bid] = { count: 0, title: book.bookTitle || 'Untitled Book' };
+          bookFreq[bid].count++;
+        }
+
+        const s = (book.status || '').toUpperCase();
+        const isActive = (s === 'BORROWING' || s === 'OVERDUE' || s === 'APPROVED_PENDING_PICKUP' || s === 'ACTIVE' || s === 'PARTIALLY_PICKED_UP');
+        const isReturned = (s === 'RETURNED' || s === 'RETURNED_OVERDUE');
+        const pAmount = Number(book.penaltyAmount) || 0;
+
+        // 1. Active Borrows
+        if (isActive) {
+          activeBorrowsCount++;
+          if (activeLoansDetails.length < 50) {
+            activeLoansDetails.push({
+              id: `${doc.id}-${book.uid || Math.random()}`,
+              userName,
+              bookTitle: book.bookTitle,
+              dueDate: record.dueDate,
+              status: s
+            });
+          }
+        }
+
+        // 2. Revenue & Penalty Records
+        if (pAmount > 0) {
+          totalRevenue += pAmount;
+          penaltyRecords.push({
+            id: `${doc.id}-${book.uid || Math.random()}`,
+            userName,
+            bookTitle: book.bookTitle,
+            penaltyAmount: pAmount,
+            actualReturnDate: book.actualReturnDate
+          });
+        }
+
+        // 3. Late Returners (History + Current)
+        const dueDate = record.dueDate?.toDate ? record.dueDate.toDate() : (record.dueDate ? new Date(record.dueDate) : null);
+        const isCurrentlyLate = isActive && dueDate && dueDate < nowServer;
+        const isHistoryLate = (s === 'RETURNED_OVERDUE');
+
+        if (isCurrentlyLate || isHistoryLate) {
           if (!lateUsers[uid]) {
-            lateUsers[uid] = { 
-              id: uid,
-              name: data.userName || 'Unknown Member', 
-              phone: data.borrowerPhone || 'N/A', 
-              lateCount: 0, 
-              totalPenalty: 0 
-            };
+            lateUsers[uid] = { id: uid, name: userName, phone: userPhone, lateCount: 0, totalPenalty: 0 };
           }
           lateUsers[uid].lateCount++;
-          lateUsers[uid].totalPenalty += (Number(data.penaltyAmount) || 0);
+          if (isHistoryLate) lateUsers[uid].totalPenalty += pAmount;
         }
-      }
+      });
     });
+
+    // 4. Formatting Results
+    const topBooks = Object.keys(bookFreq)
+      .map(bid => ({ id: bid, title: bookFreq[bid].title, borrowCount: bookFreq[bid].count, image: bookData[bid]?.image || null }))
+      .sort((a, b) => b.borrowCount - a.borrowCount).slice(0, 5);
+
+    const topMembers = Object.keys(memberFreq)
+      .map(uid => ({ id: uid, name: memberFreq[uid].name, phone: memberFreq[uid].phone, borrowCount: memberFreq[uid].count }))
+      .sort((a, b) => b.borrowCount - a.borrowCount).slice(0, 5);
 
     const lateReturnersList = Object.values(lateUsers)
       .sort((a, b) => b.lateCount - a.lateCount);
+
+    const newestBooks = booksSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => {
+        const dateA = a.createdAt?.seconds || 0;
+        const dateB = b.createdAt?.seconds || 0;
+        return dateB - dateA;
+      }).slice(0, 5);
+
+    penaltyRecords.sort((a, b) => {
+      const dateA = a.actualReturnDate?.seconds || 0;
+      const dateB = b.actualReturnDate?.seconds || 0;
+      return dateB - dateA;
+    });
 
     return NextResponse.json({
       success: true,
@@ -97,6 +150,11 @@ export async function GET() {
           totalRevenue
         },
         topBooks,
+        topMembers,
+        activeLoans: activeLoansDetails,
+        categoryFreq,
+        newestBooks,
+        penaltyRecords,
         lateReturners: lateReturnersList
       }
     });

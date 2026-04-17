@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addBook, getBooks, ensureCategoryExists } from '../../../services/db';
+import { addBook, getBooks, ensureCategoryExists, notifyFollowers, ensureAuthorExists } from '../../../services/db';
 
 export async function GET() {
   try {
@@ -23,8 +23,9 @@ export async function POST(request) {
       );
     }
 
-    // Auto-sync category
+    // Auto-sync category & author
     if (category) await ensureCategoryExists(category);
+    if (author) await ensureAuthorExists(author);
 
 
     const docRef = await addBook({
@@ -39,6 +40,9 @@ export async function POST(request) {
       year: year || '',
       description: description || ''
     });
+
+    // Thông báo cho Fan của tác giả
+    await notifyFollowers(author, title).catch(e => console.error("Notify failed:", e));
 
     return NextResponse.json({
       success: true,

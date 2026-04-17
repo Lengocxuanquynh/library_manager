@@ -19,6 +19,7 @@ import { CartProvider } from "@/components/CartProvider";
 import FloatingCart from "@/components/FloatingCart";
 import { Toaster } from "sonner";
 import DevEmailToggle from "@/components/DevEmailToggle";
+import MagicTools from "@/components/MagicTools";
 
 export default function RootLayout({ children }) {
   return (
@@ -32,9 +33,22 @@ export default function RootLayout({ children }) {
             </main>
             <Footer />
             <FloatingCart />
+            <MagicTools />
           </CartProvider>
         </AuthProvider>
-        <Toaster position="top-right" richColors />
+        <Toaster 
+          position="top-right" 
+          richColors 
+          closeButton
+          theme="dark"
+          toastOptions={{
+            style: {
+              background: 'transparent', // CSS [data-sonner-toast] will handle the rest
+              border: 'none',
+            },
+            className: 'premium-toast',
+          }}
+        />
         {process.env.NODE_ENV === "development" && <DevEmailToggle />}
       </body>
     </html>

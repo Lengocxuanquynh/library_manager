@@ -232,3 +232,48 @@ button {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
+
+/* 
+   PREMIUM SONNER TOAST STYLING
+   Glassmorphism + Smooth Glow + Modern Typography
+*/
+[data-sonner-toast] {
+  background: rgba(20, 20, 22, 0.85) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 16px !important;
+  padding: 16px 20px !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 500 !important;
+  gap: 12px !important;
+}
+
+[data-sonner-toast][data-styled="true"] {
+  color: #fff !important;
+}
+
+[data-sonner-toast][data-type="success"] {
+  border-left: 4px solid #03dac6 !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 15px rgba(3, 218, 198, 0.15) !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  border-left: 4px solid #ff5f56 !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 15px rgba(255, 95, 86, 0.15) !important;
+}
+
+[data-sonner-toast][data-type="loading"] {
+  border-left: 4px solid #bb86fc !important;
+}
+
+[data-sonner-toast] [data-icon] {
+  transform: scale(1.2);
+  margin-right: 4px;
+}
+
+[data-sonner-toast] [data-title] {
+  font-size: 0.95rem !important;
+  letter-spacing: 0.3px !important;
+}

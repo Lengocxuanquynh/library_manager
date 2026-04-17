@@ -21,15 +21,17 @@ export const sendMail = async (targetEmail, targetName, contentData, customTempl
     }
   }
 
-  // Parameter Mapping
+  // Parameter Mapping (Sử dụng các tên biến phổ biến nhất của EmailJS)
   const finalParams = typeof contentData === 'string' ? {
     to_email: targetEmail,
-    name: targetName || "Độc giả",
+    to_name: targetName || "Độc giả",
+    from_name: "Thư Viện FPT",
     otp: contentData,
     message: contentData,
   } : {
     to_email: targetEmail,
-    name: targetName || "Độc giả",
+    to_name: targetName || "Độc giả",
+    from_name: "Thư Viện FPT",
     ...contentData
   };
 
@@ -38,16 +40,22 @@ export const sendMail = async (targetEmail, targetName, contentData, customTempl
   if (isServer) {
     // SERVER SIDE implementation: Use REST API
     try {
+      const payload = {
+        service_id: SERVICE_ID,
+        template_id: finalTemplateId,
+        user_id: PUBLIC_KEY,
+        template_params: finalParams,
+      };
+
+      // Chỉ gửi accessToken nếu có giá trị (Private Key)
+      if (PRIVATE_KEY) {
+        payload.accessToken = PRIVATE_KEY;
+      }
+
       const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          service_id: SERVICE_ID,
-          template_id: finalTemplateId,
-          user_id: PUBLIC_KEY,
-          template_params: finalParams,
-          accessToken: PRIVATE_KEY
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {

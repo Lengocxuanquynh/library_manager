@@ -32,21 +32,21 @@ export const CartProvider = ({ children }) => {
 
   const addToCart = (book) => {
     if (cart.length >= 3) {
-      toast.error("Bạn chỉ được mượn tối đa 3 cuốn sách");
+      toast.error("Giỏ hàng đã đầy (tối đa 3 cuốn)");
       setIsDrawerOpen(true);
       return;
     }
-    if (cart.find((item) => item.id === book.id)) {
-      toast.info("Sách này đã có trong giỏ");
-      return;
-    }
-    setCart([...cart, book]);
-    toast.success(`Đã thêm vào giỏ hàng`);
+    
+    // Tạo ID duy nhất cho mỗi item trong giỏ để cho phép trùng loại sách
+    const cartItemId = Math.random().toString(36).substr(2, 9) + Date.now();
+    setCart([...cart, { ...book, cartItemId }]);
+    
+    toast.success(`Đã thêm vào giỏ: ${book.title}`);
     setIsDrawerOpen(true);
   };
 
-  const removeFromCart = (bookId) => {
-    setCart(cart.filter((item) => item.id !== bookId));
+  const removeFromCart = (cartItemId) => {
+    setCart(cart.filter((item) => item.cartItemId !== cartItemId));
   };
 
   const clearCart = () => setCart([]);

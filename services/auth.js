@@ -13,7 +13,7 @@ import { doc, setDoc, getDoc, collection, getCountFromServer } from "firebase/fi
 import { auth, db } from "../lib/firebase";
 
 // Register user and store role
-export const registerUser = async (email, password, name, role = "user") => {
+export const registerUser = async (email, password, name, role = "user", phone = "") => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
@@ -31,6 +31,7 @@ export const registerUser = async (email, password, name, role = "user") => {
       id: user.uid,
       name,
       email,
+      phone,
       role,
       memberCode
     });
@@ -117,13 +118,15 @@ export const subscribeToAuthChanges = (callback) => {
       let role = "user";
       let isLocked = false;
       let memberCode = `DG-${user.uid.slice(-5).toUpperCase()}`; // Fallback tức thời
+      let phone = "";
       if (userDoc.exists()) {
         const userData = userDoc.data();
         role = userData.role || "user";
         isLocked = userData.isLocked || false;
         if (userData.memberCode) memberCode = userData.memberCode;
+        if (userData.phone) phone = userData.phone;
       }
-      callback({ user: { ...user, memberCode }, role, isLocked });
+      callback({ user: { ...user, memberCode, phone }, role, isLocked });
     } else {
       callback(null);
     }
@@ -141,13 +144,16 @@ export const updateUserProfile = async (uid, data) => {
       await updateProfile(user, { displayName: data.name });
     }
 
-    // Update Firestore User Doc
+    // Prepare Firestore update data
     const userDocRef = doc(db, "users", uid);
-    await setDoc(userDocRef, {
-      ...data,
-      name: data.name,
-      id: uid
-    }, { merge: true });
+    const firestoreData = { ...data, id: uid };
+    
+    // Chỉ thêm name nếu nó được truyền vào (để tránh lỗi undefined in setDoc)
+    if (data.name !== undefined) {
+      firestoreData.name = data.name;
+    }
+
+    await setDoc(userDocRef, firestoreData, { merge: true });
 
     return true;
   } catch (error) {

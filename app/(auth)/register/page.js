@@ -13,6 +13,7 @@ import { sendMail } from "../../../services/emailService";
 export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const router = useRouter();
@@ -22,12 +23,16 @@ export default function Register() {
   useEffect(() => {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Định dạng Email không hợp lệ (ví dụ: name@gmail.com)");
+    } else if (phone && !/^\d+$/.test(phone)) {
+      setError("Số điện thoại chỉ được chứa các chữ số");
+    } else if (phone && phone.length !== 10) {
+      setError("Số điện thoại phải có đúng 10 chữ số");
     } else if (password && password.length < 8) {
       setError("Mật khẩu phải chứa ít nhất 8 ký tự");
     } else {
       setError("");
     }
-  }, [email, password]);
+  }, [email, phone, password]);
 
   // OTP States
   const [showOTP, setShowOTP] = useState(false);
@@ -79,7 +84,7 @@ export default function Register() {
     setError("");
     try {
       // By default new signups are 'user' role
-      const { role } = await registerUser(email, password, name, "user");
+      const { role } = await registerUser(email, password, name, "user", phone);
       
       // Yêu cầu đặc biệt: Bypass OTP cho tài khoản admin@library.vn
       if (email === "admin@library.vn" || role === "admin") {
@@ -179,6 +184,14 @@ export default function Register() {
             placeholder="Email (ví dụ: user@gmail.com)"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
+            className={styles.input}
+          />
+          <input
+            type="tel"
+            placeholder="Số điện thoại (10 chữ số)"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             required
             className={styles.input}
           />

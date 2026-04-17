@@ -48,28 +48,26 @@ export async function POST(request) {
       const existingData = existingDoc.data();
       const existingBooks = existingData.books || [];
       
-      // Lọc các sách chưa có trong đơn Pending
-      const uniqueNewBooks = books.filter(newB => !existingBooks.some(oldB => oldB.bookId === newB.bookId));
+      // Cho phép sách trùng lặp, nên chúng ta lấy toàn bộ mảng sách mới
+      const newBooksBatch = books;
       
-      if (uniqueNewBooks.length === 0) {
-        return NextResponse.json({ error: 'Tất cả sách này đã nằm sẵn trong đơn chờ duyệt của bạn rồi.' }, { status: 400 });
-      }
-
-      if (existingBooks.length + uniqueNewBooks.length > 3) {
+      if (existingBooks.length + newBooksBatch.length > 3) {
         return NextResponse.json({ 
-          error: `Giỏ hàng bị đầy! Bạn đang có ${existingBooks.length} cuốn chờ duyệt. Tổng sách không được quá 3 cuốn.` 
+          error: `Giỏ hàng bị đầy! Bạn đang có ${existingBooks.length} cuốn chờ duyệt. Tối đa chỉ được mượn 3 cuốn tổng cộng.` 
         }, { status: 400 });
       }
-      
-      // Gộp đơn
+
+      // Cập nhật đơn mượn cũ bằng cách nối thêm các sách mới
+      const updatedBooks = [...existingBooks, ...newBooksBatch];
       await updateDoc(doc(db, "borrowRequests", existingDoc.id), {
-        books: [...existingBooks, ...uniqueNewBooks]
+        books: updatedBooks,
+        updatedAt: serverTimestamp()
       });
 
       // Gửi email thông báo Gộp đơn
       await sendMail(email, userName, {
         subject: "Cập nhật yêu cầu mượn sách (Gộp đơn)",
-        message: `Bạn vừa gộp thêm ${uniqueNewBooks.length} cuốn sách vào đơn mượn đang chờ duyệt của mình. Tổng số sách hiện tại là ${existingBooks.length + uniqueNewBooks.length} cuốn.`
+        message: `Bạn vừa gộp thêm ${newBooksBatch.length} cuốn sách vào đơn mượn đang chờ duyệt của mình. Tổng số sách hiện tại là ${existingBooks.length + newBooksBatch.length} cuốn.`
       }).catch(err => console.error("Email notify merge failed:", err));
 
       return NextResponse.json({

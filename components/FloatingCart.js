@@ -105,7 +105,7 @@ export default function FloatingCart() {
           userId: user.uid,
           userName: user.displayName || email || "Ẩn danh",
           email: email.trim(),
-          phone: "Xác thực OTP", // Trả về text mặc định do đã hủy form
+          phone: user.phone || "Chưa có SĐT", 
           books: cart.map(b => ({ bookId: b.id, bookTitle: b.title })),
           paymentStatus: "PENDING", // Will define logic
           isAdmin: user.role === 'admin',
@@ -140,6 +140,12 @@ export default function FloatingCart() {
         resendOTP={() => handleCheckoutClick()} // Mượn hàm để gửi lại
       />
     );
+  }
+
+  // Không hiển thị giỏ hàng nếu là Admin, ở trang quản trị, hoặc các trang đăng nhập/đăng ký
+  const isAuthPage = pathname?.startsWith('/login') || pathname?.startsWith('/register');
+  if (user?.role === 'admin' || pathname?.startsWith('/admin') || isAuthPage) {
+    return null;
   }
 
   return (
@@ -250,14 +256,14 @@ export default function FloatingCart() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {cart.map(book => (
-                <div key={book.id} style={{ display: "flex", gap: "1rem", background: "rgba(255,255,255,0.03)", padding: "0.8rem", borderRadius: "10px" }}>
+                <div key={book.cartItemId} style={{ display: "flex", gap: "1rem", background: "rgba(255,255,255,0.03)", padding: "0.8rem", borderRadius: "10px" }}>
                   <div style={{ width: "60px", height: "85px", backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/100x150'})`, backgroundSize: "cover", backgroundPosition: "center", borderRadius: "6px" }} />
                   <div style={{ flex: 1 }}>
                     <h4 style={{ margin: "0 0 0.3rem 0", fontSize: "0.95rem", color: "#fff" }}>{book.title}</h4>
                     <p style={{ margin: 0, fontSize: "0.8rem", color: "rgba(255,255,255,0.5)" }}>{book.author}</p>
                   </div>
                   <button 
-                    onClick={() => removeFromCart(book.id)}
+                    onClick={() => removeFromCart(book.cartItemId)}
                     style={{ background: "transparent", border: "none", color: "#ff5f56", cursor: "pointer", fontSize: "1.2rem", height: "fit-content" }}
                     title="Xóa khỏi giỏ"
                   >

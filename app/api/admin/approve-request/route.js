@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { doc, collection, addDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { updateBorrowRequestStatus, createBorrowRecord } from '@/services/db';
+import { updateBorrowRequestStatus, createBorrowRecord, createNotification } from '@/services/db';
 import { verifyAdmin } from '@/services/admin-check';
 import { sendMail } from '@/services/emailService';
 import { getDoc } from 'firebase/firestore';
@@ -28,7 +28,9 @@ export async function POST(request) {
     // Lấy thông tin email từ đơn yêu cầu gốc để gửi thông báo
     const reqRef = doc(db, "borrowRequests", requestId);
     const reqSnap = await getDoc(reqRef);
-    const userEmail = reqSnap.exists() ? reqSnap.data().userEmail : null;
+    const reqData = reqSnap.exists() ? reqSnap.data() : {};
+    const userEmail = reqData.userEmail || null;
+    const userPhone = reqData.userPhone || "";
 
     const hasBooksArray = Array.isArray(books) && books.length > 0;
     const hasSingleBook = bookId && bookTitle;
@@ -64,7 +66,8 @@ export async function POST(request) {
       null, // use current date
       null, // use default 14 days
       false, // already decremented above manually (to keep control)
-      "" // phone can be added later
+      userPhone, // phone from request
+      userEmail // email from request
     );
 
     // Update the record with approval metadata
@@ -87,6 +90,14 @@ export async function POST(request) {
 Vui lòng đến thư viện nhận sách trong vòng 24 GIỜ tới (trước khi phiếu mượn tự động hết hạn). 
 Trân trọng!`
       }).catch(err => console.error("Email notify approval failed:", err));
+
+      // Tạo thông báo trong App (Inbox)
+      await createNotification(
+        userId,
+        "🎉 Yêu cầu mượn sách được duyệt",
+        `Đơn mượn ${finalBooks.length} cuốn sách của bạn đã được phê duyệt. Hãy đến thư viện nhận sách trong 24h tới!`,
+        "success"
+      ).catch(err => console.error("Internal notify approval failed:", err));
     }
 
     const count = hasBooksArray ? books.length : 1;
