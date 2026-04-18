@@ -8,15 +8,15 @@ const PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY || ""; // Private key for se
  * Global centralized wrapper for EmailJS.
  * Works on both Client-side (SDK) and Server-side (REST API).
  */
-export const sendMail = async (targetEmail, targetName, contentData, customTemplateId = null) => {
+export const sendMail = async (targetEmail, targetName, contentData, customTemplateId = null, forceMock = false) => {
   const isServer = typeof window === "undefined";
 
   // DEV MOCK logic
-  if (!isServer) {
-    const isMock = typeof window !== "undefined" && localStorage.getItem("DEV_MOCK_EMAIL") === "true";
+  if (forceMock || !isServer) {
+    const isMock = forceMock || (typeof window !== "undefined" && localStorage.getItem("DEV_MOCK_EMAIL") === "true");
     if (isMock) {
       console.log(`[MOCK EMAIL] To: ${targetEmail}, Data:`, contentData);
-      const mockOtp = typeof contentData === 'string' ? contentData : (contentData?.otp || "000000");
+      const mockOtp = typeof contentData === 'string' ? contentData : (contentData?.otp || contentData?.message || "MOCK_MESSAGE");
       return { mock: true, text: "Mock email sent", otp: mockOtp };
     }
   }

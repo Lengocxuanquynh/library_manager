@@ -2,12 +2,15 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../../../../components/AuthProvider";
+import { useConfirm } from "../../../../components/ConfirmProvider";
 import styles from "../../dashboard.module.css";
 import { formatDate } from "../../../../lib/utils";
 import { toast } from "sonner";
+import PremiumSelect from "../../../../components/PremiumSelect";
 
 export default function ManageLoans() {
   const { user } = useAuth();
+  const { confirmPremium } = useConfirm();
   const [requests, setRequests] = useState([]);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +85,10 @@ export default function ManageLoans() {
       recs.forEach(rec => {
         const dueDate = toJsDate(rec.dueDate);
         const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'PARTIALLY_RETURNED' || rec.status === 'OVERDUE';
+        const isLost = rec.status === 'LOST_LOCKED';
         const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < now);
+        
+        if (isLost) return; // Không đếm vào hàng đợi đang xử lý
         if (isOverdue) oCount++;
         else if (isActive) bCount++;
       });
@@ -143,7 +149,7 @@ export default function ManageLoans() {
   };
 
   const handleReject = async (id) => {
-    if (!confirm("Từ chối yêu cầu mượn này?")) return;
+    if (!await confirmPremium("Từ chối yêu cầu mượn này?", "🚫 Từ chối yêu cầu")) return;
     try {
       const res = await fetch('/api/admin/reject-request', {
         method: 'POST',
@@ -159,9 +165,9 @@ export default function ManageLoans() {
     }
   };
 
-  const handleRenewAction = async (requestId, isApproved) => {
-    const actionText = isApproved ? "duyệt" : "từ chối";
-    if (!confirm(`Xác nhận ${actionText} yêu cầu gia hạn này?`)) return;
+  const handleRenewAction = async (ids, approve) => {
+    const actionText = approve ? "duyệt" : "từ chối";
+    if (!await confirmPremium(`Xác nhận ${actionText} yêu cầu gia hạn này?`, "⏳ Xử lý gia hạn")) return;
 
     const loadingToast = toast.loading(`Đang ${actionText} yêu cầu...`);
     try {
@@ -169,8 +175,8 @@ export default function ManageLoans() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          requestIds: Array.isArray(requestId) ? requestId : [requestId],
-          isApproved, 
+          requestIds: Array.isArray(ids) ? ids : [ids],
+          isApproved: approve, 
           adminId: user.uid 
         })
       });
@@ -193,6 +199,7 @@ const handleOpenDetail = (record) => {
   };
 
   const handleReturnClick = (record, book) => {
+    if (!record || !book) return;
     setSelectedReturnRecord({ record, book });
     setReturnNote("");
     
@@ -205,6 +212,11 @@ const handleOpenDetail = (record) => {
       setPenaltyFee(diffDays * 5000);
     } else {
       setPenaltyFee(0);
+    }
+    
+    if (record.status === 'LOST_LOCKED') {
+      toast.error("Phiếu mượn này đã bị niêm phong do quá hạn nặng. Vui lòng xử lý tại quầy hỗ trợ.");
+      return;
     }
     
     setIsReturnModalOpen(true);
@@ -255,15 +267,15 @@ const handleOpenDetail = (record) => {
     }
   }, [records]);
 
-  const handleConfirmPickup = async (recordId) => {
-    if (!confirm("Xác nhận hội viên đã đến lấy toàn bộ sách trong phiếu?")) return;
+  const handleConfirmPickup = async (transactionId, books) => {
+    if (!await confirmPremium("Xác nhận hội viên đã đến lấy toàn bộ sách trong phiếu?", "📦 Xác nhận nhận sách")) return;
     const loadingToast = toast.loading("Đang xác nhận lấy sách...");
     try {
       const res = await fetch('/api/admin/confirm-pickup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recordId,
+          recordId: transactionId,
           adminId: user.uid
         })
       });
@@ -280,8 +292,8 @@ const handleOpenDetail = (record) => {
     }
   };
 
-  const handleNotifyOverdue = async () => {
-    if (!confirm("Xác nhận gửi email nhắc nhở tới TẤT CẢ độc giả đang quá hạn trả sách?")) return;
+  const handleNotifyAllOverdue = async () => {
+    if (!await confirmPremium("Xác nhận gửi email nhắc nhở tới TẤT CẢ độc giả đang quá hạn trả sách?", "📧 Thông báo hàng loạt")) return;
     setIsNotifying(true);
     const loadingToast = toast.loading("Đang gửi thông báo nhắc nợ...");
     try {
@@ -471,29 +483,20 @@ const handleOpenDetail = (record) => {
             )}
           </div>
 
-          {/* TIME RANGE SELECT */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
             <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>Thời gian:</span>
-            <select
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
-              style={{
-                padding: '0.8rem 1.2rem',
-                borderRadius: '12px',
-                background: 'rgba(187, 134, 252, 0.08)',
-                border: '1px solid rgba(187, 134, 252, 0.2)',
-                color: '#bb86fc',
-                fontWeight: '700',
-                fontSize: '0.9rem',
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="ALL" style={{ background: '#1a1a1a' }}>Tất cả thời gian</option>
-              <option value="TODAY" style={{ background: '#1a1a1a' }}>Hôm nay</option>
-              <option value="WEEK" style={{ background: '#1a1a1a' }}>Tuần này</option>
-              <option value="MONTH" style={{ background: '#1a1a1a' }}>Tháng này</option>
-            </select>
+            <div style={{ width: '220px' }}>
+              <PremiumSelect 
+                value={timeRange} 
+                onChange={setTimeRange}
+                options={[
+                  { value: "ALL", label: "Tất cả thời gian" },
+                  { value: "TODAY", label: "Hôm nay" },
+                  { value: "WEEK", label: "Tuần này" },
+                  { value: "MONTH", label: "Tháng này" }
+                ]}
+              />
+            </div>
           </div>
         </div>
 
@@ -577,7 +580,7 @@ const handleOpenDetail = (record) => {
  
           {activeTab === 'records' && filterStatus === 'OVERDUE' && overdueCount > 0 && (
             <button
-              onClick={handleNotifyOverdue}
+              onClick={handleNotifyAllOverdue}
               disabled={isNotifying}
               style={{
                 marginLeft: 'auto',
@@ -747,20 +750,18 @@ const handleOpenDetail = (record) => {
             {filterStatus === 'ALL' && (
               <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Bộ lọc lịch sử:</span>
-                <select
-                  value={historyFilter}
-                  onChange={(e) => setHistoryFilter(e.target.value)}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.08)', color: '#fff', 
-                    border: '1px solid rgba(187, 134, 252, 0.3)',
-                    padding: '0.6rem 1rem', borderRadius: '8px', outline: 'none', 
-                    fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer'
-                  }}
-                >
-                  <option value="ALL" style={{ background: '#1a1a1a' }}>Tất cả lịch sử</option>
-                  <option value="RETURNED" style={{ background: '#1a1a1a' }}>Sách đã trả xong</option>
-                  <option value="CANCELLED_EXPIRED" style={{ background: '#1a1a1a' }}>Hết hạn/Hủy bỏ</option>
-                </select>
+                <div style={{ width: '250px' }}>
+                  <PremiumSelect
+                    value={historyFilter}
+                    onChange={setHistoryFilter}
+                    options={[
+                      { value: "ALL", label: "Tất cả lịch sử" },
+                      { value: "RETURNED", label: "Sách đã trả xong" },
+                      { value: "CANCELLED_EXPIRED", label: "Đơn đã hủy/Hết hạn" },
+                      { value: "LOST_LOCKED", label: "🆘 Sách mất / Khóa thẻ" }
+                    ]}
+                  />
+                </div>
               </div>
             )}
             <div className="table-container">
@@ -784,7 +785,7 @@ const handleOpenDetail = (record) => {
                 <tbody>
                   {getFilteredData(records, 'record').filter(rec => {
                     const dueDate = toJsDate(rec.dueDate);
-                    const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'OVERDUE';
+                    const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'PARTIALLY_RETURNED' || rec.status === 'OVERDUE';
                     const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
 
                     // 1. Filter by Status
@@ -796,6 +797,7 @@ const handleOpenDetail = (record) => {
                     else if (effectiveStatus === 'OVERDUE') statusMatch = isOverdue;
                     else if (effectiveStatus === 'RETURNED') statusMatch = (rec.status === 'RETURNED' || rec.status === 'RETURNED_OVERDUE');
                     else if (effectiveStatus === 'CANCELLED_EXPIRED') statusMatch = (rec.status === 'CANCELLED_EXPIRED');
+                    else if (effectiveStatus === 'LOST_LOCKED') statusMatch = (rec.status === 'LOST_LOCKED');
 
                     return statusMatch;
                   }).length === 0 ? (
@@ -870,12 +872,13 @@ const handleOpenDetail = (record) => {
                           )}
                           <td style={{ padding: '0.8rem 1rem' }}>
                             <span style={{
-                              background: isOverdue ? 'rgba(255,95,86,0.1)' : status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.1)' : status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.1)' : isActive ? 'rgba(39,201,63,0.1)' : 'rgba(255,255,255,0.05)',
-                              color: isOverdue ? '#ff5f56' : status === 'RETURNED_OVERDUE' ? '#ffb020' : status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
+                              background: status === 'LOST_LOCKED' ? 'rgba(255,10,10,0.15)' : isOverdue ? 'rgba(255,95,86,0.1)' : status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.1)' : status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.1)' : isActive ? 'rgba(39,201,63,0.1)' : 'rgba(255,255,255,0.05)',
+                              color: status === 'LOST_LOCKED' ? '#ff3131' : isOverdue ? '#ff5f56' : status === 'RETURNED_OVERDUE' ? '#ffb020' : status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
                               padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700',
-                              whiteSpace: 'nowrap'
+                              whiteSpace: 'nowrap',
+                              border: status === 'LOST_LOCKED' ? '1px solid rgba(255,49,49,0.3)' : 'none'
                             }}>
-                              {isOverdue ? 'QUÁ HẠN' : status === 'RETURNED_OVERDUE' ? 'TRẢ MUỘN' : status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : status === 'PARTIALLY_RETURNED' ? 'TRẢ MỘT PHẦN' : (rec.status === 'RETURNED') ? 'ĐÃ TRẢ' : isActive ? 'ĐANG MƯỢN' : 'KHÔNG RÕ'}
+                              {status === 'LOST_LOCKED' ? 'BỊ KHÓA / MẤT' : isOverdue ? 'QUÁ HẠN' : status === 'RETURNED_OVERDUE' ? 'TRẢ MUỘN' : status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : status === 'PARTIALLY_RETURNED' ? 'TRẢ MỘT PHẦN' : (rec.status === 'RETURNED') ? 'ĐÃ TRẢ' : isActive ? 'ĐANG MƯỢN' : 'KHÔNG RÕ'}
                             </span>
                           </td>
                           <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>
@@ -1027,7 +1030,7 @@ const handleOpenDetail = (record) => {
               {(selectedDetailRecord?.status === 'BORROWING' || selectedDetailRecord?.status === 'PARTIALLY_RETURNED' || selectedDetailRecord?.status === 'OVERDUE') && (
                 <button
                   onClick={async () => {
-                    if (!confirm("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?")) return;
+                    if (!await confirmPremium("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?", "⚠️ Thu hồi khẩn cấp")) return;
                     
                     setReturning(true);
                     const loadingToast = toast.loading("Đang thu hồi tất cả sách...");
@@ -1215,7 +1218,7 @@ const handleOpenDetail = (record) => {
                 {selectedReturnRecord?.record?.books && selectedReturnRecord.record.books.length > 1 && (
                   <button
                     onClick={async () => {
-                      if (!confirm("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?")) return;
+                      if (!await confirmPremium("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?", "⚠️ Thu hồi khẩn cấp")) return;
                       
                       setReturning(true);
                       const loadingToast = toast.loading("Đang thu hồi tất cả sách...");

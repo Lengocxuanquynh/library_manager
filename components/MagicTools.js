@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from './AuthProvider';
 
@@ -8,21 +8,48 @@ export default function MagicTools() {
   const { user, role: authRole, loading: authLoading } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [daysToAdjust, setDaysToAdjust] = useState(-1);
+  const [statusInfo, setStatusInfo] = useState(null);
+
+  const role = (authRole === 'admin' || user?.email === 'admin@library.vn') ? 'admin' : 'user';
+  const userId = user?.uid;
+
+  const fetchStatus = async () => {
+    if (!userId) return;
+    try {
+      const res = await fetch('/api/test/magic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'GET_LATEST_STATUS', userId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStatusInfo(data);
+      }
+    } catch (err) {
+      console.error("Fetch status failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && userId) {
+      fetchStatus();
+      const interval = setInterval(fetchStatus, 30000); // 30s refresh
+      return () => clearInterval(interval);
+    }
+  }, [isOpen, userId]);
 
   if (authLoading || !user) return null;
-
-  // Nhận diện quyền: Ưu tiên role từ context, dự phòng bằng email admin
-  const role = (authRole === 'admin' || user?.email === 'admin@library.vn') ? 'admin' : 'user';
-  const userId = user.uid;
 
   const performMagic = async (action, payload = {}) => {
     setLoading(true);
     const toastId = toast.loading("💫 Đang thực hiện phép thuật...");
     try {
+      const isMock = typeof window !== "undefined" && localStorage.getItem("DEV_MOCK_EMAIL") === "true";
       const res = await fetch('/api/test/magic', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, userId, ...payload })
+        body: JSON.stringify({ action, userId, isMock, ...payload })
       });
 
       if (res.ok) {
@@ -108,48 +135,168 @@ export default function MagicTools() {
             </p>
           </div>
 
+          {statusInfo && (
+             <div style={{
+               margin: '0.75rem 1rem 0',
+               padding: '0.75rem',
+               background: 'rgba(0,0,0,0.4)',
+               borderRadius: '12px',
+               border: '1px solid rgba(187, 134, 252, 0.1)',
+               fontSize: '0.7rem'
+             }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                 <span style={{ opacity: 0.5 }}>Hệ thống:</span>
+                 <span style={{ color: '#03dac6', fontWeight: '600' }}>{new Date().toLocaleDateString('vi-VN')}</span>
+               </div>
+               {statusInfo.dueDate ? (
+                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                   <span style={{ opacity: 0.5 }}>Hạn gần nhất:</span>
+                   <span style={{ 
+                     color: statusInfo.status === 'OVERDUE' ? '#ff5f56' : '#27c93f', 
+                     fontWeight: '700' 
+                   }}>
+                     {new Date(statusInfo.dueDate).toLocaleDateString('vi-VN')}
+                     {statusInfo.status === 'OVERDUE' ? ' (Trễ)' : ''}
+                   </span>
+                 </div>
+               ) : (
+                 <div style={{ textAlign: 'center', opacity: 0.3, fontStyle: 'italic' }}>Chưa có phiếu mượn nào</div>
+               )}
+             </div>
+           )}
+
           <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', maxHeight: '400px', overflowY: 'auto' }}>
             
             {/* NHÓM 1: THỜI GIAN (Dành cho cả 2 nhưng thao túng record của người đang login) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <span style={{ fontSize: '0.65rem', fontWeight: '800', opacity: 0.3, letterSpacing: '1px' }}>⏳ THAO TÚNG THỜI GIAN (USER)</span>
+              
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <MagicBtn 
                   label="📘 Gần hạn" 
-                  hint="Set hạn trả cuốn mới mượn nhất còn 1 ngày."
+                  hint="Set hạn còn 1 ngày + Mail."
                   onClick={() => performMagic('NEAR_DUE')} 
                 />
                 <MagicBtn 
                   label="📙 Trễ hạn" 
-                  hint="Set trễ hạn 5 ngày."
+                  hint="Set trễ 5 ngày + Mail."
                   onClick={() => performMagic('OVERDUE_LIGHT')} 
                 />
                 <MagicBtn 
                   label="📕 Trễ nặng" 
-                  hint="Set trễ trên 15 ngày."
+                  hint="Set trễ trên 15 ngày + Mail + Khóa."
                   onClick={() => performMagic('OVERDUE_SEVERE')} 
                 />
                 <MagicBtn 
                   label="⏰ Nhảy 3th" 
-                  hint="Nhảy vọt 91 ngày cho User hiện tại."
+                  hint="Test reset quota / mở khóa treo."
                   onClick={() => performMagic('JUMP_3_MONTHS')} 
+                />
+              </div>
+
+              {/* BỘ ĐIỀU CHỈNH NGÀY CỘNG DỒN */}
+              <div style={{ 
+                marginTop: '0.2rem',
+                padding: '0.8rem',
+                background: 'rgba(255,255,255,0.03)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255,255,255,0.05)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', background: '#000', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <button 
+                    onClick={() => setDaysToAdjust(prev => prev - 7)}
+                    style={{ padding: '0.5rem 0.8rem', background: 'transparent', color: '#ff5f56', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                    title="-7 ngày"
+                  >
+                    ≪
+                  </button>
+                  <button 
+                    onClick={() => setDaysToAdjust(prev => prev - 1)}
+                    style={{ padding: '0.5rem 0.8rem', background: 'transparent', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}
+                  >
+                    −
+                  </button>
+                  <div style={{ minWidth: '60px', textAlign: 'center', fontSize: '0.9rem', fontWeight: '800', color: '#bb86fc' }}>
+                    {daysToAdjust > 0 ? `+${daysToAdjust}` : daysToAdjust}
+                  </div>
+                  <button 
+                    onClick={() => setDaysToAdjust(prev => prev + 1)}
+                    style={{ padding: '0.5rem 0.8rem', background: 'transparent', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}
+                  >
+                    +
+                  </button>
+                  <button 
+                    onClick={() => setDaysToAdjust(prev => prev + 7)}
+                    style={{ padding: '0.5rem 0.8rem', background: 'transparent', color: '#27c93f', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                    title="+7 ngày"
+                  >
+                    ≫
+                  </button>
+                </div>
+                <button
+                  onClick={() => performMagic('ADJUST_DATE', { days: daysToAdjust })}
+                  disabled={daysToAdjust === 0 || loading}
+                  style={{
+                    flex: 1,
+                    padding: '0.6rem',
+                    borderRadius: '8px',
+                    background: 'rgba(187, 134, 252, 0.15)',
+                    color: '#bb86fc',
+                    border: '1px solid rgba(187, 134, 252, 0.3)',
+                    fontSize: '0.75rem',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    opacity: daysToAdjust === 0 ? 0.4 : 1
+                  }}
+                  onMouseOver={(e) => { if (daysToAdjust !== 0) e.target.style.background = 'rgba(187, 134, 252, 0.25)'; }}
+                  onMouseOut={(e) => { if (daysToAdjust !== 0) e.target.style.background = 'rgba(187, 134, 252, 0.15)'; }}
+                >
+                  Xác nhận
+                </button>
+              </div>
+            </div>
+
+            {/* NHÓM 2: QUYỀN NĂNG ADMIN (Thao tác nhanh cho user) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <span style={{ fontSize: '0.65rem', fontWeight: '800', opacity: 0.3, letterSpacing: '1px', color: '#bb86fc' }}>🛡️ ADMIN POWER (AUTO-FLOW)</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <MagicBtn 
+                  label="✅ Duyệt & Nhận" 
+                  hint="Duyệt yêu cầu PENDING và tự động xác nhận lấy sách ngay lập tức."
+                  primary
+                  onClick={() => performMagic('APPROVE_LATEST')} 
+                />
+                <MagicBtn 
+                  label="📦 Trả sách" 
+                  hint="Tự động Trả toàn bộ sách trong đơn đang mượn."
+                  primary
+                  onClick={() => performMagic('RETURN_LATEST')} 
+                />
+                <MagicBtn 
+                  label="🧹 Tẩy trắng" 
+                  hint="Factory Reset: Xóa sạch lịch sử, record, thông báo. Làm lại từ đầu!"
+                  primary
+                  onClick={() => performMagic('RESET_USER')} 
                 />
               </div>
             </div>
 
-            {/* NHÓM 2: TRẠNG THÁI USER */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {/* NHÓM 3: TRẠNG THÁI USER */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
               <span style={{ fontSize: '0.65rem', fontWeight: '800', opacity: 0.3, letterSpacing: '1px' }}>🌱 TRẠNG THÁI USER</span>
               <MagicBtn 
                 label="✨ Hồi phục: Sạch bóng lỗi" 
                 hint="Mở khóa thẻ, xóa vết đen, hồi đủ 3 lượt gia hạn ngay lập tức."
                 fullWidth 
-                primary
                 onClick={() => performMagic('HEAL_USER')} 
               />
             </div>
 
-            {/* NHÓM 3: HÀNH ĐỘNG HỆ THỐNG (CHỈ ADMIN) */}
+            {/* NHÓM 4: HÀNH ĐỘNG HỆ THỐNG (CHỈ ADMIN) */}
             {role === 'admin' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                 <span style={{ fontSize: '0.65rem', fontWeight: '800', opacity: 0.3, color: '#ff5f56' }}>🔥 QUYỀN NĂNG ADMIN (DANGEROUS)</span>

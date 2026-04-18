@@ -30,9 +30,31 @@ export const CartProvider = ({ children }) => {
     }
   }, [cart, isMounted]);
 
-  const addToCart = (book) => {
+  const addToCart = async (book, userId = null) => {
+    // 1. KIỂM TRA TỒN KHO
+    if ((book.quantity || 0) <= 0) {
+      toast.error(`Sách "${book.title}" hiện đã hết bản cứng trong kho.`);
+      return;
+    }
+
+    // 2. KIỂM TRA TỔNG GIỚI HẠN (GIỎ HÀNG + ĐƠN CHỜ DUYỆT)
+    if (userId) {
+      try {
+        const res = await fetch(`/api/user/can-borrow-check?userId=${userId}&cartSize=${cart.length}`);
+        const data = await res.json();
+        if (!data.canAdd) {
+          toast.error(data.reason || "Giỏ hàng bị đầy! Bạn có quá nhiều sách đang xử lý.");
+          setIsDrawerOpen(true);
+          return;
+        }
+      } catch (err) {
+        console.error("Quota check failed", err);
+      }
+    }
+
+    // 3. KIỂM TRA GIỚI HẠN TẠI CHỖ CỦA GIỎ HÀNG
     if (cart.length >= 3) {
-      toast.error("Giỏ hàng đã đầy (tối đa 3 cuốn)");
+      toast.error("Giỏ hàng đã đầy! Tối đa chỉ được mượn 3 cuốn mỗi đợt.");
       setIsDrawerOpen(true);
       return;
     }

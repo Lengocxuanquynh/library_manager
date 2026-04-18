@@ -20,21 +20,24 @@ import FloatingCart from "@/components/FloatingCart";
 import { Toaster } from "sonner";
 import DevEmailToggle from "@/components/DevEmailToggle";
 import MagicTools from "@/components/MagicTools";
+import { ConfirmProvider } from "@/components/ConfirmProvider";
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AuthProvider>
-          <CartProvider>
-            <Navbar />
-            <main className="main-content" style={{ minHeight: 'calc(100vh - 300px)' }}>
-              {children}
-            </main>
-            <Footer />
-            <FloatingCart />
-            <MagicTools />
-          </CartProvider>
+          <ConfirmProvider>
+            <CartProvider>
+              <Navbar />
+              <main className="main-content" style={{ minHeight: 'calc(100vh - 300px)' }}>
+                {children}
+              </main>
+              <Footer />
+              <FloatingCart />
+              <MagicTools />
+            </CartProvider>
+          </ConfirmProvider>
         </AuthProvider>
         <Toaster 
           position="top-right" 

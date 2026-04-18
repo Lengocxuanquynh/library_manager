@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "../../../components/AuthProvider";
+import { useAuth, useLucid } from "../../../components/AuthProvider";
 import styles from "../dashboard.module.css";
 import Link from "next/link";
-import { formatDate } from "../../../lib/utils";
+import { formatDate, getTimestamp } from "../../../lib/utils";
 import RenewalModal from "../../../components/RenewalModal";
 
 export default function UserDashboard() {
   const { user } = useAuth();
+  const lucid = useLucid();
   const [transactions, setTransactions] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +74,14 @@ export default function UserDashboard() {
 
 
   const handleCancelRequest = async (requestId) => {
-    if (!confirm("Bạn có chắc chắn muốn HỦY LƯU toàn bộ yêu cầu mượn này?")) return;
+    const ok = await lucid.confirm({
+      title: "Hủy yêu cầu mượn",
+      message: "Bạn có chắc chắn muốn HỦY LƯU toàn bộ yêu cầu mượn này?",
+      confirmText: "Hủy đơn",
+      cancelText: "Quay lại"
+    });
+    if (!ok) return;
+
     const res = await fetch('/api/user/cancel-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -83,12 +91,22 @@ export default function UserDashboard() {
       loadRecords();
     } else {
       const result = await res.json();
-      alert(result.error || "Lỗi khi hủy yêu cầu");
+      lucid.alert({
+        title: "Lỗi hệ thống",
+        message: result.error || "Lỗi khi hủy yêu cầu"
+      });
     }
   };
 
   const handleRemoveBookFromRequest = async (requestId, bookId) => {
-    if (!confirm("Rút cuốn sách này khỏi danh sách mượn?")) return;
+    const ok = await lucid.confirm({
+      title: "Rút sách khỏi đơn",
+      message: "Bạn có muốn rút cuốn sách này khỏi danh sách mượn không?",
+      confirmText: "Đồng ý",
+      cancelText: "Hủy"
+    });
+    if (!ok) return;
+
     const res = await fetch('/api/user/remove-book-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,7 +116,10 @@ export default function UserDashboard() {
       loadRecords();
     } else {
       const result = await res.json();
-      alert(result.error || "Lỗi khi gỡ sách");
+      lucid.alert({
+        title: "Lỗi",
+        message: result.error || "Lỗi khi gỡ sách"
+      });
     }
   };
 
@@ -404,6 +425,12 @@ export default function UserDashboard() {
                         <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Sách</th>
                         <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Mượn</th>
                         <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Ngày Hết Hạn</th>
+                        {transactions.some(tx => {
+                          const due = getTimestamp(tx.dueDate);
+                          return (due && new Date() > new Date(due) && tx.status !== 'RETURNED' && tx.status !== 'RETURNED_OVERDUE');
+                        }) && (
+                          <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Tiền Phạt</th>
+                        )}
                         <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Trạng Thái</th>
                       </tr>
                     </thead>
@@ -412,6 +439,7 @@ export default function UserDashboard() {
                         const books = tx.books || (tx.bookId ? [{ bookId: tx.bookId, bookTitle: tx.bookTitle, status: tx.status }] : []);
                         const isPendingPickup = tx.status === 'APPROVED_PENDING_PICKUP';
                         const isOverdue = tx.status === 'OVERDUE';
+                        const isLost = tx.status === 'LOST_LOCKED';
                         const isPartiallyReturned = tx.status === 'PARTIALLY_RETURNED';
 
                         return (
@@ -432,15 +460,42 @@ export default function UserDashboard() {
                             </td>
                             <td style={{ padding: '1rem', verticalAlign: 'top' }}>{formatDate(tx.borrowDate)}</td>
                             <td style={{ padding: '1rem', verticalAlign: 'top' }}>{formatDate(tx.dueDate)}</td>
+                            {transactions.some(t => {
+                               const d = getTimestamp(t.dueDate);
+                               return (d && new Date() > new Date(d) && t.status !== 'RETURNED' && t.status !== 'RETURNED_OVERDUE');
+                             }) && (
+                               <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                                 {(() => {
+                                   const dueMs = getTimestamp(tx.dueDate);
+                                   if (!dueMs || new Date().getTime() <= dueMs || tx.status === 'RETURNED' || tx.status === 'RETURNED_OVERDUE') return null;
+                                   
+                                   const diffMs = new Date().getTime() - dueMs;
+                                   const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                                   const fine = diffDays * 5000;
+                                   if (fine <= 0) return null;
+
+                                   return (
+                                     <div style={{ color: '#ff5f56', fontWeight: '700', fontSize: '1.1rem' }}>
+                                       {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(fine)}
+                                       <div style={{ fontSize: '0.65rem', opacity: 0.6, fontWeight: '500' }}>
+                                         ({diffDays} ngày trễ)
+                                       </div>
+                                     </div>
+                                   );
+                                 })()}
+                               </td>
+                             )}
                             <td style={{ padding: '1rem', verticalAlign: 'top' }}>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                <span style={{
-                                  background: isOverdue ? 'rgba(255, 95, 86, 0.2)' 
+                                 <span style={{
+                                  background: isLost ? 'rgba(255, 10, 10, 0.2)'
+                                    : isOverdue ? 'rgba(255, 95, 86, 0.2)' 
                                     : isPendingPickup ? 'rgba(187, 134, 252, 0.2)' 
                                     : isPartiallyReturned ? 'rgba(39, 201, 63, 0.1)'
                                     : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' 
                                     : 'rgba(255, 255, 255, 0.1)',
-                                  color: isOverdue ? '#ff5f56' 
+                                  color: isLost ? '#ff3131'
+                                    : isOverdue ? '#ff5f56' 
                                     : isPendingPickup ? '#bb86fc' 
                                     : isPartiallyReturned ? '#27c93f'
                                     : tx.status === 'BORROWING' ? '#27c93f'
@@ -448,17 +503,19 @@ export default function UserDashboard() {
                                   padding: '0.25rem 0.5rem',
                                   borderRadius: '4px',
                                   fontSize: '0.85rem',
-                                  fontWeight: '600',
-                                  textAlign: 'center'
+                                  fontWeight: '800',
+                                  textAlign: 'center',
+                                  border: isLost ? '1px solid rgba(255, 49, 49, 0.4)' : 'none'
                                 }}>
-                                  {isOverdue ? 'QUÁ HẠN' 
+                                  {isLost ? 'BỊ KHÓA / MẤT SÁCH'
+                                    : isOverdue ? 'QUÁ HẠN' 
                                     : isPendingPickup ? 'CHỜ LẤY SÁCH' 
                                     : isPartiallyReturned ? 'ĐANG TRẢ DẦN'
                                     : tx.status === 'BORROWING' ? 'ĐANG MƯỢN'
                                     : 'ĐÃ TRẢ HẾT'}
                                 </span>
                                 
-                                {(tx.status === 'BORROWING' || tx.status === 'PARTIALLY_RETURNED') && !tx.isRenewed && !isOverdue && (
+                                {(tx.status === 'BORROWING' || tx.status === 'PARTIALLY_RETURNED') && !tx.isRenewed && !isOverdue && !isLost && (
                                   <button
                                     onClick={() => {
                                       setSelectedRenewBook({

@@ -234,7 +234,12 @@ export const getBorrowRecords = async (userId = null) => {
     }
 
     return { ...record, books, status: currentStatus };
-  }).sort((a, b) => (b.borrowDate?.toMillis() || 0) - (a.borrowDate?.toMillis() || 0));
+  }).sort((a, b) => {
+    // Ưu tiên xếp theo createdAt desc để đơn mới duyệt luôn lên đầu
+    const timeA = a.createdAt?.toMillis() || a.borrowDate?.toMillis() || 0;
+    const timeB = b.createdAt?.toMillis() || b.borrowDate?.toMillis() || 0;
+    return timeB - timeA;
+  });
 };
 
 export const createBorrowRecord = async (userId, userName, books, customBorrowDate = null, customDueDate = null, autoDecrement = true, borrowerPhone = "", userEmail = "") => {
@@ -305,10 +310,11 @@ export const confirmBorrowPickup = async (recordId) => {
   });
 
   // Tạo thông báo cho Độc giả
+  const nowStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + " " + new Date().toLocaleDateString('vi-VN');
   await createNotification(
     data.userId,
     "📚 Sách đã được nhận thành công",
-    `Bạn đã nhận mượn ${updatedBooks.length} cuốn sách. Hạn trả là ngày ${dueDateObj.toLocaleDateString('vi-VN')}. Chúc bạn đọc sách vui vẻ!`,
+    `Bạn đã nhận mượn ${updatedBooks.length} cuốn sách vào lúc ${nowStr}. Hạn trả là ngày ${dueDateObj.toLocaleDateString('vi-VN')}. Chúc bạn đọc sách vui vẻ!`,
     "success"
   ).catch(err => console.error("Notify pickup failed:", err));
 };
@@ -352,6 +358,12 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = '', pen
 
   if (!recordSnap.exists()) return;
   const data = recordSnap.data();
+
+  // CHẶN TRẢ SÁCH NẾU ĐÃ BỊ KẾT LUẬN LÀ MẤT/KHÓA
+  if (data.status === 'LOST_LOCKED') {
+    throw new Error("Tài khoản đã bị khóa và đơn mượn này đã bị hủy do quá hạn nặng. Vui lòng đến phòng hỗ trợ để giải quyết.");
+  }
+
   const books = data.books || [];
   
   // Find which book is being returned
@@ -418,6 +430,16 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = '', pen
 // RENEWALS
 // ========================
 export const submitRenewalRequest = async (recordId, userId, reason, userName, bookTitles) => {
+  // KIỂM TRA TRẠNG THÁI PHIẾU MƯỢN TRƯỚC KHI GIA HẠN
+  const recordRef = doc(db, "borrowRecords", recordId);
+  const recordSnap = await getDoc(recordRef);
+  if (recordSnap.exists()) {
+    const recordData = recordSnap.data();
+    if (recordData.status === 'LOST_LOCKED' || recordData.status === 'RETURNED' || recordData.status === 'RETURNED_OVERDUE') {
+      throw new Error("Không thể gia hạn phiếu mượn ở trạng thái này.");
+    }
+  }
+
   return await addDoc(collection(db, "renewalRequests"), {
     recordId,
     userId,
@@ -583,7 +605,12 @@ export const syncUserQuotas = async (userId) => {
   // 2. Xóa vết trễ hạn sau 3 tháng
   if (userData.lastOverdueAt) {
     const lastOverdue = userData.lastOverdueAt.toDate ? userData.lastOverdueAt.toDate() : new Date(userData.lastOverdueAt);
-    if (now - lastOverdue > threeMonthsInMs) {
+    
+    // KIỂM TRA: Chỉ khôi phục nếu User KHÔNG còn đơn nào đang quá hạn
+    const qOverdue = query(collection(db, "borrowRecords"), where("userId", "==", userId), where("status", "==", "OVERDUE"));
+    const snapOverdue = await getDocs(qOverdue);
+    
+    if (now - lastOverdue > threeMonthsInMs && snapOverdue.empty) {
       batch.update(userRef, { lastOverdueAt: null });
       hasChanges = true;
 

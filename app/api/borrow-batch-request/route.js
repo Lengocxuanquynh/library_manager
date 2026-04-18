@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../lib/firebase';
+import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, getDocs, query, where, updateDoc, doc } from 'firebase/firestore';
-import { canUserBorrow, isBookAvailable } from '../../../services/db';
+import { canUserBorrow, isBookAvailable } from '@/services/db';
 import { sendMail } from '../../../services/emailService';
 
 export async function POST(request) {
@@ -72,7 +72,7 @@ export async function POST(request) {
 
       return NextResponse.json({
         success: true,
-        message: `Đã GỘP THÊM ${uniqueNewBooks.length} cuốn vào Đơn mượn đang chờ duyệt của bạn!`,
+        message: `Đã GỘP THÊM ${newBooksBatch.length} cuốn vào Đơn mượn đang chờ duyệt của bạn!`,
         id: existingDoc.id
       });
     }

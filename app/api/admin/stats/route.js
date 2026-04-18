@@ -1,10 +1,13 @@
-import { NextResponse } from 'next/server';
 import { adminDb } from '../../../../lib/firebase-admin';
+import { scanAllOverdue } from '@/services/overdueService';
 
 export async function GET() {
   console.log(">>> [SERVER] API /api/admin/stats/route.js started");
   
   try {
+    // 0. Passive Overdue Sync - Đảm bảo dữ liệu trễ hạn luôn mới trước khi lấy stats
+    await scanAllOverdue().catch(err => console.error("Passive scan failed:", err));
+
     // 1. Fetch raw data from Firebase
     const [booksSnap, membersSnap, recordsSnap] = await Promise.all([
       adminDb.collection("books").get(),

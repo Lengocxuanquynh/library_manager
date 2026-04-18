@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "../../../../components/AuthProvider";
+import { useConfirm } from "../../../../components/ConfirmProvider";
 import styles from "../../dashboard.module.css";
 
 export default function ManageSystemUsers() {
   const { user } = useAuth();
+  const { confirmPremium } = useConfirm();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +36,8 @@ export default function ManageSystemUsers() {
       ? `Bạn có chắc muốn nâng thư quyền Admin cho người dùng này?`
       : `Bạn có chắc muốn gỡ quyền Admin của người dùng này?`;
 
-    if (confirm(confirmMsg)) {
+    const confirmed = await confirmPremium(confirmMsg, "🛡️ Cập nhật Quyền hạn");
+    if (confirmed) {
       try {
         const res = await fetch(`/api/users/${userId}`, {
           method: 'PATCH',
