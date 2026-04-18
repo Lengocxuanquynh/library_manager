@@ -5,6 +5,7 @@ import styles from "../../dashboard.module.css";
 import { uploadToCloudinary } from "../../../../lib/cloudinary";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import PremiumSelect from "../../../../components/PremiumSelect";
 
 function InventoryHubContent() {
   const searchParams = useSearchParams();
@@ -266,115 +267,21 @@ function InventoryHubContent() {
   };
 
   // ========================
-  // MAGIC UI COMPONENTS
-  // ========================
-  const MagicSelect = ({ label, value, options, onChange, placeholder = "Chọn..." }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    return (
-      <div style={{ position: 'relative', width: '100%' }}>
-        {label && <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>{label}</label>}
-        <div 
-          onClick={() => setIsOpen(!isOpen)}
-          style={{ 
-            width: '100%', 
-            padding: '0.9rem 1.2rem', 
-            borderRadius: '12px', 
-            background: 'rgba(0,0,0,0.3)', 
-            border: `1px solid ${isOpen ? '#bb86fc' : '#333'}`, 
-            color: value ? '#fff' : 'rgba(255,255,255,0.4)',
-            cursor: 'pointer',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            transition: '0.3s',
-            boxShadow: isOpen ? '0 0 15px rgba(187,134,252,0.1)' : 'none'
-          }}
-        >
-          <span>{options.find(o => o.name === value)?.name || placeholder}</span>
-          <span style={{ 
-            fontSize: '0.8rem', 
-            transition: '0.3s', 
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' 
-          }}>▼</span>
-        </div>
-
-        {isOpen && (
-          <>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={() => setIsOpen(false)} />
-            <ul style={{ 
-              position: 'absolute', 
-              top: 'calc(100% + 8px)', 
-              left: 0, 
-              right: 0, 
-              background: 'rgba(20, 20, 22, 0.95)', 
-              backdropFilter: 'blur(15px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '12px',
-              padding: '0.5rem',
-              margin: 0,
-              listStyle: 'none',
-              zIndex: 999,
-              maxHeight: '250px',
-              overflowY: 'auto',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-              animation: 'slideDown 0.2s ease-out'
-            }}>
-              <style jsx>{`
-                @keyframes slideDown {
-                  from { opacity: 0; transform: translateY(-10px); }
-                  to { opacity: 1; transform: translateY(0); }
-                }
-                ul::-webkit-scrollbar { width: 4px; }
-                ul::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-              `}</style>
-              <li 
-                onClick={() => { onChange(""); setIsOpen(false); }}
-                style={{ padding: '0.8rem 1rem', borderRadius: '8px', cursor: 'pointer', transition: '0.2s', color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem' }}
-                onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.05)'}
-                onMouseLeave={e => e.target.style.background = 'transparent'}
-              >
-                — Trống —
-              </li>
-              {options.map(opt => (
-                <li 
-                  key={opt.id}
-                  onClick={() => { onChange(opt.name); setIsOpen(false); }}
-                  style={{ 
-                    padding: '0.8rem 1rem', 
-                    borderRadius: '8px', 
-                    cursor: 'pointer', 
-                    transition: '0.2s', 
-                    fontSize: '0.9rem',
-                    background: value === opt.name ? 'rgba(187,134,252,0.1)' : 'transparent',
-                    color: value === opt.name ? '#bb86fc' : '#fff'
-                  }}
-                  onMouseEnter={e => {
-                    if(value !== opt.name) e.target.style.background = 'rgba(255,255,255,0.05)';
-                  }}
-                  onMouseLeave={e => {
-                    if(value !== opt.name) e.target.style.background = 'transparent';
-                  }}
-                >
-                  {opt.name}
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </div>
-    );
-  };
-
-  // ========================
   // RENDER HELPERS
   // ========================
-  const filteredBooks = books.filter(book => {
-    const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (book.isbn && book.isbn.includes(searchTerm));
-    const matchesCategory = selectedCategoryFilter === "ALL" || book.category === selectedCategoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredBooks = books
+    .filter(book => {
+      const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (book.isbn && book.isbn.includes(searchTerm));
+      const matchesCategory = selectedCategoryFilter === "ALL" || book.category === selectedCategoryFilter;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      const aStock = (a.quantity || 0) > 0 ? 1 : 0;
+      const bStock = (b.quantity || 0) > 0 ? 1 : 0;
+      return bStock - aStock; // 1 (còn hàng) lên trên 0 (hết hàng)
+    });
 
   return (
     <div className="inventory-hub">
@@ -458,7 +365,7 @@ function InventoryHubContent() {
                                 </datalist>
                             </div>
                             <div>
-                                <MagicSelect 
+                                <PremiumSelect 
                                     label="Thể loại"
                                     value={bookFormData.category}
                                     options={categories}
@@ -498,7 +405,7 @@ function InventoryHubContent() {
             <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.2rem 1.5rem', borderRadius: '16px', marginBottom: '2rem', display: 'flex', gap: '1.5rem', alignItems: 'center', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <input type="text" placeholder="Tìm kiếm sách, tác giả, ISBN..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ flex: 1, padding: '0.8rem 1.2rem', borderRadius: '10px', background: 'rgba(0,0,0,0.2)', border: '1px solid #333', color: '#fff', outline: 'none' }} />
                 <div style={{ width: '250px' }}>
-                    <MagicSelect 
+                    <PremiumSelect 
                         value={selectedCategoryFilter === "ALL" ? "" : selectedCategoryFilter}
                         options={categories}
                         onChange={(val) => setSelectedCategoryFilter(val || "ALL")}

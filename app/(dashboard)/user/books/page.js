@@ -82,20 +82,29 @@ export default function BookCatalog() {
   const categories = useMemo(() => ["Tất cả", ...new Set(books.map(b => b.category).filter(Boolean))], [books]);
   const years = useMemo(() => ["Tất cả", ...new Set(books.map(b => b.year).filter(Boolean))].sort((a,b) => b-a), [books]);
 
-  const filteredBooks = books.filter(b => {
-    const matchesSearch = b.title.toLowerCase().includes(search.toLowerCase()) || 
-                         b.author?.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = filterCategory === "Tất cả" || b.category === filterCategory;
-    const matchesAuthor = filterAuthor === "Tất cả" || b.author === filterAuthor;
-    const matchesYear = filterYear === "Tất cả" || b.year === filterYear;
-    
-    // Logic cho Tab Yêu thích
-    if (activeTab === "THƯ VIỆN") {
-        return matchesSearch && matchesCategory && matchesAuthor && matchesYear && userProfile?.favoriteAuthors?.includes(b.author);
-    }
+  const filteredBooks = useMemo(() => {
+    const filtered = books.filter(b => {
+      const matchesSearch = b.title.toLowerCase().includes(search.toLowerCase()) || 
+                           b.author?.toLowerCase().includes(search.toLowerCase());
+      const matchesCategory = filterCategory === "Tất cả" || b.category === filterCategory;
+      const matchesAuthor = filterAuthor === "Tất cả" || b.author === filterAuthor;
+      const matchesYear = filterYear === "Tất cả" || b.year === filterYear;
+      
+      // Logic cho Tab Yêu thích
+      if (activeTab === "THƯ VIỆN") {
+          return matchesSearch && matchesCategory && matchesAuthor && matchesYear && userProfile?.favoriteAuthors?.includes(b.author);
+      }
 
-    return matchesSearch && matchesCategory && matchesAuthor && matchesYear;
-  });
+      return matchesSearch && matchesCategory && matchesAuthor && matchesYear;
+    });
+
+    // Sắp xếp: Còn sách lên trên, Hết sách (quantity=0) xuống dưới
+    return [...filtered].sort((a, b) => {
+      const aStock = (a.quantity || 0) > 0 ? 1 : 0;
+      const bStock = (b.quantity || 0) > 0 ? 1 : 0;
+      return bStock - aStock; 
+    });
+  }, [books, search, filterCategory, filterAuthor, filterYear, activeTab, userProfile]);
 
   const handleSelectFromModal = (type, value) => {
     if (type === 'author') {
@@ -276,7 +285,9 @@ export default function BookCatalog() {
                         cursor: 'pointer', 
                         overflow: 'hidden',
                         position: 'relative',
-                        transition: 'transform 0.3s'
+                        transition: 'transform 0.3s',
+                        opacity: isAvailable ? 1 : 0.6,
+                        filter: isAvailable ? 'none' : 'grayscale(0.8)'
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-10px)'}
                     onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
@@ -323,6 +334,20 @@ export default function BookCatalog() {
                          }}>
                             <h3 style={{ fontSize: '1rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{book.title}</h3>
                             <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', margin: 0 }}>{book.author}</p>
+                            {!isAvailable && (
+                                <div style={{ 
+                                    backgroundColor: 'rgba(255, 95, 86, 0.8)', 
+                                    color: '#fff', 
+                                    fontSize: '0.6rem', 
+                                    padding: '2px 6px', 
+                                    borderRadius: '4px', 
+                                    fontWeight: '900', 
+                                    width: 'fit-content',
+                                    marginTop: '0.3rem'
+                                }}>
+                                    HẾT SÁCH
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -406,8 +431,8 @@ export default function BookCatalog() {
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: 'auto' }}>
                     <button 
-                        onClick={() => addToCart(selectedBook)}
-                        disabled={(selectedBook.quantity || 0) <= 0 || cart.length >= 3}
+                        onClick={() => addToCart(selectedBook, user?.uid)}
+                        disabled={cart.length >= 3}
                         style={{ 
                             padding: '1.2rem 3rem', 
                             fontSize: '1.1rem', 

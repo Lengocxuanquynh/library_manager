@@ -3,6 +3,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { subscribeToAuthChanges, logoutUser } from "../services/auth";
 import { useRouter, usePathname } from "next/navigation";
+import { LucidProvider, useLucid } from "./LucidModal";
+
+export { useLucid };
 
 const AuthContext = createContext({
   user: null,
@@ -72,7 +75,9 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ user, role, loading }}>
-      {children}
+      <LucidProvider>
+        {children}
+      </LucidProvider>
     </AuthContext.Provider>
   );
 };

@@ -8,9 +8,11 @@ import { auth } from "../../../../lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useConfirm } from "../../../../components/ConfirmProvider";
 
 export default function ManageMembers() {
   const { user } = useAuth();
+  const { confirmPremium } = useConfirm();
   const router = useRouter();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,7 +78,11 @@ export default function ManageMembers() {
 
   const handleDelete = async (member) => {
     const { id, uid, email } = member;
-    if (!confirm(`Bạn có chắc chắn muốn xóa độc giả "${member.name}" không? Tài khoản Authentication cũng sẽ bị xóa vĩnh viễn.`)) return;
+    const confirmed = await confirmPremium(
+      `Bạn có chắc chắn muốn xóa độc giả "${member.name}" không? Tài khoản Authentication cũng sẽ bị xóa vĩnh viễn.`,
+      "⚠️ Cảnh báo Xóa Vĩnh viễn"
+    );
+    if (!confirmed) return;
     
     const loadToast = toast.loading("Đang xóa độc giả và tài khoản...");
     try {
@@ -110,6 +116,35 @@ export default function ManageMembers() {
     } catch (error) {
       console.error(error);
       toast.error("Lỗi kết nối máy chủ hoặc sự cố mạng.", { id: loadToast });
+    }
+  };
+
+  const handleUnlock = async (member) => {
+    const { id, name } = member;
+    const confirmed = await confirmPremium(
+      `Phải đảm bảo xác nhận ${name} đã hoàng thành thủ tục mở khóa tài khoản với phòng chăm sóc sinh viên.`,
+      "🔐 Xác nhận Mở khóa"
+    );
+    if (!confirmed) return;
+    
+    const loadToast = toast.loading("Đang mở khóa tài khoản...");
+    try {
+      const res = await fetch('/api/admin/unlock-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: id, adminId: user?.uid })
+      });
+      
+      if (res.ok) {
+        toast.success(`Đã mở khóa tài khoản cho ${name}`, { id: loadToast });
+        fetchMembers(); // Tải lại danh sách
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Mở khóa thất bại", { id: loadToast });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi kết nối máy chủ", { id: loadToast });
     }
   };
 
@@ -247,14 +282,24 @@ export default function ManageMembers() {
                       (m.memberCode && m.memberCode.toLowerCase().includes(searchTerm.toLowerCase()))
                     )
                     .map(member => (
-                    <tr key={member.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: '1rem', fontWeight: '500' }}>{member.name}</td>
+                    <tr key={member.id} style={{ 
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                      background: member.isLocked ? 'rgba(255, 95, 86, 0.1)' : 'transparent'
+                    }}>
+                      <td style={{ padding: '1rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {member.isLocked && <span title="Tài khoản bị khóa" style={{ color: '#ff5f56' }}>🔒</span>}
+                        {member.name}
+                      </td>
                       <td style={{ padding: '1rem', fontFamily: 'monospace', color: '#bb86fc' }}>{member.memberCode || `DG-${(member.uid || member.id).slice(-5).toUpperCase()}`}</td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>{member.email}</td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>{member.phone || '—'}</td>
                       <td style={{ padding: '1rem' }}>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button onClick={() => viewHistory(member)} style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Lịch sử</button>
+                          {member.isLocked ? (
+                            <button onClick={() => handleUnlock(member)} style={{ background: 'rgba(39, 201, 63, 0.15)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.3)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '700' }}>Mở khóa</button>
+                          ) : (
+                            <button onClick={() => viewHistory(member)} style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Lịch sử</button>
+                          )}
                           <button onClick={() => handleResetPassword(member.email)} style={{ background: 'rgba(255, 193, 7, 0.1)', color: '#ffc107', border: '1px solid rgba(255, 193, 7, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Reset MK</button>
                           <button onClick={() => handleDelete(member)} style={{ background: 'rgba(255, 95, 86, 0.05)', color: '#ff5f56', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Xoá</button>
                         </div>
