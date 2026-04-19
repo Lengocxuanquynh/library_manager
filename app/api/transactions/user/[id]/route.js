@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getUserTransactions } from '../../../../../services/db';
+import { getUserTransactions } from '@/services/db';
 
 export async function GET(request, { params }) {
   try {

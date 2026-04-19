@@ -2,12 +2,14 @@
 
 import { useEffect, useState, Suspense } from "react";
 import styles from "../../dashboard.module.css";
-import { uploadToCloudinary } from "../../../../lib/cloudinary";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import PremiumSelect from "../../../../components/PremiumSelect";
+import PremiumSelect from "@/components/PremiumSelect";
+import { useConfirm } from "@/components/ConfirmProvider";
 
 function InventoryHubContent() {
+  const { confirmPremium } = useConfirm();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab') || "inventory";
 
@@ -51,7 +53,9 @@ function InventoryHubContent() {
     isbn: '',
     publisher: '',
     year: '',
-    status: 'Available'
+    price: 0,
+    status: 'Available',
+    damagedCount: 0
   });
 
   useEffect(() => {
@@ -152,7 +156,9 @@ function InventoryHubContent() {
       isbn: book.isbn || '',
       publisher: book.publisher || '',
       year: book.year || '',
-      status: book.status || 'Available'
+      price: book.price || 0,
+      status: book.status || 'Available',
+      damagedCount: book.damagedCount || 0
     });
     setEditingBookId(book.id);
     setShowBookForm(true);
@@ -160,16 +166,22 @@ function InventoryHubContent() {
   };
 
   const resetBookForm = () => {
-    setBookFormData({ title: '', author: '', category: '', quantity: 1, coverImage: '', description: '', isbn: '', publisher: '', year: '', status: 'Available' });
+    setBookFormData({ title: '', author: '', category: '', quantity: 1, coverImage: '', description: '', isbn: '', publisher: '', year: '', price: 0, status: 'Available', damagedCount: 0 });
     setEditingBookId(null);
     setShowBookForm(false);
   };
 
   const handleDeleteBook = async (id) => {
-    if (!confirm("Xác nhận xóa cuốn sách này?")) return;
-    await fetch(`/api/books/${id}`, { method: 'DELETE' });
-    fetchBooks();
-    toast.success("Đã xóa sách");
+    if (!await confirmPremium("Xác nhận xóa cuốn sách này?", "🗑️ Xóa đầu sách")) return;
+    const res = await fetch(`/api/books/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      fetchBooks();
+      toast.success("Đã xóa sách");
+    } else {
+      toast.error(data.error || "Không thể xóa sách.");
+    }
   };
 
   // ========================
@@ -194,12 +206,32 @@ function InventoryHubContent() {
     }
   };
 
-  const handleDeleteAuthor = async (id) => {
-    if (!confirm("Xóa tác giả này?")) return;
-    await fetch(`/api/authors/${id}`, { method: 'DELETE' });
-    fetchAuthors();
-    toast.success("Đã xóa tác giả");
+  const handleDeleteAuthor = async (id, force = false) => {
+    if (!force) {
+      if (!await confirmPremium("Xác nhận xóa tác giả này?", "🖋️ Xóa tác giả")) return;
+    }
+    
+    const url = `/api/authors/${id}${force ? '?force=true' : ''}`;
+    const res = await fetch(url, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (res.ok) {
+      fetchAuthors();
+      toast.success(data.message || "Đã xóa tác giả");
+    } else {
+      if (data.code === 'HAS_BOOKS') {
+        // Hỏi xác nhận lần 2 cho xóa hàng loạt
+        const confirmed = await confirmPremium(
+          `${data.error} LƯU Ý: Hành động này không thể hoàn tác.`,
+          "🔥 Xác nhận xóa Hàng loạt"
+        );
+        if (confirmed) handleDeleteAuthor(id, true);
+      } else {
+        toast.error(data.error || "Không thể xóa tác giả.");
+      }
+    }
   };
+
 
   const handleSyncAuthors = async () => {
     setSyncingAuthors(true);
@@ -259,12 +291,31 @@ function InventoryHubContent() {
     setShowCategoryForm(false);
   };
 
-  const handleDeleteCategory = async (id) => {
-    if (!confirm("Xóa thể loại này?")) return;
-    await fetch(`/api/categories/${id}`, { method: 'DELETE' });
-    fetchCategories();
-    toast.success("Đã xóa thể loại");
+  const handleDeleteCategory = async (id, force = false) => {
+    if (!force) {
+      if (!await confirmPremium("Xóa thể loại này?", "📂 Xóa thể loại")) return;
+    }
+    
+    const url = `/api/categories/${id}${force ? '?force=true' : ''}`;
+    const res = await fetch(url, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (res.ok) {
+      fetchCategories();
+      toast.success(data.message || "Đã xóa thể loại");
+    } else {
+      if (data.code === 'HAS_BOOKS') {
+        const confirmed = await confirmPremium(
+          `${data.error} Bạn chắc chứ? Toàn bộ sách trong danh mục này sẽ bị xóa sạch.`,
+          "🔥 Xác nhận xóa Hàng loạt"
+        );
+        if (confirmed) handleDeleteCategory(id, true);
+      } else {
+        toast.error(data.error || "Không thể xóa thể loại.");
+      }
+    }
   };
+
 
   // ========================
   // RENDER HELPERS
@@ -377,6 +428,10 @@ function InventoryHubContent() {
                                 <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>Số lượng</label>
                                 <input type="number" value={bookFormData.quantity} onChange={e => setBookFormData({...bookFormData, quantity: e.target.value})} min="0" required style={{ width: '100%', padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} />
                             </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', opacity: 0.6 }}>Giá niêm yết (VNĐ)</label>
+                                <input type="number" value={bookFormData.price} onChange={e => setBookFormData({...bookFormData, price: e.target.value})} min="0" required style={{ width: '100%', padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} />
+                            </div>
                         </div>
                         <div style={{ display: 'flex', gap: '2rem' }}>
                             <div style={{ width: '150px' }}>
@@ -423,9 +478,17 @@ function InventoryHubContent() {
                                 <div style={{ flex: 1 }}>
                                     <h3 style={{ fontSize: '1rem', margin: '0 0 0.3rem', color: '#fff' }}>{book.title}</h3>
                                     <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>{book.author}</p>
-                                    <div style={{ marginTop: '0.8rem', display: 'flex', gap: '0.5rem' }}>
+                                    <div style={{ marginTop: '0.8rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                                         <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'rgba(187,134,252,0.1)', color: '#bb86fc', borderRadius: '4px' }}>{book.category}</span>
-                                        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: book.quantity > 0 ? 'rgba(39,201,63,0.1)' : 'rgba(255,95,86,0.1)', color: book.quantity > 0 ? '#27c93f' : '#ff5f56', borderRadius: '4px' }}>{book.quantity} bản</span>
+                                        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: (book.quantity ?? 0) > 0 ? 'rgba(39,201,63,0.1)' : 'rgba(255,95,86,0.1)', color: (book.quantity ?? 0) > 0 ? '#27c93f' : '#ff5f56', borderRadius: '4px' }}>{(book.quantity ?? 0)} bản</span>
+                                        {book.damagedCount > 0 && (
+                                          <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'rgba(255,165,0,0.1)', color: '#ffa502', borderRadius: '4px', border: '1px solid rgba(255,165,0,0.2)' }}>
+                                            ⚠️ {book.damagedCount} hỏng
+                                          </span>
+                                        )}
+                                        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.05)', color: '#ffb020', borderRadius: '4px', fontWeight: 'bold' }}>
+                                          💰 {(book.price ?? 0).toLocaleString('vi-VN')} đ
+                                        </span>
                                     </div>
                                 </div>
                             </div>

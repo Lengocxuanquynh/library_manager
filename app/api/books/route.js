@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { title, author, category, status, coverImage, quantity, isbn, publisher, year, description } = body;
+    const { title, author, category, status, coverImage, quantity, isbn, publisher, year, description, price } = body;
 
     if (!title || !author) {
       return NextResponse.json(
@@ -35,6 +35,7 @@ export async function POST(request) {
       status: status || 'Available',
       coverImage: coverImage || '',
       quantity: parseInt(quantity) || 0,
+      price: Number(price) || 0,
       isbn: isbn || '',
       publisher: publisher || '',
       year: year || '',

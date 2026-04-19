@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../lib/firebase';
+import { db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 export async function POST(request) {
@@ -27,11 +27,15 @@ export async function POST(request) {
     }
 
     const currentBooks = data.books || [];
-    const filteredBooks = currentBooks.filter(b => b.bookId !== bookId);
+    const indexToRemove = currentBooks.findIndex(b => b.bookId === bookId);
 
-    if (filteredBooks.length === currentBooks.length) {
+    if (indexToRemove === -1) {
       return NextResponse.json({ error: 'Cuốn sách này không có trong yêu cầu' }, { status: 400 });
     }
+
+    // Chỉ xóa 1 cuốn duy nhất
+    currentBooks.splice(indexToRemove, 1);
+    const filteredBooks = [...currentBooks];
 
     if (filteredBooks.length === 0) {
       // Hết sách, hủy luôn yêu cầu

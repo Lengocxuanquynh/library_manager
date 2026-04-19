@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '../../../../lib/firebase-admin';
+import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
 /**
  * API Xóa độc giả hoàn toàn (Auth + Firestore)

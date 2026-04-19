@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../lib/firebase';
+import { db } from '@/lib/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { createNotification } from '../../../../services/db';
+import { createNotification } from '@/services/db';
 
 export async function POST(request) {
   try {

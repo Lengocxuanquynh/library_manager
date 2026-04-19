@@ -15,7 +15,7 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { sendMail } from '@/services/emailService';
-import { createNotification } from '@/services/db';
+import { createNotification, getUserQuota } from '@/services/db';
 import { processRecordOverdue } from '@/services/overdueService';
 
 export async function POST(request) {
@@ -412,13 +412,36 @@ export async function POST(request) {
         const record = activeDocs[0];
         const dueDate = record.dueDate?.toDate ? record.dueDate.toDate() : new Date(record.dueDate);
         
+        // --- TÍNH TOÁN QUOTA ---
+        const quotaData = await getUserQuota(userId);
+
         return NextResponse.json({ 
           success: true, 
           recordId: record.id,
           dueDate: dueDate.toISOString(),
           status: record.status,
-          now: now.toISOString()
+          now: now.toISOString(),
+          quota: {
+            totalPending: quotaData.totalPending,
+            totalBorrowed: quotaData.totalBorrowed,
+            remainingQuota: quotaData.remaining
+          }
         });
+      }
+      
+      case 'SET_DEFAULT_PRICES': {
+        const q = query(collection(db, "books"));
+        const snap = await getDocs(q);
+        const setPriceBatch = writeBatch(db);
+        let count = 0;
+        snap.docs.forEach(d => {
+          if (!d.data().price) {
+            setPriceBatch.update(d.ref, { price: 100000 });
+            count++;
+          }
+        });
+        await setPriceBatch.commit();
+        return NextResponse.json({ success: true, message: `Đã cập nhật giá cho ${count} cuốn sách.` });
       }
 
       default:

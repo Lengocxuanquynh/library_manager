@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { rejectBorrowRequest } from '../../../../services/db';
-import { verifyAdmin } from '../../../../services/admin-check';
+import { rejectBorrowRequest } from '@/services/db';
+import { verifyAdmin } from '@/services/admin-check';
 
 export async function POST(request) {
   try {

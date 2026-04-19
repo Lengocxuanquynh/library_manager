@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "../../../../components/AuthProvider";
+import { useAuth } from "@/components/AuthProvider";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
-import { updateUserProfile, updateUserPassword, updateUserEmail, logoutUser } from "../../../../services/auth";
-import { sendMail } from "../../../../services/emailService";
-import OTPModal from "../../../../components/OTPModal";
+import { updateUserProfile, updateUserPassword, updateUserEmail, logoutUser } from "@/services/auth";
+import { sendMail } from "@/services/emailService";
+import OTPModal from "@/components/OTPModal";
 import { toast } from "sonner";
-import { createNotification } from "../../../../services/db";
+import { createNotification } from "@/services/db";
 
 export default function UserSettings() {
   const { user, role } = useAuth();

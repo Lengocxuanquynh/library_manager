@@ -148,6 +148,39 @@ export default function MagicTools() {
                  <span style={{ opacity: 0.5 }}>Hệ thống:</span>
                  <span style={{ color: '#03dac6', fontWeight: '600' }}>{new Date().toLocaleDateString('vi-VN')}</span>
                </div>
+               
+               {/* HIỂN THỊ QUOTA */}
+               {statusInfo.quota && (
+                 <div style={{ 
+                   marginBottom: '0.6rem', 
+                   paddingTop: '0.4rem', 
+                   borderTop: '1px solid rgba(255,255,255,0.05)' 
+                 }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                     <span style={{ opacity: 0.5 }}>Hạn ngạch (Quota):</span>
+                     <span style={{ 
+                       color: statusInfo.quota.remainingQuota === 0 ? '#ff5f56' : '#bb86fc', 
+                       fontWeight: '800' 
+                     }}>
+                       {3 - statusInfo.quota.remainingQuota}/3
+                     </span>
+                   </div>
+                   <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.65rem', opacity: 0.4 }}>
+                     <span>• Chờ duyệt: {statusInfo.quota.totalPending}</span>
+                     <span>• Đang mượn: {statusInfo.quota.totalBorrowed}</span>
+                   </div>
+                   {/* Progress bar nhỏ */}
+                   <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', marginTop: '4px', overflow: 'hidden' }}>
+                     <div style={{ 
+                       width: `${((3 - statusInfo.quota.remainingQuota) / 3) * 100}%`, 
+                       height: '100%', 
+                       background: statusInfo.quota.remainingQuota === 0 ? '#ff5f56' : '#bb86fc',
+                       transition: 'width 0.3s ease'
+                     }} />
+                   </div>
+                 </div>
+               )}
+
                {statusInfo.dueDate ? (
                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                    <span style={{ opacity: 0.5 }}>Hạn gần nhất:</span>
@@ -160,7 +193,9 @@ export default function MagicTools() {
                    </span>
                  </div>
                ) : (
-                 <div style={{ textAlign: 'center', opacity: 0.3, fontStyle: 'italic' }}>Chưa có phiếu mượn nào</div>
+                 <div style={{ textAlign: 'center', opacity: 0.3, fontStyle: 'italic', marginTop: statusInfo.quota ? '0.2rem' : 0 }}>
+                   Chưa có phiếu mượn nào
+                 </div>
                )}
              </div>
            )}

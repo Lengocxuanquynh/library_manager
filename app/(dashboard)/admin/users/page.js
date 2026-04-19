@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "../../../../components/AuthProvider";
-import { useConfirm } from "../../../../components/ConfirmProvider";
+import { useAuth } from "@/components/AuthProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import styles from "../../dashboard.module.css";
 
 export default function ManageSystemUsers() {

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { useAuth } from "../../../../components/AuthProvider";
-import { useCart } from "../../../../components/CartProvider";
+import { useAuth } from "@/components/AuthProvider";
+import { useCart } from "@/components/CartProvider";
 import styles from "../../dashboard.module.css";
 import { useRouter } from "next/navigation";
-import { toggleAuthorFavorite } from "../../../../services/db";
+import { toggleAuthorFavorite } from "@/services/db";
 import { toast } from "sonner";
 
 export default function BookCatalog() {
@@ -25,7 +25,7 @@ export default function BookCatalog() {
   const [activeTab, setActiveTab] = useState("TRANG CHỦ"); // TRANG CHỦ, TÁC GIẢ, THỂ LOẠI, THƯ VIỆN
   const [filterAuthor, setFilterAuthor] = useState("Tất cả");
   const [filterCategory, setFilterCategory] = useState("Tất cả");
-  const [filterYear, setFilterYear] = useState("Tất cả");
+
 
   // Nav Dropdowns state
   const [activeDropdown, setActiveDropdown] = useState(null);
@@ -80,7 +80,7 @@ export default function BookCatalog() {
   // Data Aggregation
   const authors = useMemo(() => ["Tất cả", ...new Set(books.map(b => b.author).filter(Boolean))], [books]);
   const categories = useMemo(() => ["Tất cả", ...new Set(books.map(b => b.category).filter(Boolean))], [books]);
-  const years = useMemo(() => ["Tất cả", ...new Set(books.map(b => b.year).filter(Boolean))].sort((a,b) => b-a), [books]);
+
 
   const filteredBooks = useMemo(() => {
     const filtered = books.filter(b => {
@@ -88,14 +88,14 @@ export default function BookCatalog() {
                            b.author?.toLowerCase().includes(search.toLowerCase());
       const matchesCategory = filterCategory === "Tất cả" || b.category === filterCategory;
       const matchesAuthor = filterAuthor === "Tất cả" || b.author === filterAuthor;
-      const matchesYear = filterYear === "Tất cả" || b.year === filterYear;
+
       
       // Logic cho Tab Yêu thích
       if (activeTab === "THƯ VIỆN") {
-          return matchesSearch && matchesCategory && matchesAuthor && matchesYear && userProfile?.favoriteAuthors?.includes(b.author);
+          return matchesSearch && matchesCategory && matchesAuthor && userProfile?.favoriteAuthors?.includes(b.author);
       }
 
-      return matchesSearch && matchesCategory && matchesAuthor && matchesYear;
+      return matchesSearch && matchesCategory && matchesAuthor;
     });
 
     // Sắp xếp: Còn sách lên trên, Hết sách (quantity=0) xuống dưới
@@ -104,7 +104,7 @@ export default function BookCatalog() {
       const bStock = (b.quantity || 0) > 0 ? 1 : 0;
       return bStock - aStock; 
     });
-  }, [books, search, filterCategory, filterAuthor, filterYear, activeTab, userProfile]);
+  }, [books, search, filterCategory, filterAuthor, activeTab, userProfile]);
 
   const handleSelectFromModal = (type, value) => {
     if (type === 'author') {
@@ -137,7 +137,7 @@ export default function BookCatalog() {
       }}>
         <div style={{ display: 'flex', gap: '2rem', alignItems: 'center', height: '100%' }}>
             <span 
-                onClick={() => { setActiveTab("TRANG CHỦ"); setFilterAuthor("Tất cả"); setFilterCategory("Tất cả"); setFilterYear("Tất cả"); }} 
+                onClick={() => { setActiveTab("TRANG CHỦ"); setFilterAuthor("Tất cả"); setFilterCategory("Tất cả"); }} 
                 style={{ fontWeight: '800', cursor: 'pointer', color: activeTab === "TRANG CHỦ" ? 'var(--primary)' : '#fff', transition: '0.3s' }}
             >
                 TRANG CHỦ
@@ -197,27 +197,6 @@ export default function BookCatalog() {
                 )}
             </div>
 
-            {/* Dropdown Năm */}
-            <div 
-                onMouseEnter={() => setActiveDropdown('year')} 
-                onMouseLeave={() => setActiveDropdown(null)}
-                style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-            >
-                <span style={{ color: filterYear !== "Tất cả" ? 'var(--primary)' : '#fff' }}>NĂM ▾</span>
-                {activeDropdown === 'year' && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#111', border: '1px solid #333', borderRadius: '0 0 8px 8px', width: '150px', boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
-                        {years.map(y => (
-                            <div 
-                                key={y} 
-                                onClick={() => { setFilterYear(y); setActiveDropdown(null); }}
-                                style={{ padding: '0.8rem 1.2rem', borderBottom: '1px solid #222', fontSize: '0.9rem', backgroundColor: filterYear === y ? '#222' : 'transparent' }}
-                            >
-                                {y}
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
 
             <span 
                 onClick={() => setActiveTab("THƯ VIỆN")} 
@@ -248,9 +227,9 @@ export default function BookCatalog() {
       <div style={{ padding: '2rem' }}>
         <div style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <h1 className={styles.pageTitle} style={{ margin: 0 }}>{activeTab === "THƯ VIỆN" ? "Tác giả tôi theo dõi" : "Danh Mục Sách"}</h1>
-            {(filterAuthor !== "Tất cả" || filterCategory !== "Tất cả" || filterYear !== "Tất cả" || search !== "") && (
+            {(filterAuthor !== "Tất cả" || filterCategory !== "Tất cả" || search !== "") && (
                 <button 
-                  onClick={() => { setFilterAuthor("Tất cả"); setFilterCategory("Tất cả"); setFilterYear("Tất cả"); setSearch(""); setActiveTab("TRANG CHỦ"); }}
+                  onClick={() => { setFilterAuthor("Tất cả"); setFilterCategory("Tất cả"); setSearch(""); setActiveTab("TRANG CHỦ"); }}
                   style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer' }}
                 >
                   Xóa toàn bộ lọc ✕

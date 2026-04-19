@@ -50,6 +50,33 @@ export const deleteBook = async (id) => {
   return await deleteDoc(docRef);
 };
 
+export const countActiveBookUsage = async (bookId) => {
+  // 1. Check PENDING borrow requests
+  const qRequests = query(
+    collection(db, "borrowRequests"),
+    where("bookId", "==", bookId),
+    where("status", "==", "PENDING")
+  );
+  const snapRequests = await getDocs(qRequests);
+  
+  // 2. Check active borrow records
+  const qRecords = query(
+    collection(db, "borrowRecords"),
+    where("status", "in", ["BORROWING", "OVERDUE", "PARTIALLY_RETURNED", "APPROVED_PENDING_PICKUP", "PARTIALLY_PICKED_UP"])
+  );
+  const snapRecords = await getDocs(qRecords);
+  let activeInRecords = 0;
+  snapRecords.forEach(doc => {
+    const data = doc.data();
+    const hasActiveBook = (data.books || []).some(b => 
+      b.bookId === bookId && !['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(b.status)
+    );
+    if (hasActiveBook) activeInRecords++;
+  });
+
+  return snapRequests.size + activeInRecords;
+};
+
 // ========================
 // MEMBERS
 // ========================
@@ -320,9 +347,12 @@ export const confirmBorrowPickup = async (recordId) => {
 };
 
 export const approveBorrowRequest = async (requestId, userId, userName, books) => {
+  const reqSnap = await getDoc(doc(db, "borrowRequests", requestId));
+  const reqData = reqSnap.exists() ? reqSnap.data() : {};
+  
   await updateBorrowRequestStatus(requestId, 'APPROVED');
-  // For online approval, we reserve the books (decrement quantity) immediately
-  return await createBorrowRecord(userId, userName, books, null, null, true);
+  // Pass phone/email from request to record
+  return await createBorrowRecord(userId, userName, books, null, null, true, reqData.userPhone || "", reqData.userEmail || "");
 };
 
 export const rejectBorrowRequest = async (requestId) => {
@@ -352,78 +382,81 @@ export const pickupBorrowRecord = async (recordId, bookUid) => {
   });
 };
 
-export const returnBorrowRecord = async (recordId, bookUid, returnNote = '', penaltyAmount = 0) => {
+export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", penaltyAmount = 0, isLost = false, damageFee = 0) => {
   const recordRef = doc(db, "borrowRecords", recordId);
   const recordSnap = await getDoc(recordRef);
+  if (!recordSnap.exists()) throw new Error("Phiếu mượn không tồn tại");
 
-  if (!recordSnap.exists()) return;
   const data = recordSnap.data();
+  const books = data.books || [];
+  const bookIndex = books.findIndex(b => b.uid === bookUid);
+  
+  if (bookIndex === -1) throw new Error("Không tìm thấy sách trong phiếu");
 
-  // CHẶN TRẢ SÁCH NẾU ĐÃ BỊ KẾT LUẬN LÀ MẤT/KHÓA
-  if (data.status === 'LOST_LOCKED') {
-    throw new Error("Tài khoản đã bị khóa và đơn mượn này đã bị hủy do quá hạn nặng. Vui lòng đến phòng hỗ trợ để giải quyết.");
+  const bookItem = books[bookIndex];
+  if (['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(bookItem.status)) {
+     throw new Error("Sách này đã được xử lý (trả hoặc báo mất) trước đó");
   }
 
-  const books = data.books || [];
+  // Update book status
+  const dueDateObj = data.dueDate?.toDate ? data.dueDate.toDate() : new Date(data.dueDate);
+  const isNowOverdue = bookItem.status === 'OVERDUE' || dueDateObj < new Date();
   
-  // Find which book is being returned
-  let allReturned = true;
-  const updatedBooks = books.map(b => {
-    let updatedBook = b;
-    
-    // So khớp theo UID duy nhất của cuốn sách trong đơn này
-    if (b.uid === bookUid && b.status !== 'RETURNED' && b.status !== 'RETURNED_OVERDUE') {
-      const dueDate = data.dueDate?.toDate ? data.dueDate.toDate() : (data.dueDate ? new Date(data.dueDate) : null);
-      const now = new Date();
-      const finalStatus = (dueDate && now > dueDate) ? 'RETURNED_OVERDUE' : 'RETURNED';
-      
-      updatedBook = {
-        ...b,
-        status: finalStatus,
-        actualReturnDate: new Date(),
-        returnNote: returnNote || '',
-        penaltyAmount: Number(penaltyAmount) || 0
-      };
-    }
-    
-    // Check if this book (after possible update) is still borrowed
-    if (updatedBook.status === 'BORROWING' || updatedBook.status === 'APPROVED_PENDING_PICKUP' || updatedBook.status === 'OVERDUE') {
-      allReturned = false;
-    }
-    
-    return updatedBook;
-  });
+  const finalBookStatus = isLost ? 'LOST' : (isNowOverdue ? 'RETURNED_OVERDUE' : 'RETURNED');
 
-  await updateDoc(recordRef, {
-    books: updatedBooks,
+  books[bookIndex] = {
+    ...bookItem,
+    status: finalBookStatus,
+    actualReturnDate: serverTimestamp(),
+    returnNote,
+    lateFee: Number(penaltyAmount) || 0,
+    damageFee: Number(damageFee) || 0,
+    penaltyAmount: (Number(penaltyAmount) || 0) + (Number(damageFee) || 0)
+  };
+
+  const allReturned = books.every(b => ['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(b.status));
+  
+  const updates = { 
+    books,
     status: allReturned ? 'RETURNED' : 'PARTIALLY_RETURNED'
-  });
+  };
 
-  // Nếu có cuốn nào trả trễ, cập nhật lastOverdueAt cho User và lock tài khoản nếu cần
-  const anyOverdue = updatedBooks.some(b => b.status === 'RETURNED_OVERDUE');
-  if (anyOverdue && data.userId) {
+  // Nếu có cuốn nào trả trễ hoặc báo mất, cập nhật lịch sử vi phạm
+  if ((isNowOverdue || isLost) && data.userId) {
     const userRef = doc(db, "users", data.userId);
     await updateDoc(userRef, { 
       lastOverdueAt: serverTimestamp() 
     });
 
-    // Thông báo cho Độc giả về việc mất quyền gia hạn trong 3 tháng
-    await createNotification(
-      data.userId,
-      "⚠️ Tạm khóa quyền gia hạn",
-      "Bạn đã trả sách trễ hạn. Theo quy định, quyền lợi gia hạn sách của bạn sẽ bị tạm khóa trong 3 tháng tới. Vui lòng trả sách đúng hạn trong các lần sau.",
-      "warning"
-    ).catch(err => console.error("Notify overdue penalty failed:", err));
+    if (isNowOverdue && !isLost) {
+      await createNotification(
+        data.userId,
+        "⚠️ Tạm khóa quyền gia hạn",
+        "Bạn đã trả sách trễ hạn. Theo quy định, quyền lợi gia hạn sách của bạn sẽ bị tạm khóa trong 3 tháng tới.",
+        "warning"
+      ).catch(err => console.error("Notify overdue penalty failed:", err));
+    }
+    if (isLost) {
+      await createNotification(
+        data.userId,
+        "❌ Ghi nhận mất sách",
+        `Cuốn sách "${bookItem.bookTitle}" đã được ghi nhận là bị mất. Phí bồi thường đã được cập nhật vào phiếu mượn.`,
+        "error"
+      ).catch(err => console.error("Notify lost book failed:", err));
+    }
   }
 
-  // Tìm lại bookId của cuốn sách vừa trả để tăng kho
-  const returnedBook = books.find(b => b.uid === bookUid);
-  if (returnedBook) {
-    const bookRef = doc(db, "books", returnedBook.bookId);
+  await updateDoc(recordRef, updates);
+
+  // Tăng số lượng sách trong kho NẾU sách không bị mất
+  if (!isLost) {
+    const bookRef = doc(db, "books", bookItem.bookId);
     await updateDoc(bookRef, {
       quantity: increment(1)
     });
   }
+
+  return { success: true, allReturned };
 };
 
 // ========================
@@ -673,6 +706,44 @@ export const canUserBorrow = async (userId, isAdmin = false) => {
   return { canBorrow: true };
 };
 
+export const getUserQuota = async (userId) => {
+  if (!userId) return { totalPending: 0, totalBorrowed: 0, totalUsed: 0, remaining: 3 };
+
+  // 1. Số lượng sách đang chờ duyệt
+  const qPending = query(
+    collection(db, "borrowRequests"), 
+    where("userId", "==", userId), 
+    where("status", "==", "PENDING")
+  );
+  const snapPending = await getDocs(qPending);
+  let totalPending = 0;
+  snapPending.forEach(d => {
+    // Nếu đơn cũ (flat) không có mảng books, mặc định tính là 1 cuốn
+    totalPending += (d.data().books || []).length || 1;
+  });
+
+  // 2. Số lượng sách đang mượn thực tế (tính theo từng book trong record)
+  const qRecords = query(collection(db, "borrowRecords"), where("userId", "==", userId));
+  const snapRecords = await getDocs(qRecords);
+  let totalBorrowed = 0;
+  snapRecords.forEach(d => {
+    const recData = d.data();
+    const books = recData.books || [];
+    // Chỉ đếm các cuốn sách chưa trả
+    totalBorrowed += books.filter(b => 
+      ["BORROWING", "OVERDUE", "PARTIALLY_RETURNED", "APPROVED_PENDING_PICKUP", "Active", "PARTIALLY_PICKED_UP"].includes(b.status || recData.status)
+    ).length;
+  });
+
+  const totalUsed = totalPending + totalBorrowed;
+  return {
+    totalPending,
+    totalBorrowed,
+    totalUsed,
+    remaining: Math.max(0, 3 - totalUsed)
+  };
+};
+
 export const isBookAvailable = async (bookId) => {
   const book = await getBook(bookId);
   if (!book || (book.quantity || 0) <= 0) return false;
@@ -705,6 +776,13 @@ export const getCategories = async () => {
   return await getCollectionData(q);
 };
 
+export const getCategory = async (id) => {
+  const docRef = doc(db, "categories", id);
+  const snap = await getDoc(docRef);
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
+
 export const addCategory = async (data) => {
   return await addDoc(collection(db, "categories"), {
     ...data,
@@ -721,6 +799,29 @@ export const deleteCategory = async (id) => {
   const docRef = doc(db, "categories", id);
   return await deleteDoc(docRef);
 };
+
+export const countBooksByCategory = async (categoryName) => {
+  const q = query(collection(db, "books"), where("category", "==", categoryName));
+  const snap = await getDocs(q);
+  return snap.size;
+};
+
+export const hasActiveBorrowingsByCategory = async (categoryName) => {
+  // Tìm tất cả sách thuộc thể loại này
+  const qBooks = query(collection(db, "books"), where("category", "==", categoryName));
+  const snapBooks = await getDocs(qBooks);
+  if (snapBooks.empty) return false;
+  
+  const bookIds = snapBooks.docs.map(doc => doc.id);
+  
+  // Kiểm tra từng cuốn sách xem có đang được mượn không (sử dụng logic giống countActiveBookUsage)
+  for (const bid of bookIds) {
+    const activeCount = await countActiveBookUsage(bid);
+    if (activeCount > 0) return true;
+  }
+  return false;
+};
+
 
 export const ensureCategoryExists = async (categoryName) => {
   if (!categoryName || categoryName === "Chưa phân loại" || categoryName === "Khác") return;
@@ -854,6 +955,13 @@ export const getAuthors = async () => {
   return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
+export const getAuthor = async (id) => {
+  const docRef = doc(db, "authors", id);
+  const snap = await getDoc(docRef);
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
+
 export const addAuthor = async (name) => {
   if (!name) return;
   const docRef = await addDoc(collection(db, "authors"), {
@@ -866,6 +974,52 @@ export const addAuthor = async (name) => {
 export const deleteAuthor = async (id) => {
   await deleteDoc(doc(db, "authors", id));
 };
+
+export const countBooksByAuthor = async (authorName) => {
+  const q = query(collection(db, "books"), where("author", "==", authorName));
+  const snap = await getDocs(q);
+  return snap.size;
+};
+
+export const hasActiveBorrowingsByAuthor = async (authorName) => {
+  const qBooks = query(collection(db, "books"), where("author", "==", authorName));
+  const snapBooks = await getDocs(qBooks);
+  if (snapBooks.empty) return false;
+  
+  const bookIds = snapBooks.docs.map(doc => doc.id);
+  for (const bid of bookIds) {
+    const activeCount = await countActiveBookUsage(bid);
+    if (activeCount > 0) return true;
+  }
+  return false;
+};
+
+export const deleteAuthorWithBooks = async (authorId, authorName) => {
+  const qBooks = query(collection(db, "books"), where("author", "==", authorName));
+  const snapBooks = await getDocs(qBooks);
+  
+  const batch = writeBatch(db);
+  snapBooks.docs.forEach(d => {
+    batch.delete(d.ref);
+  });
+  batch.delete(doc(db, "authors", authorId));
+  
+  await batch.commit();
+};
+
+export const deleteCategoryWithBooks = async (categoryId, categoryName) => {
+  const qBooks = query(collection(db, "books"), where("category", "==", categoryName));
+  const snapBooks = await getDocs(qBooks);
+  
+  const batch = writeBatch(db);
+  snapBooks.docs.forEach(d => {
+    batch.delete(d.ref);
+  });
+  batch.delete(doc(db, "categories", categoryId));
+  
+  await batch.commit();
+};
+
 
 export const ensureAuthorExists = async (authorName) => {
   if (!authorName) return;

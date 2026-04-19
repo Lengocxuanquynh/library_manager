@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createBorrowRequest, canUserBorrow, isBookAvailable } from '../../../services/db';
+import { createBorrowRequest, canUserBorrow, isBookAvailable } from '@/services/db';
 
 export async function POST(request) {
   try {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { doc, collection, getDocs, query, where, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../../../../lib/firebase';
+import { db } from '@/lib/firebase';
 
 /**
  * POST /api/admin/clean-expired-pickups

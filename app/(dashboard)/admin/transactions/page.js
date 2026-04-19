@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useAuth } from "../../../../components/AuthProvider";
-import { useConfirm } from "../../../../components/ConfirmProvider";
+import React, { useEffect, useState, useRef } from "react";
+import { useAuth } from "@/components/AuthProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import styles from "../../dashboard.module.css";
-import { formatDate } from "../../../../lib/utils";
+import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
-import PremiumSelect from "../../../../components/PremiumSelect";
+import PremiumSelect from "@/components/PremiumSelect";
 
 export default function ManageLoans() {
   const { user } = useAuth();
@@ -42,9 +42,15 @@ export default function ManageLoans() {
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [selectedReturnRecord, setSelectedReturnRecord] = useState(null); // { record, book }
   const [returnNote, setReturnNote] = useState("");
-  const [penaltyFee, setPenaltyFee] = useState(0);
+  const [penaltyFee, setPenaltyFee] = useState(0); // This will be lateFee
+  const [damageFee, setDamageFee] = useState(0);
+  const [isLost, setIsLost] = useState(false);
   const [returning, setReturning] = useState(false);
   const [isNotifying, setIsNotifying] = useState(false);
+
+  // Bulk Return states
+  const [isBulkReturnModalOpen, setIsBulkReturnModalOpen] = useState(false);
+  const [bulkReturnItems, setBulkReturnItems] = useState([]); // [{ uid, bookTitle, lateFee, damageFee, isLost, price }]
 
   useEffect(() => {
     if (user) fetchData();
@@ -213,6 +219,9 @@ const handleOpenDetail = (record) => {
     } else {
       setPenaltyFee(0);
     }
+
+    setIsLost(false);
+    setDamageFee(0);
     
     if (record.status === 'LOST_LOCKED') {
       toast.error("Phiếu mượn này đã bị niêm phong do quá hạn nặng. Vui lòng xử lý tại quầy hỗ trợ.");
@@ -236,7 +245,9 @@ const handleOpenDetail = (record) => {
           bookUid: selectedReturnRecord.book.uid, // Thay bookId bằng bookUid
           adminId: user.uid,
           returnNote: returnNote,
-          penaltyAmount: Number(penaltyFee)
+          penaltyAmount: Number(penaltyFee), // Late fee
+          isLost: isLost,
+          damageFee: Number(damageFee)
         })
       });
       if (res.ok) {
@@ -251,6 +262,123 @@ const handleOpenDetail = (record) => {
       } else {
         const data = await res.json();
         toast.error(data.message || "Trả sách thất bại", { id: loadingToast });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi kết nối server", { id: loadingToast });
+    } finally {
+      setReturning(false);
+    }
+  };
+
+  const handleIsLostToggle = (checked) => {
+    setIsLost(checked);
+    if (checked) {
+      // Khi báo mất, tự động điền giá của cuốn sách vào damageFee
+      setDamageFee(selectedReturnRecord?.book?.price || 100000);
+    } else {
+      setDamageFee(0);
+    }
+  };
+
+  // ==================
+  // BULK RETURN HANDLERS
+  // ==================
+  const handleOpenBulkReturn = (record) => {
+    if (!record || !record.books) return;
+    
+    const now = new Date();
+    const dueDate = toJsDate(record.dueDate);
+    
+    // Chỉ lấy những cuốn chưa trả
+    const items = record.books
+      .filter(b => !['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(b.status))
+      .map(b => ({
+          uid: b.uid,
+          bookId: b.bookId,
+          bookTitle: b.bookTitle,
+          lateFee: 0, // No longer per-book
+          damageFee: 0,
+          isLost: false,
+          isDamaged: false, // New state
+          price: b.price || 100000,
+          returnNote: ""
+      }));
+      
+    if (items.length === 0) {
+      toast.error("Tất cả sách trong phiếu này đã được trả.");
+      return;
+    }
+
+    // Tính phí trễ hạn TUYỆT ĐỐI cho cả phiếu (chỉ 1 lần)
+    let recordLateFee = 0;
+    if (dueDate && now > dueDate) {
+      const diffDays = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+      recordLateFee = diffDays * 5000;
+    }
+    
+    setBulkReturnItems(items);
+    // Tạm mượn state penaltyFee để lưu phí trễ cả đơn trong ngữ cảnh này
+    setPenaltyFee(recordLateFee); 
+    setIsBulkReturnModalOpen(true);
+  };
+
+  const handleBulkItemChange = (uid, field, value) => {
+    setBulkReturnItems(prev => prev.map(item => {
+      if (item.uid === uid) {
+        const updated = { ...item, [field]: value };
+        // Nếu bật Lost, tự điền damageFee (giá sách)
+        if (field === 'isLost' && value === true) {
+          updated.damageFee = item.price || 100000;
+          if (!updated.returnNote) updated.returnNote = "Sách báo mất";
+        } else if (field === 'isLost' && value === false) {
+          updated.damageFee = 0;
+        }
+
+        // Nếu bật Damaged, gợi ý ghi chú nếu trống
+        if (field === 'isDamaged' && value === true) {
+          if (!updated.returnNote) updated.returnNote = "Sách hư hỏng";
+        }
+        
+        return updated;
+      }
+      return item;
+    }));
+  };
+
+  const confirmBulkReturn = async () => {
+    if (!selectedDetailRecord || bulkReturnItems.length === 0) return;
+    
+    setReturning(true);
+    const loadingToast = toast.loading("Đang xử lý thu hồi hàng loạt...");
+    try {
+      const res = await fetch('/api/admin/return-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordId: selectedDetailRecord.id,
+          transactionId: selectedDetailRecord.transactionId || selectedDetailRecord.slipId,
+          returnItems: bulkReturnItems.map(item => ({
+             uid: item.uid,
+             isLost: item.isLost,
+             isDamaged: item.isDamaged, // Gửi flag hỏng
+             damageFee: Number(item.damageFee) || 0,
+             penaltyAmount: 0, 
+             returnNote: item.returnNote || (item.isDamaged ? "Sách hư hỏng (Hủy)" : "Thu hồi hàng loạt")
+          })),
+          recordLateFee: Number(penaltyFee), 
+          adminId: user.uid
+        })
+      });
+      
+      if (res.ok) {
+        toast.success("Đã thu hồi toàn bộ sách thành công!", { id: loadingToast });
+        setIsBulkReturnModalOpen(false);
+        setIsDetailModalOpen(false);
+        fetchData();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Có lỗi xảy ra khi thu hồi", { id: loadingToast });
       }
     } catch (error) {
       console.error(error);
@@ -872,13 +1000,34 @@ const handleOpenDetail = (record) => {
                           )}
                           <td style={{ padding: '0.8rem 1rem' }}>
                             <span style={{
-                              background: status === 'LOST_LOCKED' ? 'rgba(255,10,10,0.15)' : isOverdue ? 'rgba(255,95,86,0.1)' : status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.1)' : status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.1)' : isActive ? 'rgba(39,201,63,0.1)' : 'rgba(255,255,255,0.05)',
-                              color: status === 'LOST_LOCKED' ? '#ff3131' : isOverdue ? '#ff5f56' : status === 'RETURNED_OVERDUE' ? '#ffb020' : status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
-                              padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700',
+                              background: status === 'LOST_LOCKED' ? 'rgba(255,10,10,0.15)' : 
+                                          status === 'LOST' ? 'rgba(255,10,10,0.2)' :
+                                          status === 'DAMAGED' ? 'rgba(255,165,0,0.15)' :
+                                          isOverdue ? 'rgba(255,95,86,0.1)' : 
+                                          status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.1)' : 
+                                          status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.1)' : 
+                                          isActive ? 'rgba(39,201,63,0.1)' : 'rgba(255,255,255,0.05)',
+                              color: status === 'LOST_LOCKED' ? '#ff3131' : 
+                                     status === 'LOST' ? '#ff4b2b' :
+                                     status === 'DAMAGED' ? '#ffa502' :
+                                     isOverdue ? '#ff5f56' : 
+                                     status === 'RETURNED_OVERDUE' ? '#ffb020' : 
+                                     status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : 
+                                     isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
+                              padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.7rem', fontWeight: '800',
                               whiteSpace: 'nowrap',
-                              border: status === 'LOST_LOCKED' ? '1px solid rgba(255,49,49,0.3)' : 'none'
+                              border: (status === 'LOST_LOCKED' || status === 'LOST') ? '1px solid rgba(255,49,49,0.3)' : 
+                                      status === 'DAMAGED' ? '1px solid rgba(255,165,0,0.3)' : 'none',
+                              textTransform: 'uppercase'
                             }}>
-                              {status === 'LOST_LOCKED' ? 'BỊ KHÓA / MẤT' : isOverdue ? 'QUÁ HẠN' : status === 'RETURNED_OVERDUE' ? 'TRẢ MUỘN' : status === 'APPROVED_PENDING_PICKUP' ? 'CHỜ LẤY SÁCH' : status === 'PARTIALLY_RETURNED' ? 'TRẢ MỘT PHẦN' : (rec.status === 'RETURNED') ? 'ĐÃ TRẢ' : isActive ? 'ĐANG MƯỢN' : 'KHÔNG RÕ'}
+                              {status === 'LOST_LOCKED' ? 'Phòng tỏa thẻ' : 
+                               status === 'LOST' ? 'Mất Sách' :
+                               status === 'DAMAGED' ? 'Sách Hỏng' :
+                               isOverdue ? 'Quá Hạn' : 
+                               status === 'RETURNED_OVERDUE' ? 'Đã Trả (Trễ)' : 
+                               status === 'APPROVED_PENDING_PICKUP' ? 'Chờ Lấy' : 
+                               status === 'PARTIALLY_RETURNED' ? 'Trả Một Phần' :
+                               isActive ? 'Đang Mượn' : 'Đã trả'}
                             </span>
                           </td>
                           <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>
@@ -926,7 +1075,7 @@ const handleOpenDetail = (record) => {
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.2rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <h4 style={{ margin: '0 0 0.8rem 0', color: '#bb86fc', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Thông tin độc giả</h4>
                   <p style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fff', margin: '0 0 0.3rem 0' }}>{selectedDetailRecord.userName || selectedDetailRecord.memberName}</p>
-                  <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', margin: 0 }}>📞 {selectedDetailRecord.borrowerPhone || selectedDetailRecord.userPhone || "Trống"}</p>
+                  <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', margin: 0 }}>📞 {selectedDetailRecord.userPhone || selectedDetailRecord.borrowerPhone || selectedDetailRecord.phone || "Trống"}</p>
                   <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', margin: '0.3rem 0 0 0' }}>✉️ {selectedDetailRecord.userEmail || selectedDetailRecord.email || "Trống"}</p>
                   {selectedDetailRecord.userCCCD && <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', margin: '0.3rem 0 0 0' }}>🆔 CCCD: {selectedDetailRecord.userCCCD}</p>}
                 </div>
@@ -957,56 +1106,91 @@ const handleOpenDetail = (record) => {
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                 {(selectedDetailRecord?.books || []).map((book, idx) => {
-                  const isReturned = book.status === 'RETURNED' || book.status === 'RETURNED_OVERDUE';
+                  const isReturned = ['RETURNED', 'RETURNED_OVERDUE', 'LOST', 'DAMAGED'].includes(book.status);
                   const isOverdue = selectedDetailRecord?.status === 'OVERDUE' && !isReturned;
+                  const isLost = book.status === 'LOST';
+                  const isDamaged = book.status === 'DAMAGED';
 
                   return (
                     <div key={idx} style={{ 
-                      background: 'rgba(255,255,255,0.02)', 
-                      padding: '1rem 1.25rem', 
-                      borderRadius: '12px', 
-                      border: '1px solid rgba(255,255,255,0.05)',
+                      background: isReturned ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.02)', 
+                      padding: '1.2rem 1.5rem', 
+                      borderRadius: '16px', 
+                      border: '1px solid ' + (isReturned ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.05)'),
                       display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
+                      flexDirection: 'column',
+                      gap: '0.8rem',
+                      opacity: isReturned ? 0.8 : 1,
+                      transition: 'all 0.3s ease'
                     }}>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: '1rem', fontWeight: '600', color: '#fff', margin: '0 0 0.2rem 0' }}>{book.bookTitle}</p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                          <span style={{ 
-                            fontSize: '0.75rem', 
-                            padding: '0.15rem 0.4rem', 
-                            borderRadius: '4px',
-                            background: isReturned ? 'rgba(39,201,63,0.1)' : isOverdue ? 'rgba(255,95,86,0.1)' : 'rgba(187,134,252,0.1)',
-                            color: isReturned ? '#27c93f' : isOverdue ? '#ff5f56' : '#bb86fc',
-                            fontWeight: '600'
-                          }}>
-                            {isReturned ? 'ĐÃ TRẢ' : isOverdue ? 'QUÁ HẠN' : 'ĐANG MƯỢN'}
-                          </span>
-                          {isReturned && book.actualReturnDate && (
-                            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
-                              Trả ngày: {formatDate(book.actualReturnDate, true)}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: '1rem', fontWeight: '700', color: isReturned ? 'rgba(255,255,255,0.5)' : '#fff', margin: '0 0 0.3rem 0' }}>
+                            {idx + 1}. {book.bookTitle}
+                          </p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <span style={{ 
+                              fontSize: '0.7rem', 
+                              padding: '0.15rem 0.5rem', 
+                              borderRadius: '6px',
+                              background: isReturned ? 'rgba(39,201,63,0.1)' : isOverdue ? 'rgba(255,95,86,0.1)' : 'rgba(187,134,252,0.1)',
+                              color: isReturned ? '#27c93f' : isOverdue ? '#ff5f56' : '#bb86fc',
+                              fontWeight: '800',
+                              textTransform: 'uppercase'
+                            }}>
+                              {isReturned ? (book.status === 'RETURNED_OVERDUE' ? 'TRẢ MUỘN' : 'ĐÃ TRẢ') : isOverdue ? 'QUÁ HẠN' : 'ĐANG GIỮ'}
                             </span>
-                          )}
+                            {isReturned && book.actualReturnDate && (
+                              <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
+                                Vào ngày {formatDate(book.actualReturnDate, true)}
+                              </span>
+                            )}
+                          </div>
                         </div>
+
+                        {!isReturned && (selectedDetailRecord?.status === 'BORROWING' || selectedDetailRecord?.status === 'PARTIALLY_RETURNED') && (
+                          <button
+                            onClick={() => handleReturnClick(selectedDetailRecord, book)}
+                            style={{
+                              background: 'rgba(39,201,63,0.1)',
+                              color: '#27c93f',
+                              border: '1px solid rgba(39,201,63,0.2)',
+                              padding: '0.6rem 1.2rem',
+                              borderRadius: '10px',
+                              fontSize: '0.85rem',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseOver={(e) => e.target.style.background = 'rgba(39,201,63,0.2)'}
+                            onMouseOut={(e) => e.target.style.background = 'rgba(39,201,63,0.1)'}
+                          >
+                            📥 Thu Hồi
+                          </button>
+                        )}
                       </div>
 
-                      {!isReturned && (selectedDetailRecord?.status === 'BORROWING' || selectedDetailRecord?.status === 'PARTIALLY_RETURNED' || selectedDetailRecord?.status === 'OVERDUE') && (
-                        <button
-                          onClick={() => handleReturnClick(selectedDetailRecord, book)}
-                          style={{
-                            background: 'rgba(39,201,63,0.15)',
-                            color: '#27c93f',
-                            border: '1px solid rgba(39,201,63,0.3)',
-                            padding: '0.5rem 1rem',
-                            borderRadius: '8px',
-                            fontSize: '0.85rem',
-                            fontWeight: '600',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Thu Hồi
-                        </button>
+                      {/* CHI TIẾT KHI ĐÃ TRẢ */}
+                      {isReturned && (book.returnNote || (book.penaltyAmount > 0)) && (
+                        <div style={{ 
+                          marginTop: '0.4rem', 
+                          padding: '0.8rem', 
+                          background: 'rgba(0,0,0,0.2)', 
+                          borderRadius: '10px',
+                          border: '1px solid rgba(255,255,255,0.03)',
+                          fontSize: '0.85rem'
+                        }}>
+                          {book.returnNote && (
+                            <div style={{ color: 'rgba(255,255,255,0.6)', marginBottom: (book.penaltyAmount > 0) ? '0.4rem' : 0 }}>
+                              <span style={{ opacity: 0.4 }}>📝 Ghi chú:</span> "{book.returnNote}"
+                            </div>
+                          )}
+                          {book.penaltyAmount > 0 && (
+                            <div style={{ color: '#ffb020', fontWeight: '600' }}>
+                              <span style={{ opacity: 0.6, fontWeight: '400', color: 'rgba(255,255,255,0.6)' }}>💰 Phí phạt:</span> {book.penaltyAmount.toLocaleString('vi-VN')} VNĐ
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   );
@@ -1029,39 +1213,7 @@ const handleOpenDetail = (record) => {
               )}
               {(selectedDetailRecord?.status === 'BORROWING' || selectedDetailRecord?.status === 'PARTIALLY_RETURNED' || selectedDetailRecord?.status === 'OVERDUE') && (
                 <button
-                  onClick={async () => {
-                    if (!await confirmPremium("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?", "⚠️ Thu hồi khẩn cấp")) return;
-                    
-                    setReturning(true);
-                    const loadingToast = toast.loading("Đang thu hồi tất cả sách...");
-                    try {
-                      const res = await fetch('/api/admin/return-all', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          recordId: selectedDetailRecord.id,
-                          transactionId: selectedDetailRecord.transactionId || selectedDetailRecord.slipId,
-                          books: selectedDetailRecord.books || [],
-                          adminId: user?.uid,
-                          returnNote: "Thu hồi toàn bộ",
-                          penaltyAmount: 0 // Optional
-                        })
-                      });
-                      if (res.ok) {
-                        toast.success("Thu hồi toàn bộ sách thành công!", { id: loadingToast });
-                        setIsDetailModalOpen(false);
-                        fetchData();
-                      } else {
-                        const data = await res.json();
-                        toast.error(data.message || data.error || "Thu hồi thất bại", { id: loadingToast });
-                      }
-                    } catch (error) {
-                      console.error(error);
-                      toast.error("Lỗi kết nối server", { id: loadingToast });
-                    } finally {
-                      setReturning(false);
-                    }
-                  }}
+                  onClick={() => handleOpenBulkReturn(selectedDetailRecord)}
                   disabled={returning}
                   style={{
                     padding: '0.7rem 1.5rem',
@@ -1120,8 +1272,8 @@ const handleOpenDetail = (record) => {
                 <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.6rem', fontSize: '0.85rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <span style={{ color: 'rgba(255,255,255,0.5)' }}>SĐT: </span>
-                    {selectedReturnRecord?.record?.borrowerPhone || selectedReturnRecord?.record?.phone ? (
-                      <span style={{ color: '#fff', fontWeight: '500' }}>{selectedReturnRecord?.record?.borrowerPhone || selectedReturnRecord?.record?.phone}</span>
+                    {selectedReturnRecord?.record?.borrowerPhone || selectedReturnRecord?.record?.phone || selectedReturnRecord?.record?.userPhone ? (
+                      <span style={{ color: '#fff', fontWeight: '500' }}>{selectedReturnRecord?.record?.borrowerPhone || selectedReturnRecord?.record?.phone || selectedReturnRecord?.record?.userPhone}</span>
                     ) : (
                       <span style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>📞 Trống</span>
                     )}
@@ -1162,7 +1314,7 @@ const handleOpenDetail = (record) => {
 
               {/* TÌNH TRẠNG & GHI CHÚ */}
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Ghi chú tình trạng (Nếu có)</label>
+                <label style={{ block: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Ghi chú tình trạng (Nếu có)</label>
                 <textarea
                   placeholder="Ví dụ: Sách còn mới, rách trang 20, mất bìa..."
                   value={returnNote}
@@ -1175,26 +1327,70 @@ const handleOpenDetail = (record) => {
                 />
               </div>
 
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Phí bồi thường (VNĐ)</label>
-                <div style={{ position: 'relative' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Tiền phạt trễ hạn (Tự tính)</label>
                   <input
                     type="number"
-                    min="0"
-                    step="1000"
+                    readOnly
                     value={penaltyFee}
-                    onChange={(e) => setPenaltyFee(e.target.value)}
                     style={{
-                      width: '100%', padding: '0.8rem 1rem', borderRadius: '10px',
-                      background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                      color: '#fff', fontSize: '1rem', outline: 'none', fontWeight: 'bold'
+                      width: '100%', padding: '0.8rem', borderRadius: '10px',
+                      background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)',
+                      color: '#ffb020', fontSize: '1rem', fontWeight: 'bold', outline: 'none'
                     }}
                   />
-                  <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', fontWeight: '600' }}>đ</span>
+                  <p style={{ fontSize: '0.65rem', color: 'rgba(255,95,86,0.5)', marginTop: '0.3rem' }}>* 5.000đ/ngày trễ</p>
                 </div>
-                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.5rem' }}>
-                  * Tính tự động: 5.000đ/ngày trễ. Có thể sửa nếu sách hỏng/mất.
-                </p>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Phí bồi thường/hỏng</label>
+                  <input
+                    type="number"
+                    value={damageFee}
+                    onChange={(e) => setDamageFee(e.target.value)}
+                    style={{
+                      width: '100%', padding: '0.8rem', borderRadius: '10px',
+                      background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(187,134,252,0.3)',
+                      color: '#fff', fontSize: '1rem', fontWeight: 'bold', outline: 'none'
+                    }}
+                  />
+                  <p style={{ fontSize: '0.65rem', color: 'rgba(187,134,252,0.5)', marginTop: '0.3rem' }}>* Tự nhập nếu có hư hỏng</p>
+                </div>
+              </div>
+
+              <div style={{ 
+                marginBottom: '1.5rem', 
+                padding: '1rem', 
+                borderRadius: '12px', 
+                background: isLost ? 'rgba(255,95,86,0.1)' : 'rgba(255,255,255,0.02)',
+                border: '1px solid ' + (isLost ? 'rgba(255,95,86,0.2)' : 'rgba(255,255,255,0.05)'),
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', color: isLost ? '#ff5f56' : '#fff' }}>Báo mất sách</h4>
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
+                    {isLost ? "Sẽ không cộng lại vào kho. Tự động lấy giá niêm yết." : "Ghi nhận nếu độc giả báo làm mất"}
+                  </p>
+                </div>
+                <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={isLost} 
+                    onChange={(e) => handleIsLostToggle(e.target.checked)}
+                    style={{ opacity: 0, width: 0, height: 0 }} 
+                  />
+                  <span style={{ 
+                    position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, 
+                    backgroundColor: isLost ? '#ff5f56' : '#333', transition: '0.4s', borderRadius: '34px'
+                  }}>
+                    <span style={{
+                      position: 'absolute', content: '""', height: '18px', width: '18px', left: isLost ? '28px' : '4px', bottom: '4px',
+                      backgroundColor: 'white', transition: '0.4s', borderRadius: '50%'
+                    }}></span>
+                  </span>
+                </label>
               </div>
 
               {/* ACTIONS */}
@@ -1213,57 +1409,6 @@ const handleOpenDetail = (record) => {
                 >
                   {returning ? 'Đang xử lý...' : 'Xác nhận trả cuốn này'}
                 </button>
-
-                {/* NÚT THU HỒI TẤT CẢ (Hàng loạt) */}
-                {selectedReturnRecord?.record?.books && selectedReturnRecord.record.books.length > 1 && (
-                  <button
-                    onClick={async () => {
-                      if (!await confirmPremium("Bạn có chắc chắn muốn thu hồi toàn bộ sách trong phiếu này không?", "⚠️ Thu hồi khẩn cấp")) return;
-                      
-                      setReturning(true);
-                      const loadingToast = toast.loading("Đang thu hồi tất cả sách...");
-                      try {
-                        const res = await fetch('/api/admin/return-all', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            recordId: selectedReturnRecord.record.id,
-                            transactionId: selectedReturnRecord.record.transactionId || selectedReturnRecord.record.slipId,
-                            books: selectedReturnRecord.record.books || [],
-                            adminId: user.uid,
-                            returnNote: returnNote,
-                            penaltyAmount: Number(penaltyFee) || 0
-                          })
-                        });
-                        if (res.ok) {
-                          toast.success("Thu hồi toàn bộ sách thành công!", { id: loadingToast });
-                          setIsReturnModalOpen(false);
-                          fetchData();
-                        } else {
-                          const data = await res.json();
-                          toast.error(data.message || data.error || "Thu hồi thất bại", { id: loadingToast });
-                        }
-                      } catch (error) {
-                        console.error(error);
-                        toast.error("Lỗi kết nối server", { id: loadingToast });
-                      } finally {
-                        setReturning(false);
-                      }
-                    }}
-                    disabled={returning}
-                    style={{
-                      width: '100%', padding: '0.9rem', borderRadius: '12px',
-                      background: 'linear-gradient(135deg, #ff416c, #ff4b2b)',
-                      color: '#fff', border: 'none', cursor: 'pointer',
-                      fontWeight: '700', fontSize: '1rem',
-                      boxShadow: '0 6px 15px -3px rgba(255,65,108,0.4)',
-                      opacity: returning ? 0.7 : 1, transition: 'all 0.2s',
-                      textTransform: 'uppercase'
-                    }}
-                  >
-                    {returning ? 'Đang thực hiện...' : 'Thu hồi tất cả sách'}
-                  </button>
-                )}
                 
                 {/* Nút Đóng */}
                 <button
@@ -1276,6 +1421,219 @@ const handleOpenDetail = (record) => {
                   }}
                 >
                   Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BULK RETURN MODAL (Professional Version) */}
+      {isBulkReturnModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(15px)'
+        }}>
+          <div style={{
+            background: '#141414', width: '95%', maxWidth: '900px', maxHeight: '90vh',
+            borderRadius: '28px', border: '1px solid rgba(255,255,255,0.1)',
+            overflow: 'hidden', boxShadow: '0 40px 100px rgba(0,0,0,0.7)',
+            display: 'flex', flexDirection: 'column'
+          }}>
+            <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
+              <div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#fff', margin: 0 }}>📊 Thu Hồi & Tổng Kết Phí Phạt</h2>
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.3rem' }}>
+                  Độc giả: <span style={{ color: '#bb86fc', fontWeight: 'bold' }}>{selectedDetailRecord?.userName || selectedDetailRecord?.memberName}</span>
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsBulkReturnModalOpen(false)} 
+                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 0.8rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '0 1rem' }}>Sách mượn</th>
+                    <th style={{ textAlign: 'right', padding: '0 1rem', width: '200px' }}>Tình trạng</th>
+                    <th style={{ textAlign: 'right', padding: '0 1rem', width: '200px' }}>Phí bồi/hỏng</th>
+                    <th style={{ textAlign: 'center', padding: '0 1rem', width: '90px' }}>Mất</th>
+                    <th style={{ textAlign: 'center', padding: '0 1rem', width: '90px' }}>Hỏng</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkReturnItems.map((item) => (
+                    <React.Fragment key={item.uid}>
+                      <tr style={{ 
+                        background: item.isLost ? 'rgba(255,107,107,0.05)' : item.isDamaged ? 'rgba(255,165,0,0.05)' : 'rgba(255,255,255,0.02)', 
+                        borderRadius: '12px',
+                        border: '1px solid ' + (item.isLost ? 'rgba(255,107,107,0.1)' : item.isDamaged ? 'rgba(255,165,0,0.1)' : 'rgba(255,255,255,0.05)')
+                      }}>
+                        <td style={{ padding: '1.2rem 1rem', borderRadius: '12px 0 0 12px' }}>
+                          <div style={{ fontWeight: '700', color: '#fff', marginBottom: '0.2rem' }}>{item.bookTitle}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>ID: {item.uid.substring(0,8)}...</div>
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '0 1rem' }}>
+                          <span style={{ 
+                            fontSize: '0.75rem', 
+                            padding: '0.2rem 0.6rem', 
+                            borderRadius: '6px',
+                            background: item.isLost ? '#ff4b2b22' : item.isDamaged ? '#ffa50222' : '#27c93f22',
+                            color: item.isLost ? '#ff4b2b' : item.isDamaged ? '#ffa502' : '#27c93f',
+                            fontWeight: '800'
+                          }}>
+                            {item.isLost ? 'MẤT SÁCH' : item.isDamaged ? 'HƯ HỎNG' : 'BÌNH THƯỜNG'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '0 1rem' }}>
+                          <div style={{ position: 'relative' }}>
+                            <input 
+                              type="number"
+                              value={item.damageFee}
+                              onChange={(e) => handleBulkItemChange(item.uid, 'damageFee', e.target.value)}
+                              style={{
+                                width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px',
+                                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)',
+                                color: '#fff', textAlign: 'right', fontSize: '0.9rem', outline: 'none'
+                              }}
+                            />
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'center', padding: '0 0.5rem' }}>
+                          <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '34px', height: '18px' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={item.isLost} 
+                              onChange={(e) => {
+                                handleBulkItemChange(item.uid, 'isLost', e.target.checked);
+                                if (e.target.checked) handleBulkItemChange(item.uid, 'isDamaged', false);
+                              }}
+                              style={{ opacity: 0, width: 0, height: 0 }} 
+                            />
+                            <span style={{ 
+                              position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, 
+                              backgroundColor: item.isLost ? '#ff4b2b' : '#333', transition: '0.4s', borderRadius: '34px'
+                            }}>
+                              <span style={{
+                                position: 'absolute', content: '""', height: '12px', width: '12px', left: item.isLost ? '18px' : '3px', bottom: '3px',
+                                backgroundColor: 'white', transition: '0.4s', borderRadius: '50%'
+                              }}></span>
+                            </span>
+                          </label>
+                        </td>
+                        <td style={{ textAlign: 'center', padding: '0 0.5rem', borderRadius: '0 12px 12px 0' }}>
+                          <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '34px', height: '18px' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={item.isDamaged} 
+                              onChange={(e) => {
+                                handleBulkItemChange(item.uid, 'isDamaged', e.target.checked);
+                                if (e.target.checked) handleBulkItemChange(item.uid, 'isLost', false);
+                              }}
+                              style={{ opacity: 0, width: 0, height: 0 }} 
+                            />
+                            <span style={{ 
+                              position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, 
+                              backgroundColor: item.isDamaged ? '#ffa502' : '#333', transition: '0.4s', borderRadius: '34px'
+                            }}>
+                              <span style={{
+                                position: 'absolute', content: '""', height: '12px', width: '12px', left: item.isDamaged ? '18px' : '3px', bottom: '3px',
+                                backgroundColor: 'white', transition: '0.4s', borderRadius: '50%'
+                              }}></span>
+                            </span>
+                          </label>
+                        </td>
+                      </tr>
+                      {(item.isDamaged || item.isLost) && (
+                        <tr>
+                          <td colSpan="5" style={{ padding: '0 1rem 1rem 1rem' }}>
+                            <div style={{ 
+                              background: 'rgba(0,0,0,0.2)', 
+                              padding: '1rem', 
+                              borderRadius: '0 0 12px 12px',
+                              border: '1px solid rgba(255,255,255,0.05)',
+                              borderTop: 'none',
+                              marginTop: '-0.8rem'
+                            }}>
+                              <label style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginBottom: '0.5rem' }}>
+                                Ghi chú tình trạng {item.isLost ? 'mất sách' : 'hư hỏng'}:
+                              </label>
+                              <input 
+                                type="text"
+                                placeholder="Nhập lý do hoặc tình trạng chi tiết..."
+                                value={item.returnNote || ""}
+                                onChange={(e) => handleBulkItemChange(item.uid, 'returnNote', e.target.value)}
+                                style={{
+                                  width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px',
+                                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                  color: '#fff', fontSize: '0.85rem', outline: 'none'
+                                }}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ 
+              padding: '1.5rem 2.5rem', 
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0), rgba(187,134,252,0.03))', 
+              borderTop: '1px solid rgba(255,255,255,0.05)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', gap: '2rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Phí trễ hạn (Đơn)</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#ffb020' }}>
+                    {Number(penaltyFee).toLocaleString('vi-VN')} đ
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Tổng phí bồi thường</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#fff' }}>
+                    {bulkReturnItems.reduce((sum, item) => sum + Number(item.damageFee), 0).toLocaleString('vi-VN')} đ
+                  </div>
+                </div>
+                <div style={{ width: '2px', background: 'rgba(255,255,255,0.05)', margin: '0 0.5rem' }}></div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#bb86fc', fontWeight: '800', textTransform: 'uppercase' }}>TỔNG CỘNG THU</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#bb86fc', textShadow: '0 0 20px rgba(187, 134, 252, 0.3)' }}>
+                    {(Number(penaltyFee) + bulkReturnItems.reduce((sum, item) => sum + Number(item.damageFee), 0)).toLocaleString('vi-VN')} đ
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button 
+                  onClick={() => setIsBulkReturnModalOpen(false)} 
+                  className="btn-outline"
+                  style={{ padding: '0.8rem 2rem' }}
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={confirmBulkReturn}
+                  disabled={returning}
+                  className="btn-primary"
+                  style={{ 
+                    padding: '0.8rem 3rem',
+                    background: 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                    boxShadow: '0 10px 25px -5px rgba(187, 134, 252, 0.4)'
+                  }}
+                >
+                  {returning ? 'Đang xử lý...' : '🔥 XÁC NHẬN THU HỒI'}
                 </button>
               </div>
             </div>

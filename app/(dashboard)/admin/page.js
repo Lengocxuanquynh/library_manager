@@ -36,7 +36,8 @@ export default function AdminDashboard() {
     activeMembers: 0,
     borrowingCount: 0,
     overdueCount: 0,
-    totalLibraryBooks: 0
+    totalLibraryBooks: 0,
+    totalDamaged: 0
   });
   const [data, setData] = useState({
     recentRecords: [],
@@ -56,9 +57,15 @@ export default function AdminDashboard() {
           fetch(`/api/admin/borrow-records?adminId=${user.uid}`)
         ]);
 
-        const books = await booksRes.json();
-        const members = await membersRes.json();
-        const recordsRaw = await recordsRes.json();
+        if (!booksRes.ok || !membersRes.ok || !recordsRes.ok) {
+           throw new Error("Một hoặc nhiều yêu cầu dữ liệu thất bại");
+        }
+
+        const [books, members, recordsRaw] = await Promise.all([
+          booksRes.json().catch(() => ({ error: 'Invalid JSON' })),
+          membersRes.json().catch(() => ({ error: 'Invalid JSON' })),
+          recordsRes.json().catch(() => ({ error: 'Invalid JSON' }))
+        ]);
         
         const records = Array.isArray(recordsRaw) ? recordsRaw : [];
         const booksArray = Array.isArray(books) ? books : [];
@@ -79,13 +86,15 @@ export default function AdminDashboard() {
         const activeBorrowerIds = new Set(borrowing.map(r => r.userId).filter(Boolean));
 
         const inventoryCount = booksArray.reduce((acc, b) => acc + (parseInt(b.quantity) || 0), 0);
+        const damagedCountTotal = booksArray.reduce((acc, b) => acc + (parseInt(b.damagedCount) || 0), 0);
 
         setStats({
           totalInventory: inventoryCount,
           activeMembers: Array.isArray(members) ? members.length : 0,
           borrowingCount: borrowing.length,
           overdueCount: overdue.length,
-          totalLibraryBooks: inventoryCount + borrowing.length
+          totalLibraryBooks: inventoryCount + borrowing.length,
+          totalDamaged: damagedCountTotal
         });
 
         // Sách mới nhập (last 5)
@@ -163,6 +172,12 @@ export default function AdminDashboard() {
               <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách quá hạn</div>
               <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{overdueCount}</div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Cần thu hồi gấp</div>
+            </div>
+
+            <div className={styles.card} style={{ borderLeft: '4px solid #ffa502' }} key="damaged">
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Sách hư hỏng / Thanh lý</div>
+              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalDamaged}</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Đã loại khỏi lưu thông</div>
             </div>
           </div>
 

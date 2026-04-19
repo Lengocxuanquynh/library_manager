@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { returnBorrowRecord } from '../../../services/db';
+import { returnBorrowRecord } from '@/services/db';
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { recordId, bookUid, returnNote, penaltyAmount } = body;
+    const { recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee } = body;
 
-    console.log(">>> [SERVER] API /api/return-book started with:", { recordId, bookUid, returnNote, penaltyAmount });
+    console.log(">>> [SERVER] API /api/return-book started with:", { recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee });
 
     if (!recordId || !bookUid) {
       return NextResponse.json(
@@ -16,7 +16,7 @@ export async function POST(request) {
     }
 
     // Process the return logic
-    await returnBorrowRecord(recordId, bookUid, returnNote, penaltyAmount);
+    await returnBorrowRecord(recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee);
 
     return NextResponse.json({
       success: true,

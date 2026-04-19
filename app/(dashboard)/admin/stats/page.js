@@ -7,7 +7,8 @@ import { toast } from "sonner";
 export default function AdminStats() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeModal, setActiveModal] = useState(null); // 'books', 'members', 'borrows', 'revenue'
+  const [activeModal, setActiveModal] = useState(null); // 'books', 'members', 'borrows', 'revenue', 'damaged', 'lost'
+  const [restoring, setRestoring] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState(null); // { type: 'book'|'member', data: any }
 
   // Helper to safely handle diverse date formats from Firestore (Timestamp, Date, or String)
@@ -26,25 +27,53 @@ export default function AdminStats() {
   };
 
   useEffect(() => {
-    async function fetchDashboardData() {
-      console.log(">>> [CLIENT] Fetching dashboard data...");
-      try {
-        const res = await fetch('/api/admin/stats');
-        const json = await res.json();
-        if (json.success) {
-          setData(json.data);
-        } else {
-          throw new Error(json.error || "Lỗi không xác định");
-        }
-      } catch (error) {
-        console.error(">>> [CLIENT ERROR]", error);
-        toast.error("Không thể tải dữ liệu thống kê từ máy chủ.");
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchDashboardData();
   }, []);
+
+  const fetchDashboardData = async () => {
+    console.log(">>> [CLIENT] Fetching/Refreshing dashboard data...");
+    try {
+      const res = await fetch('/api/admin/stats');
+      if (!res.ok) throw new Error(`Máy chủ phản hồi lỗi (${res.status})`);
+      const json = await res.json();
+      if (json.success) setData(json.data);
+      else throw new Error(json.error || "Lỗi không xác định");
+    } catch (error) {
+      console.error(">>> [CLIENT ERROR]", error);
+      toast.error(error.message || "Không thể tải dữ liệu.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestoreBook = async (item, actionType) => {
+    try {
+      setRestoring(true);
+      const res = await fetch('/api/admin/books/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordId: item.recordId,
+          bookUid: item.bookUid,
+          bookId: item.bookId,
+          actionType: actionType
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        toast.success(json.message);
+        await fetchDashboardData(); // Làm mới dữ liệu
+      } else {
+        toast.error(json.error || "Không thể khôi phục sách.");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi kết nối máy chủ");
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   const formatCurrency = (val) => {
     return Number(val || 0).toLocaleString('vi-VN', { style: 'currency', currency: 'VND' });
@@ -162,6 +191,8 @@ export default function AdminStats() {
                 {activeModal === 'members' && '⭐ Độc giả tích cực nhất (Top Fans)'}
                 {activeModal === 'borrows' && '⏳ Danh sách Đang mượn'}
                 {activeModal === 'revenue' && '💸 Chi tiết Thu phí bồi thường'}
+                {activeModal === 'damaged' && '🟠 Danh sách Sách bị hư hỏng'}
+                {activeModal === 'lost' && '🔴 Danh sách Sách bị báo mất'}
               </h2>
               <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.8rem', cursor: 'pointer', opacity: 0.5 }}>×</button>
             </div>
@@ -193,6 +224,13 @@ export default function AdminStats() {
                         <th style={{ padding: '1rem' }}>Tên sách</th>
                         <th style={{ padding: '1rem', textAlign: 'right' }}>Tiền phạt</th>
                         <th style={{ padding: '1rem' }}>Ngày thu</th>
+                      </>
+                    )}
+                    {(activeModal === 'damaged' || activeModal === 'lost') && (
+                      <>
+                        <th style={{ padding: '1rem' }}>Độc giả / Sách</th>
+                        <th style={{ padding: '1rem' }}>Ghi chú tình trạng</th>
+                        <th style={{ padding: '1rem', textAlign: 'right' }}>Thao tác</th>
                       </>
                     )}
                   </tr>
@@ -242,7 +280,7 @@ export default function AdminStats() {
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>{rec.bookTitle}</td>
                       <td style={{ padding: '1rem', textAlign: 'right', color: '#10b981', fontWeight: 'bold' }}>{formatCurrency(rec.penaltyAmount)}</td>
                       <td style={{ padding: '1rem', opacity: 0.6 }}>
-                        {rec.actualReturnDate?.seconds ? new Date(rec.actualReturnDate.seconds * 1000).toLocaleDateString('vi-VN') : '—'}
+                        {rec.actualReturnDate ? new Date(getSafeTime(rec.actualReturnDate)).toLocaleDateString('vi-VN') : '—'}
                       </td>
                     </tr>
                   ))}
@@ -251,7 +289,7 @@ export default function AdminStats() {
                       <td style={{ padding: '1rem' }}>{loan.userName}</td>
                       <td style={{ padding: '1rem', color: '#bb86fc' }}>{loan.bookTitle}</td>
                       <td style={{ padding: '1rem', opacity: 0.6 }}>
-                        {loan.dueDate?.seconds ? new Date(loan.dueDate.seconds * 1000).toLocaleDateString('vi-VN') : '—'}
+                        {loan.dueDate ? new Date(getSafeTime(loan.dueDate)).toLocaleDateString('vi-VN') : '—'}
                       </td>
                     </tr>
                   ))}
@@ -260,6 +298,56 @@ export default function AdminStats() {
                       <td style={{ padding: '1rem', fontWeight: '600' }}>{m.name}</td>
                       <td style={{ padding: '1rem', opacity: 0.6 }}>{m.phone}</td>
                       <td style={{ padding: '1rem', textAlign: 'right', color: '#bb86fc', fontWeight: '700' }}>{m.borrowCount}</td>
+                    </tr>
+                  ))}
+
+                  {activeModal === 'damaged' && data?.damagedBooksList?.map((item, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1.2rem 1rem' }}>
+                        <div style={{ fontWeight: '700', color: '#fff' }}>{item.bookTitle}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>Người mượn: {item.userName}</div>
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ color: '#fff', fontSize: '0.85rem' }}>{item.note}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#f59e0b' }}>Tiền bồi thường: {formatCurrency(item.fee)}</div>
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'right' }}>
+                        <button 
+                          disabled={restoring}
+                          onClick={() => handleRestoreBook(item, 'RENEWED')}
+                          style={{ 
+                            padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #10b981', background: 'rgba(16,185,129,0.1)', 
+                            color: '#10b981', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '700'
+                          }}
+                        >
+                          Đã đổi mới
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {activeModal === 'lost' && data?.lostBooksList?.map((item, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1.2rem 1rem' }}>
+                        <div style={{ fontWeight: '700', color: '#fff' }}>{item.bookTitle}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>Người mượn: {item.userName}</div>
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ color: '#fff', fontSize: '0.85rem' }}>{item.note}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#ef4444' }}>Tiền bồi thường: {formatCurrency(item.fee)}</div>
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'right' }}>
+                        <button 
+                          disabled={restoring}
+                          onClick={() => handleRestoreBook(item, 'RESTOCKED')}
+                          style={{ 
+                            padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #6366f1', background: 'rgba(99,102,241,0.1)', 
+                            color: '#6366f1', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '700'
+                          }}
+                        >
+                          Đã bổ sung
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {((activeModal === 'books' || activeModal === 'revenue') && (
@@ -275,7 +363,7 @@ export default function AdminStats() {
       )}
 
       {/* Overview Cards Area */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
         <StatCard 
           title="Tổng số sách" 
           value={formatNumber(summary.totalBooks)} 
@@ -306,7 +394,7 @@ export default function AdminStats() {
           title="Đang mượn" 
           value={formatNumber(summary.activeBorrows)} 
           sub="Sách chưa hoàn trả" 
-          color="#f59e0b"
+          color="#6366f1"
           onClick={() => setActiveModal('borrows')}
           svg={
             <>
@@ -316,9 +404,37 @@ export default function AdminStats() {
           }
         />
         <StatCard 
+          title="Sách hỏng" 
+          value={formatNumber(summary.damagedBooks)} 
+          sub="Ghi nhận hỏng/hủy" 
+          color="#f59e0b"
+          onClick={() => setActiveModal('damaged')}
+          svg={
+            <>
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </>
+          }
+        />
+        <StatCard 
+          title="Sách mất" 
+          value={formatNumber(summary.lostBooks)} 
+          sub="Độc giả báo làm mất" 
+          color="#ef4444"
+          onClick={() => setActiveModal('lost')}
+          svg={
+            <>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="15" y1="9" x2="9" y2="15" />
+              <line x1="9" y1="9" x2="15" y2="15" />
+            </>
+          }
+        />
+        <StatCard 
           title="Tiền phạt" 
           value={formatCurrency(summary.totalRevenue)} 
-          sub="Phí bồi thường thu hồi" 
+          sub="Tổng phí thu hồi" 
           color="#10b981"
           onClick={() => setActiveModal('revenue')}
           svg={
