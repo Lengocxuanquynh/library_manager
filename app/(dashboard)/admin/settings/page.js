@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "../../../../components/AuthProvider";
+import { useAuth } from "@/components/AuthProvider";
 import styles from "../../dashboard.module.css";
 
 export default function AdminSettings() {

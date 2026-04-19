@@ -1,4 +1,5 @@
-import { adminDb } from '../../../../lib/firebase-admin';
+import { NextResponse } from 'next/server';
+import { adminDb } from '@/lib/firebase-admin';
 import { scanAllOverdue } from '@/services/overdueService';
 
 export async function GET() {
@@ -22,6 +23,10 @@ export async function GET() {
     // 3. Centralized Aggregation (Multi-book aware)
     let activeBorrowsCount = 0;
     let totalRevenue = 0;
+    let lostBooksCount = 0;
+    let damagedBooksCount = 0;
+    const lostBooksList = [];
+    const damagedBooksList = [];
     const activeLoansDetails = [];
     const penaltyRecords = [];
     const bookFreq = {};
@@ -89,6 +94,37 @@ export async function GET() {
             });
           }
         }
+        
+        // 1.5. Lost & Damaged stats
+        if (!book.isResolved) {
+          if (s === 'LOST') {
+            lostBooksCount++;
+            lostBooksList.push({
+              recordId: doc.id,
+              bookUid: book.uid,
+              bookId: book.bookId,
+              bookTitle: book.bookTitle,
+              userName,
+              userPhone,
+              note: book.returnNote || "N/A",
+              fee: Number(book.damageFee) || 0,
+              date: book.actualReturnDate || record.returnDate
+            });
+          } else if (s === 'DAMAGED') {
+            damagedBooksCount++;
+            damagedBooksList.push({
+              recordId: doc.id,
+              bookUid: book.uid,
+              bookId: book.bookId,
+              bookTitle: book.bookTitle,
+              userName,
+              userPhone,
+              note: book.returnNote || "N/A",
+              fee: Number(book.damageFee) || 0,
+              date: book.actualReturnDate || record.returnDate
+            });
+          }
+        }
 
         // 2. Revenue & Penalty Records
         if (pAmount > 0) {
@@ -131,17 +167,19 @@ export async function GET() {
 
     const newestBooks = booksSnap.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
-      .sort((a, b) => {
-        const dateA = a.createdAt?.seconds || 0;
-        const dateB = b.createdAt?.seconds || 0;
-        return dateB - dateA;
-      }).slice(0, 5);
+      .slice(0, 5);
 
-    penaltyRecords.sort((a, b) => {
-      const dateA = a.actualReturnDate?.seconds || 0;
-      const dateB = b.actualReturnDate?.seconds || 0;
-      return dateB - dateA;
-    });
+    // Helper for robust date comparison in sorting
+    const getSortTime = (val) => {
+      if (!val) return 0;
+      if (val.seconds) return val.seconds;
+      if (val._seconds) return val._seconds;
+      if (typeof val.toDate === 'function') return val.toDate().getTime() / 1000;
+      return new Date(val).getTime() / 1000 || 0;
+    };
+
+    penaltyRecords.sort((a, b) => getSortTime(b.actualReturnDate) - getSortTime(a.actualReturnDate));
+    newestBooks.sort((a, b) => getSortTime(b.createdAt) - getSortTime(a.createdAt));
 
     return NextResponse.json({
       success: true,
@@ -150,8 +188,12 @@ export async function GET() {
           totalBooks,
           totalMembers,
           activeBorrows: activeBorrowsCount,
-          totalRevenue
+          totalRevenue,
+          lostBooks: lostBooksCount,
+          damagedBooks: damagedBooksCount
         },
+        lostBooksList,
+        damagedBooksList,
         topBooks,
         topMembers,
         activeLoans: activeLoansDetails,

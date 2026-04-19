@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { updateMember, deleteMember, getBorrowRecords } from '../../../../services/db';
-import { adminAuth, adminDb } from '../../../../lib/firebase-admin';
+import { updateMember, deleteMember, getBorrowRecords } from '@/services/db';
+import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
 export async function PATCH(request, { params }) {
   try {

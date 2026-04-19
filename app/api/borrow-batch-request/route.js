@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, getDocs, query, where, updateDoc, doc } from 'firebase/firestore';
 import { canUserBorrow, isBookAvailable } from '@/services/db';
-import { sendMail } from '../../../services/emailService';
+import { sendMail } from '@/services/emailService';
 
 export async function POST(request) {
   try {

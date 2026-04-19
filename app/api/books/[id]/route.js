@@ -31,6 +31,18 @@ export async function PATCH(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    
+    // Safety check: Prevent deleting if currently borrowed or requested
+    const { countActiveBookUsage } = await import('../../../../services/db');
+    const usageCount = await countActiveBookUsage(id);
+    
+    if (usageCount > 0) {
+      return NextResponse.json({ 
+        success: false, 
+        error: `Không thể xóa: Cuốn sách này đang có ${usageCount} phiếu mượn hoạt động hoặc yêu cầu chờ duyệt.` 
+      }, { status: 400 });
+    }
+
     await deleteBook(id);
     return NextResponse.json({ success: true });
   } catch (error) {

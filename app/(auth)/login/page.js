@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { loginUser, loginWithGoogle, logoutUser } from "../../../services/auth";
+import { loginUser, loginWithGoogle, logoutUser } from "@/services/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "../auth.module.css";
-import OTPModal from "../../../components/OTPModal";
-import { useAuth } from "../../../components/AuthProvider";
+import OTPModal from "@/components/OTPModal";
+import { useAuth } from "@/components/AuthProvider";
 import { toast } from "sonner";
-import { sendMail } from "../../../services/emailService"; // Assuming sonner is used as checked earlier in package.json
+import { sendMail } from "@/services/emailService"; // Assuming sonner is used as checked earlier in package.json
 
 export default function Login() {
   const [email, setEmail] = useState("");

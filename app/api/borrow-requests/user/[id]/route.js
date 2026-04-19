@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBorrowRequests } from '../../../../../services/db';
+import { getBorrowRequests } from '@/services/db';
 
 export async function GET(request, { params }) {
   try {
