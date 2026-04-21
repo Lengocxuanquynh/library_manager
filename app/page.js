@@ -22,7 +22,7 @@ export default function Home() {
               Tối ưu hóa quy trình mượn trả, khám phá kho tài liệu số khổng lồ,
               và đọc các bài viết mới nhất trên trang blog để cập nhật thông tin dữ liệu.
             </p>
-            <div className={styles.heroActions}>
+            <div className={styles.heroActions} suppressHydrationWarning={true}>
               <Link href="/register" className="btn-primary">Bắt Đầu Ngay</Link>
               <Link href="/blog" className="btn-outline">Đọc Tin Tức</Link>
             </div>

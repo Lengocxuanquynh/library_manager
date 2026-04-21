@@ -30,8 +30,11 @@ export async function processRecordOverdue(recordId, recordData, now = new Date(
     if (!dueDate || !userId) return result;
 
     const diffMs = now - dueDate;
-    // Đồng bộ với UI: Dùng Math.ceil để tính ngày trễ (chỉ cần chớm qua ngày là tính 1 ngày)
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    // Chuyển sang logic Ngày (Day-based): Phạt từ 00:00 ngày tiếp theo
+    // Nếu diffMs <= 0 (vẫn trong ngày 14), diffDays sẽ <= 0 -> Không phạt
+    // Nếu vừa bước sang 0h00 ngày 15, diffMs > 0, diffDays = 1 -> Phạt 5.000đ
+    const diffDays = diffMs > 0 ? Math.ceil(diffMs / (1000 * 60 * 60 * 24)) : 0;
+    
     const targetEmail = recordData.userEmail || recordData.email;
     const targetName = recordData.userName || "Thành viên";
 
@@ -63,12 +66,12 @@ export async function processRecordOverdue(recordId, recordData, now = new Date(
     if (msUntilDue > 0 && msUntilDue <= 24 * 60 * 60 * 1000 && !freshData.notifiedDueSoon) {
       if (targetEmail) {
         await sendMail(targetEmail, targetName, {
-          subject: "THÔNG BÁO: Sách mượn sắp đến hạn trả",
-          message: `Xin chào ${targetName},\n\nBạn có sách mượn sắp đến hạn trả vào ngày ${dueDateStr}.\n\nHôm nay là: ${now.toLocaleDateString('vi-VN')}\n\nThông tin chi tiết:\n${recordSummary}\n\nVui lòng sắp xếp thời gian để hoàn trả hoặc gia hạn đúng hạn. Thân ái!`
+          subject: "THÔNG BÁO: Sách mượn sắp đến hạn trả (Ngày mai)",
+          message: `Xin chào ${targetName},\n\nSách mượn của bạn sẽ hết hạn vào HẾT NGÀY MAI (${dueDateStr}).\n\nHôm nay là: ${now.toLocaleDateString('vi-VN')}\n\nThông tin chi tiết:\n${recordSummary}\n\nVui lòng sắp xếp trả sách trước 23:59 ngày mai để không phát sinh phí phạt. Thân ái!`
         }, "template_f32qg1b");
       }
       
-      await createNotification(userId, "📅 Sách mượn sắp đến hạn trả", `Phiếu mượn [${recordId.slice(0,8)}] sắp hết hạn trả vào ngày ${dueDateStr}.`, "info");
+      await createNotification(userId, "📅 Sách mượn sắp đến hạn (Còn 1 ngày)", `Phiếu mượn [${recordId.slice(0,8)}] sẽ hết hạn vào HẾT NGÀY MAI (${dueDateStr}). Hãy chuẩn bị trả sách!`, "info");
       batch.update(doc(db, "borrowRecords", recordId), { notifiedDueSoon: true });
       result.notified = true;
     }
@@ -77,12 +80,12 @@ export async function processRecordOverdue(recordId, recordData, now = new Date(
     if (diffMs > 0 && !freshData.notifiedOverdue) {
       if (targetEmail) {
         await sendMail(targetEmail, targetName, {
-          subject: "CẢNH BÁO: Sách mượn đã QUÁ HẠN",
-          message: `Xin chào ${targetName},\n\nPhiếu mượn của bạn đã QUÁ HẠN kể từ ngày ${dueDateStr}.\n\nThông tin chi tiết:\n${recordSummary}\n\nĐã quá hạn ${diffDays} ngày.\n\nLƯU Ý QUAN TRỌNG: Nếu không trả sách trước ngày ${lockingDeadline}, tài khoản của bạn sẽ bị hệ thống KHÓA TỰ ĐỘNG và bị phạt phí bồi thường.`
+          subject: "CẢNH BÁO: Sách mượn đã CHÍNH THỨC QUÁ HẠN",
+          message: `Xin chào ${targetName},\n\nPhiếu mượn của bạn đã chính thức QUÁ HẠN kể từ 0h00 sáng nay (${now.toLocaleDateString('vi-VN')}).\n\nThông tin chi tiết:\n${recordSummary}\n\nĐã bắt đầu tính phí phạt ngày thứ ${diffDays} (5.000đ/ngày).\n\nLƯU Ý: Nếu không trả sách trước ngày ${lockingDeadline}, tài khoản của bạn sẽ bị hệ thống KHÓA TỰ ĐỘNG.`
         }, "template_f32qg1b");
       }
-
-      await createNotification(userId, "⚠️ Cảnh báo: Sách QUÁ HẠN", `Phiếu mượn [${recordId.slice(0,8)}] đã quá hạn kể từ ngày ${dueDateStr}. Hạn cuối để không bị khóa thẻ là ${lockingDeadline}.`, "warning");
+      
+      await createNotification(userId, "⚠️ Cảnh báo: Sách QUÁ HẠN", `Phiếu mượn [${recordId.slice(0,8)}] đã quá hạn. Phí phạt 5.000đ đã được áp dụng. Vui lòng trả sách sớm!`, "warning");
       batch.update(doc(db, "borrowRecords", recordId), { notifiedOverdue: true, status: 'OVERDUE' });
       result.notified = true;
     }

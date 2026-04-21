@@ -26,7 +26,23 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Chỉ có thể Hủy các yêu cầu đang chờ duyệt' }, { status: 400 });
     }
 
-    await updateDoc(docRef, { status: 'CANCELLED' });
+    // 2. HOÀN KHO (Vì đơn PENDING đã bị trừ kho ở bước Request)
+    const books = data.books || [];
+    const { incrementBookStock } = await import('@/services/db');
+    
+    const bookCounts = {};
+    books.forEach(b => {
+      bookCounts[b.bookId] = (bookCounts[b.bookId] || 0) + 1;
+    });
+
+    for (const [bid, count] of Object.entries(bookCounts)) {
+      await incrementBookStock(bid, count).catch(e => console.error("Rollback failed:", e));
+    }
+
+    await updateDoc(docRef, { 
+      status: 'CANCELLED',
+      cancelledAt: new Date()
+    });
 
     return NextResponse.json({ success: true, message: 'Hủy yêu cầu thành công' });
   } catch (error) {

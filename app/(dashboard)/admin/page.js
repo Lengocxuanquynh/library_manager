@@ -118,7 +118,7 @@ export default function AdminDashboard() {
   }, [user]);
 
   // DYNAMIC CALCULATIONS (Computed values that react to currentTime)
-  const borrowing = data.allRecords.filter(r => r.status === 'BORROWING' || r.status === 'Active' || r.status === 'OVERDUE');
+  const borrowingRecords = data.allRecords.filter(r => r.status === 'BORROWING' || r.status === 'Active' || r.status === 'OVERDUE');
   const overdueRecords = data.allRecords.filter(r => {
     let dueDate = null;
     if (r.dueDate?._seconds) dueDate = new Date(r.dueDate._seconds * 1000);
@@ -129,8 +129,16 @@ export default function AdminDashboard() {
     return r.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
   });
 
-  const borrowingCount = borrowing.length;
-  const overdueCount = overdueRecords.length;
+  // Đếm tổng số cuốn sách thực tế trong các phiếu đang mượn/quá hạn
+  const totalBooksBorrowing = borrowingRecords.reduce((acc, r) => acc + (Array.isArray(r.books) ? r.books.length : 1), 0);
+  const totalBooksOverdue = overdueRecords.reduce((acc, r) => acc + (Array.isArray(r.books) ? r.books.filter(b => {
+      // Chỉ đếm những cuốn chưa trả trong phiếu quá hạn
+      const status = b.status || r.status;
+      return !['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(status);
+  }).length : 1), 0);
+
+  const borrowingCount = totalBooksBorrowing;
+  const overdueCount = totalBooksOverdue;
   const totalLibraryBooks = stats.totalInventory + borrowingCount;
 
   return (

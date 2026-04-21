@@ -41,6 +41,7 @@ export default function RootLayout({ children }) {
         </AuthProvider>
         <Toaster 
           position="top-right" 
+          containerStyle={{ zIndex: 10000 }}
           richColors 
           closeButton
           theme="dark"

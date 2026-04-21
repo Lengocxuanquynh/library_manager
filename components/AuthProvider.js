@@ -44,16 +44,27 @@ export const AuthProvider = ({ children }) => {
 
       // Admin và Google accounts không cần chờ OTP
       const isGoogleLogin = user?.providerData?.some(p => p.providerId === 'google.com');
-      if (isGoogleLogin || role === "admin" || user?.email === "admin@library.vn") {
+      const isAdmin = role === "admin" || user?.email === "admin@library.vn";
+      
+      if (isGoogleLogin || isAdmin) {
         isOtpVerified = true;
       }
+
+      // Kiểm tra hồ sơ hoàn thiện (Username & Phone)
+      const isProfileIncomplete = user && !isAdmin && (!user.username || !user.phone);
 
       if (user && !isOtpVerified) {
         if (pathname !== "/login" && pathname !== "/register") {
           logoutUser();
           router.push("/login");
         }
-        return; // Allow user to stay on login/register to finish OTP
+        return;
+      }
+
+      // Ép buộc hoàn thiện hồ sơ nếu thiếu Username/Phone
+      if (isProfileIncomplete && pathname !== "/complete-profile") {
+        router.push("/complete-profile");
+        return;
       }
 
       if (pathname.startsWith("/admin")) {
@@ -66,8 +77,8 @@ export const AuthProvider = ({ children }) => {
         if (!user) {
           router.push("/login");
         }
-      } else if ((pathname === "/login" || pathname === "/register") && user && isOtpVerified) {
-        // Already logged in, go to dashboard
+      } else if ((pathname === "/login" || pathname === "/register" || pathname === "/complete-profile") && user && isOtpVerified && !isProfileIncomplete) {
+        // Already logged in and profile complete, go to dashboard
         router.push((role === "admin" || user?.email === "admin@library.vn") ? "/admin" : "/user");
       }
     }

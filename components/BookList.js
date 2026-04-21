@@ -156,8 +156,8 @@ export default function BookList() {
             <h3 className={styles.bookTitle} style={{ fontSize: '1.1rem', marginBottom: '0.4rem' }}>{book.title}</h3>
             <p className={styles.bookAuthor} style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', marginBottom: '0.4rem' }}>{book.author}</p>
             <span className={styles.bookCategory} style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)', padding: '0.2rem 0.5rem', borderRadius: '4px', marginBottom: '0.8rem', display: 'inline-block' }}>{book.category}</span>
-            <div className={`${styles.bookStatus} ${(book.quantity > 0) ? styles.statusAvailable : styles.statusBorrowed}`} style={{ marginTop: 'auto', alignSelf: 'flex-start' }}>
-              {(book.quantity > 0) ? 'Có Sẵn' : 'Hết Sách'}
+            <div className={`${styles.bookStatus} ${(book.quantity - (book.damagedCount || 0) > 0) ? styles.statusAvailable : styles.statusBorrowed}`} style={{ marginTop: 'auto', alignSelf: 'flex-start' }}>
+              {(book.quantity - (book.damagedCount || 0) > 0) ? 'Có Sẵn' : 'Hết Sách'}
             </div>
           </div>
         ))}
@@ -218,11 +218,14 @@ export default function BookList() {
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <span style={{
                     padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
-                    background: (selectedBook.quantity > 0) ? 'rgba(39,201,63,0.15)' : 'rgba(255,95,86,0.15)',
-                    color: (selectedBook.quantity > 0) ? '#27c93f' : '#ff5f56'
+                    background: (selectedBook.quantity - (selectedBook.damagedCount || 0) > 0) ? 'rgba(39,201,63,0.15)' : 'rgba(255,95,86,0.15)',
+                    color: (selectedBook.quantity - (selectedBook.damagedCount || 0) > 0) ? '#27c93f' : '#ff5f56'
                   }}>
-                    {(selectedBook.quantity > 0) ? `Còn ${selectedBook.quantity} bản` : 'Hết sách'}
+                    {(selectedBook.quantity - (selectedBook.damagedCount || 0) > 0) ? `Còn ${selectedBook.quantity - (selectedBook.damagedCount || 0)} bản khả dụng` : 'Hết sách khả dụng'}
                   </span>
+                  {selectedBook.damagedCount > 0 && (
+                    <span style={{ fontSize: '0.8rem', color: '#ffa502', opacity: 0.8 }}>⚠️ {selectedBook.damagedCount} bản đang hỏng/sửa chữa</span>
+                  )}
                 </div>
                 
                 <h4 style={{ margin: 0, color: 'rgba(255,255,255,0.9)', fontSize: '1.1rem' }}>Tóm tắt nội dung</h4>
@@ -247,18 +250,17 @@ export default function BookList() {
                 <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                   {user ? (
                     <>
-                      {(selectedBook.quantity > 0) && (
+                      {(selectedBook.quantity - (selectedBook.damagedCount || 0) > 0) && (
                         <button 
                           onClick={() => handleBorrow(selectedBook)}
-                          disabled={cart.some(b => b.id === selectedBook.id)}
                           style={{
                             padding: '0.9rem 2rem', fontSize: '1rem', borderRadius: '12px',
-                            border: 'none', fontWeight: '700', cursor: cart.some(b => b.id === selectedBook.id) ? 'not-allowed' : 'pointer',
-                            background: cart.some(b => b.id === selectedBook.id) ? 'rgba(39, 201, 63, 0.3)' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                            border: 'none', fontWeight: '700', cursor: 'pointer',
+                            background: 'linear-gradient(135deg, #bb86fc, #9965f4)',
                             color: '#fff', transition: 'all 0.2s'
                           }}
                         >
-                          {cart.some(b => b.id === selectedBook.id) ? "Đã có trong giỏ" : "Thêm vào giỏ hàng"}
+                          Thêm vào giỏ hàng
                         </button>
                       )}
                       <Link 

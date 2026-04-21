@@ -188,6 +188,7 @@ export default function ManageMembers() {
         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>
           Đang hiển thị {members.filter(m => 
             m.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            (m.username && m.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
             m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (m.phone && m.phone.includes(searchTerm)) ||
             (m.memberCode && m.memberCode.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -257,15 +258,14 @@ export default function ManageMembers() {
         {loading ? (
           <p style={{ textAlign: 'center', opacity: 0.5, padding: '2rem' }}>Đang tải danh sách...</p>
         ) : (
-          <div className="table-container">
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <div className="table-container" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Họ Tên</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Mã Độc Giả</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Email</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>SĐT</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>Thao Tác</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '30%' }}>Thành viên</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '15%' }}>Định danh</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '35%' }}>Liên hệ</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '20%' }}>Thao Tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -277,6 +277,7 @@ export default function ManageMembers() {
                   members
                     .filter(m => 
                       m.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                      (m.username && m.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
                       m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                       (m.phone && m.phone.includes(searchTerm)) ||
                       (m.memberCode && m.memberCode.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -286,13 +287,39 @@ export default function ManageMembers() {
                       borderBottom: '1px solid rgba(255,255,255,0.05)',
                       background: member.isLocked ? 'rgba(255, 95, 86, 0.1)' : 'transparent'
                     }}>
-                      <td style={{ padding: '1rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {member.isLocked && <span title="Tài khoản bị khóa" style={{ color: '#ff5f56' }}>🔒</span>}
-                        {member.name}
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          <span style={{ fontWeight: '600', color: '#fff', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {member.isLocked && <span title="Tài khoản bị khóa" style={{ color: '#ff5f56' }}>🔒</span>}
+                            {member.name}
+                          </span>
+                          <span style={{ fontSize: '0.85rem', color: 'rgba(255,193,7,0.7)', fontWeight: '500' }}>
+                            {member.username ? `@${member.username}` : '@chua_co_id'}
+                          </span>
+                        </div>
                       </td>
-                      <td style={{ padding: '1rem', fontFamily: 'monospace', color: '#bb86fc' }}>{member.memberCode || `DG-${(member.uid || member.id).slice(-5).toUpperCase()}`}</td>
-                      <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>{member.email}</td>
-                      <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)' }}>{member.phone || '—'}</td>
+                      <td style={{ padding: '1rem' }}>
+                         <div style={{ fontFamily: 'monospace', color: '#bb86fc', fontSize: '0.95rem', fontWeight: '600' }}>
+                           {member.memberCode || `DG-${(member.uid || member.id).slice(-5).toUpperCase()}`}
+                         </div>
+                      </td>
+                      <td style={{ padding: '1rem', maxWidth: '0' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', overflow: 'hidden' }}>
+                          <span 
+                            title={member.email}
+                            style={{ 
+                              color: 'rgba(255,255,255,0.8)', 
+                              fontSize: '0.9rem', 
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                          >
+                            {member.email}
+                          </span>
+                          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>{member.phone || 'SĐT: —'}</span>
+                        </div>
+                      </td>
                       <td style={{ padding: '1rem' }}>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           {member.isLocked ? (
