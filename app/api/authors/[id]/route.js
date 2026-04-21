@@ -1,5 +1,28 @@
 import { NextResponse } from 'next/server';
-import { deleteAuthor } from '../../../../services/db';
+import { deleteAuthor, updateAuthor, getAuthor, checkNameExists } from '../../../../services/db';
+
+export async function PATCH(request, { params }) {
+  try {
+    const { id } = await params;
+    const { name } = await request.json();
+
+    if (!name) {
+      return NextResponse.json({ error: 'Tên tác giả là bắt buộc' }, { status: 400 });
+    }
+
+    // 1. Kiểm tra tồn tại và trùng tên
+    const exists = await checkNameExists('authors', name, id);
+    if (exists) {
+      return NextResponse.json({ error: 'Tên tác giả đã tồn tại' }, { status: 400 });
+    }
+
+    await updateAuthor(id, name);
+    return NextResponse.json({ success: true, message: 'Cập nhật tác giả thành công' });
+  } catch (error) {
+    console.error('Lỗi cập nhật tác giả:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+  }
+}
 
 export async function DELETE(request, { params }) {
   try {

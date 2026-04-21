@@ -410,23 +410,24 @@ export default function BookCatalog() {
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: 'auto' }}>
                     <button 
-                        onClick={() => addToCart(selectedBook, user?.uid)}
-                        disabled={cart.length >= 3}
+                        onClick={() => {
+                            addToCart(selectedBook);
+                            setSelectedBook(null); // Đóng modal để người dùng thấy giỏ hàng trượt ra
+                        }}
                         style={{ 
                             padding: '1.2rem 3rem', 
                             fontSize: '1.1rem', 
                             fontWeight: '700',
                             borderRadius: '12px',
                             border: 'none',
-                            background: cart.some(b => b.id === selectedBook.id) ? 'transparent' : 'linear-gradient(135deg, #bb86fc, #9965f4)',
-                            color: cart.some(b => b.id === selectedBook.id) ? '#bb86fc' : '#000',
-                            border: cart.some(b => b.id === selectedBook.id) ? '1px solid #bb86fc' : 'none',
+                            background: 'linear-gradient(135deg, #bb86fc, #9965f4)',
+                            color: '#000',
                             cursor: 'pointer',
                             flex: 1,
                             transition: '0.3s'
                         }}
                     >
-                        {cart.some(b => b.id === selectedBook.id) ? "ĐÃ CÓ TRONG GIỎ" : "THÊM VÀO GIỎ HÀNG"}
+                        THÊM VÀO GIỎ HÀNG
                     </button>
 
                     <button 

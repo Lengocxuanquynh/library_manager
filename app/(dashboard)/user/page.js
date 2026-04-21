@@ -233,8 +233,11 @@ export default function UserDashboard() {
                     <h3 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '800', color: '#fff', letterSpacing: '-0.5px' }}>
                       {user?.displayName || "Chưa cập nhật"}
                     </h3>
+                    <div style={{ fontSize: '0.85rem', color: 'rgba(255,193,7,0.8)', fontWeight: '600', marginTop: '0.2rem' }}>
+                      @{user?.username || "chua_co_username"}
+                    </div>
                     <div style={{ 
-                      marginTop: '0.5rem',
+                      marginTop: '0.8rem',
                       fontSize: '0.9rem', 
                       color: '#bb86fc', 
                       fontFamily: 'monospace', 

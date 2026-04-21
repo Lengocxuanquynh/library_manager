@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, writeBatch, increment } from 'firebase/firestore';
+import { doc, getDoc, writeBatch, increment, serverTimestamp } from 'firebase/firestore';
+import { createNotification } from '@/services/db';
 
 export async function POST(request) {
   try {
@@ -108,10 +109,41 @@ export async function POST(request) {
       status: allProcessedAsReturned ? 'RETURNED' : 'PARTIALLY_RETURNED'
     });
 
-    // Cập nhật vi phạm cho User nếu có
+    // Cập nhật vi phạm cho User nếu có và gửi thông báo chi tiết
     if (anyViolation && data.userId) {
       const userRef = doc(db, "users", data.userId);
-      batch.update(userRef, { lastOverdueAt: now });
+      batch.update(userRef, { lastOverdueAt: serverTimestamp() });
+
+      // Gửi thông báo cho từng cuốn có vi phạm trong mảng updatedBooks
+      for (const b of updatedBooks) {
+        // Chỉ gửi cho những cuốn vừa được xử lý trả trong đợt này (có actualReturnDate mới)
+        if (b.actualReturnDate === now) {
+          if (b.status === 'RETURNED_OVERDUE' || b.lateFee > 0) {
+            await createNotification(
+              data.userId,
+              "⚠️ Tạm khóa quyền gia hạn",
+              `Cuốn sách "${b.bookTitle}" bị trả trễ hạn. Quyền lợi gia hạn của bạn bị tạm khóa trong 3 tháng tới.`,
+              "warning"
+            ).catch(err => console.error("Notify bulk overdue failed:", err));
+          }
+          if (b.status === 'DAMAGED' || b.damageFee > 0) {
+            await createNotification(
+              data.userId,
+              "⚠️ Tạm khóa quyền gia hạn",
+              `Cuốn sách "${b.bookTitle}" bị hư hỏng khi trả. Quyền lợi gia hạn của bạn bị tạm khóa trong 3 tháng tới.`,
+              "warning"
+            ).catch(err => console.error("Notify bulk damage failed:", err));
+          }
+          if (b.status === 'LOST') {
+            await createNotification(
+              data.userId,
+              "❌ Ghi nhận mất sách",
+              `Cuốn sách "${b.bookTitle}" được báo mất. Phí bồi thường đã được ghi nhận và quyền gia hạn bị khóa 3 tháng.`,
+              "error"
+            ).catch(err => console.error("Notify bulk lost failed:", err));
+          }
+        }
+      }
     }
 
     // Thực thi toàn bộ lệnh cập nhật

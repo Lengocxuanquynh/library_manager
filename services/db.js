@@ -11,14 +11,90 @@ import {
   orderBy,
   serverTimestamp,
   increment,
-  writeBatch
+  writeBatch,
+  runTransaction
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import { toTitleCase } from "../lib/utils";
 
 // Helper for getting collection data
 const getCollectionData = async (colRef) => {
   const snapshot = await getDocs(colRef);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+/**
+ * Safely decrements book stock using a transaction.
+ * Ensures quantity - damagedCount >= count.
+ */
+export const decrementBookStock = async (bookId, count = 1) => {
+  const bookRef = doc(db, "books", bookId);
+  
+  return await runTransaction(db, async (transaction) => {
+    const bookDoc = await transaction.get(bookRef);
+    if (!bookDoc.exists()) {
+      throw new Error("Không tìm thấy sách trong cơ sở dữ liệu.");
+    }
+    
+    const data = bookDoc.data();
+    const qty = Number(data.quantity) || 0;
+    const damaged = Number(data.damagedCount) || 0;
+    const available = qty - damaged;
+    
+    if (available < count) {
+      throw new Error(`Sách "${data.title}" đã hết hoặc không đủ bản sao khả dụng (Hiện có: ${available}, Cần: ${count}).`);
+    }
+    
+    transaction.update(bookRef, {
+      quantity: qty - count
+    });
+    
+    return true;
+  });
+};
+
+/**
+ * Safely increments book stock using a transaction.
+ */
+export const incrementBookStock = async (bookId, count = 1) => {
+  const bookRef = doc(db, "books", bookId);
+  
+  return await runTransaction(db, async (transaction) => {
+    const bookDoc = await transaction.get(bookRef);
+    if (!bookDoc.exists()) {
+      throw new Error("Không tìm thấy sách trong cơ sở dữ liệu.");
+    }
+    
+    const data = bookDoc.data();
+    const qty = Number(data.quantity) || 0;
+    
+    transaction.update(bookRef, {
+      quantity: qty + count
+    });
+    
+    return true;
+  });
+};
+
+/**
+ * Checks if a name already exists in a collection (case-insensitive).
+ * Useful for Authors and Categories.
+ */
+export const checkNameExists = async (collectionName, name, excludeId = null) => {
+  if (!name) return false;
+  const nameStandardized = toTitleCase(name);
+  
+  const q = query(collection(db, collectionName), where("name", "==", nameStandardized));
+  const snap = await getDocs(q);
+  
+  if (snap.empty) return false;
+  
+  // If we have an excludeId, check if the existing document is the same one
+  if (excludeId) {
+    return snap.docs.some(doc => doc.id !== excludeId);
+  }
+  
+  return true;
 };
 
 // ========================
@@ -275,9 +351,33 @@ export const createBorrowRecord = async (userId, userName, books, customBorrowDa
 
   if (!customDueDate) {
     dueDateObj.setDate(dueDateObj.getDate() + 14); // Default 14 days
+    dueDateObj.setHours(23, 59, 59, 999); // Luôn kết thúc vào cuối ngày cuối cùng
   }
 
   const initialStatus = autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP';
+
+  if (autoDecrement) {
+    // 1. Kiểm tra tồn kho trước khi thực hiện bất kỳ thay đổi nào
+    // Gom nhóm để kiểm tra tổng số lượng mượn cho mỗi ID
+    const bookCounts = {};
+    books.forEach(b => {
+      bookCounts[b.bookId] = (bookCounts[b.bookId] || 0) + 1;
+    });
+
+    for (const [bid, count] of Object.entries(bookCounts)) {
+      const available = await isBookAvailable(bid, count);
+      if (!available) {
+        // Tìm thông tin sách để báo lỗi chính xác
+        const book = books.find(b => b.bookId === bid);
+        throw new Error(`Sách "${book?.bookTitle || bid}" không đủ số lượng khả dụng trong kho.`);
+      }
+    }
+
+    // 2. Thực hiện trừ tồn kho an toàn bằng transaction
+    for (const [bid, count] of Object.entries(bookCounts)) {
+      await decrementBookStock(bid, count);
+    }
+  }
 
   // Process all books with unique record IDs
   const booksWithStatus = books.map(b => ({
@@ -288,16 +388,6 @@ export const createBorrowRecord = async (userId, userName, books, customBorrowDa
     returnDate: null,
     penaltyAmount: 0
   }));
-
-  if (autoDecrement) {
-    // Decrement quantities atomically
-    for (const b of books) {
-      const bookRef = doc(db, "books", b.bookId);
-      await updateDoc(bookRef, {
-        quantity: increment(-1)
-      });
-    }
-  }
 
   return await addDoc(collection(db, "borrowRecords"), {
     userId,
@@ -321,6 +411,7 @@ export const confirmBorrowPickup = async (recordId) => {
 
   const dueDateObj = new Date();
   dueDateObj.setDate(dueDateObj.getDate() + 14);
+  dueDateObj.setHours(23, 59, 59, 999); // Hạn trả luôn là cuối ngày (thực tế hội viên được mượn trọn 14 ngày)
 
   // Update all books status
   const updatedBooks = (data.books || []).map(b => ({
@@ -356,6 +447,31 @@ export const approveBorrowRequest = async (requestId, userId, userName, books) =
 };
 
 export const rejectBorrowRequest = async (requestId) => {
+  // 1. Lấy thông tin đơn để biết sách nào cần hoàn kho
+  const reqRef = doc(db, "borrowRequests", requestId);
+  const reqSnap = await getDoc(reqRef);
+  
+  if (reqSnap.exists()) {
+    const data = reqSnap.data();
+    const books = data.books || [];
+    
+    // Nếu đơn đang ở trạng thái PENDING, thì mới hoàn kho (vì lúc đó mới trừ kho ở bước Request)
+    if (data.status === 'PENDING') {
+      const bookCounts = {};
+      books.forEach(b => {
+        bookCounts[b.bookId] = (bookCounts[b.bookId] || 0) + 1;
+      });
+
+      for (const [bid, count] of Object.entries(bookCounts)) {
+        try {
+          await incrementBookStock(bid, count);
+        } catch (err) {
+          console.error(`Hoàn kho thất bại cho sách ${bid}:`, err);
+        }
+      }
+    }
+  }
+
   return await updateBorrowRequestStatus(requestId, 'REJECTED');
 };
 
@@ -404,10 +520,12 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", pen
   
   const finalBookStatus = isLost ? 'LOST' : (isNowOverdue ? 'RETURNED_OVERDUE' : 'RETURNED');
 
+  const now = new Date(); // Use JS Date for array elements
+
   books[bookIndex] = {
     ...bookItem,
     status: finalBookStatus,
-    actualReturnDate: serverTimestamp(),
+    actualReturnDate: now,
     returnNote,
     lateFee: Number(penaltyAmount) || 0,
     damageFee: Number(damageFee) || 0,
@@ -421,8 +539,8 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", pen
     status: allReturned ? 'RETURNED' : 'PARTIALLY_RETURNED'
   };
 
-  // Nếu có cuốn nào trả trễ hoặc báo mất, cập nhật lịch sử vi phạm
-  if ((isNowOverdue || isLost) && data.userId) {
+  // Nếu có cuốn nào trả trễ, báo mất hoặc hư hỏng, cập nhật lịch sử vi phạm
+  if ((isNowOverdue || isLost || Number(damageFee) > 0) && data.userId) {
     const userRef = doc(db, "users", data.userId);
     await updateDoc(userRef, { 
       lastOverdueAt: serverTimestamp() 
@@ -432,15 +550,25 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", pen
       await createNotification(
         data.userId,
         "⚠️ Tạm khóa quyền gia hạn",
-        "Bạn đã trả sách trễ hạn. Theo quy định, quyền lợi gia hạn sách của bạn sẽ bị tạm khóa trong 3 tháng tới.",
+        `Bạn đã trả cuốn sách "${bookItem.bookTitle}" trễ hạn. Theo quy định, quyền lợi gia hạn của bạn sẽ bị tạm khóa trong 3 tháng tới.`,
         "warning"
       ).catch(err => console.error("Notify overdue penalty failed:", err));
     }
+    
+    if (Number(damageFee) > 0 && !isLost) {
+      await createNotification(
+        data.userId,
+        "⚠️ Tạm khóa quyền gia hạn",
+        `Cuốn sách "${bookItem.bookTitle}" được ghi nhận bị hư hỏng khi trả. Quyền lợi gia hạn của bạn sẽ bị tạm khóa trong 3 tháng tới để chờ kiểm soát.`,
+        "warning"
+      ).catch(err => console.error("Notify damage penalty failed:", err));
+    }
+
     if (isLost) {
       await createNotification(
         data.userId,
         "❌ Ghi nhận mất sách",
-        `Cuốn sách "${bookItem.bookTitle}" đã được ghi nhận là bị mất. Phí bồi thường đã được cập nhật vào phiếu mượn.`,
+        `Cuốn sách "${bookItem.bookTitle}" đã được ghi nhận là bị mất. Phí bồi thường đã được cập nhật và quyền gia hạn của bạn bị tạm khóa 3 tháng.`,
         "error"
       ).catch(err => console.error("Notify lost book failed:", err));
     }
@@ -584,7 +712,7 @@ export const canUserRenew = async (userId, recordId) => {
       if (lastOverdue > threeMonthsAgo) {
         return { 
           canRenew: false, 
-          reason: "Bạn có lịch sử trả trễ trong 3 tháng qua. Quyền lợi gia hạn của bạn đang bị tạm khóa." 
+          reason: "Bạn có lịch sử vi phạm (trả trễ, hỏng hoặc mất sách) trong 3 tháng qua. Quyền lợi gia hạn của bạn đang bị tạm khóa." 
         };
       }
     }
@@ -744,9 +872,17 @@ export const getUserQuota = async (userId) => {
   };
 };
 
-export const isBookAvailable = async (bookId) => {
+export const isBookAvailable = async (bookId, requestedCount = 1) => {
   const book = await getBook(bookId);
-  if (!book || (book.quantity || 0) <= 0) return false;
+  if (!book) return false;
+  
+  // Không cho mượn sách nếu sách ở trạng thái hư hỏng hoàn toàn (nếu có trường status)
+  if (book.status === 'Damaged' || book.status === 'Lost') return false;
+
+  // Số lượng khả dụng tính bằng: Tổng SL - SL Hư hỏng
+  const availableCount = (Number(book.quantity) || 0) - (Number(book.damagedCount) || 0);
+  
+  if (availableCount < requestedCount) return false;
   return true;
 };
 
@@ -784,15 +920,20 @@ export const getCategory = async (id) => {
 
 
 export const addCategory = async (data) => {
+  const nameStandardized = toTitleCase(data.name);
   return await addDoc(collection(db, "categories"), {
     ...data,
+    name: nameStandardized,
     createdAt: serverTimestamp()
   });
 };
 
 export const updateCategory = async (id, data) => {
   const docRef = doc(db, "categories", id);
-  return await updateDoc(docRef, data);
+  const updateData = { ...data };
+  if (data.name) updateData.name = toTitleCase(data.name);
+  
+  return await updateDoc(docRef, updateData);
 };
 
 export const deleteCategory = async (id) => {
@@ -826,12 +967,13 @@ export const hasActiveBorrowingsByCategory = async (categoryName) => {
 export const ensureCategoryExists = async (categoryName) => {
   if (!categoryName || categoryName === "Chưa phân loại" || categoryName === "Khác") return;
 
-  const q = query(collection(db, "categories"), where("name", "==", categoryName));
+  const nameStandardized = toTitleCase(categoryName);
+  const q = query(collection(db, "categories"), where("name", "==", nameStandardized));
   const snapshot = await getDocs(q);
 
   if (snapshot.empty) {
     await addCategory({
-      name: categoryName,
+      name: nameStandardized,
       description: "Tự động tạo từ hệ thống sách"
     });
   }
@@ -964,11 +1106,19 @@ export const getAuthor = async (id) => {
 
 export const addAuthor = async (name) => {
   if (!name) return;
+  const nameStandardized = toTitleCase(name);
   const docRef = await addDoc(collection(db, "authors"), {
-    name: name.trim(),
+    name: nameStandardized,
     createdAt: serverTimestamp()
   });
   return docRef;
+};
+
+export const updateAuthor = async (id, name) => {
+  const docRef = doc(db, "authors", id);
+  return await updateDoc(docRef, { 
+    name: toTitleCase(name)
+  });
 };
 
 export const deleteAuthor = async (id) => {
@@ -1023,15 +1173,15 @@ export const deleteCategoryWithBooks = async (categoryId, categoryName) => {
 
 export const ensureAuthorExists = async (authorName) => {
   if (!authorName) return;
-  const nameTrimmed = authorName.trim();
-  const q = query(collection(db, "authors"), where("name", "==", nameTrimmed));
+  const nameStandardized = toTitleCase(authorName);
+  const q = query(collection(db, "authors"), where("name", "==", nameStandardized));
   const snap = await getDocs(q);
   
   if (snap.empty) {
     await addDoc(collection(db, "authors"), {
-      name: nameTrimmed,
+      name: nameStandardized,
       createdAt: serverTimestamp()
     });
-    console.log(`Auto-added new author to catalog: ${nameTrimmed}`);
+    console.log(`Auto-added new author to catalog: ${nameStandardized}`);
   }
 };

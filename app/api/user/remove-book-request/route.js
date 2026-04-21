@@ -37,6 +37,10 @@ export async function POST(request) {
     currentBooks.splice(indexToRemove, 1);
     const filteredBooks = [...currentBooks];
 
+    // 2. HOÀN KHO (Giữ chỗ cho cuốn sách bị xóa)
+    const { incrementBookStock } = await import('@/services/db');
+    await incrementBookStock(bookId, 1).catch(e => console.error("Stock recovery failed:", e));
+
     if (filteredBooks.length === 0) {
       // Hết sách, hủy luôn yêu cầu
       await updateDoc(docRef, { status: 'CANCELLED', books: [] });

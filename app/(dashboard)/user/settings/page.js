@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import styles from "../../dashboard.module.css";
 import Link from "next/link";
-import { updateUserProfile, updateUserPassword, updateUserEmail, logoutUser } from "@/services/auth";
+import { updateUserProfile, updateUserPassword, updateUserEmail, logoutUser, checkUsernameUnique } from "@/services/auth";
 import { sendMail } from "@/services/emailService";
 import OTPModal from "@/components/OTPModal";
+import PremiumPasswordInput from "@/components/PremiumPasswordInput";
 import { toast } from "sonner";
 import { createNotification } from "@/services/db";
 
@@ -41,12 +42,20 @@ export default function UserSettings() {
   const [newPhone, setNewPhone] = useState("");
   const [phoneError, setPhoneError] = useState("");
 
+  // Username Change State
+  const [showUsernameForm, setShowUsernameForm] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+
   useEffect(() => {
     if (user?.displayName) {
       setName(user.displayName);
     }
     if (user?.photoURL) {
       setAvatar(user.photoURL);
+    }
+    if (user?.username) {
+      setNewUsername(user.username);
     }
   }, [user]);
 
@@ -83,14 +92,24 @@ export default function UserSettings() {
   // --- OTP Trigger Helper ---
   const triggerSendOTP = async (targetEmail, contextName) => {
     setIsSendingOTP(true);
-    const newOTP = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOTP(newOTP);
+    const isMock = typeof window !== "undefined" && localStorage.getItem("DEV_MOCK_EMAIL") === "true";
     setCustomEmailTarget(targetEmail);
 
     try {
-      const result = await sendMail(targetEmail, contextName, newOTP);
-      if (result.mock) {
-        toast.success(`[DEV MODE] OTP mô phỏng tới ${targetEmail}: ${result.otp}`, { duration: 10000 });
+      const response = await fetch('/api/auth/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: user.uid, email: targetEmail, name: user.displayName || "Thành viên", isMock })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Không thể gửi OTP");
+      }
+
+      if (result.devOtp) {
+        toast.success(`[🛠 MOCK MODE] OTP xác thực ${contextName}: ${result.devOtp}`, { duration: 10000 });
       } else {
         toast.success(`Đã gửi mã OTP đến ${targetEmail}`);
       }
@@ -106,8 +125,16 @@ export default function UserSettings() {
   // --- Start Password Change ---
   const startPasswordChange = async (e) => {
     e.preventDefault();
-    if (newPassword.length < 8) {
-      setPasswordError("Mật khẩu phải dài ít nhất 8 ký tự");
+    const pScore = [
+      newPassword.length >= 8,
+      /[A-Z]/.test(newPassword),
+      /[a-z]/.test(newPassword),
+      /[0-9]/.test(newPassword),
+      /[!@#$%^&*(),.?":{}|<>]/.test(newPassword)
+    ].filter(Boolean).length;
+
+    if (pScore < 3) {
+      setPasswordError("Mật khẩu còn yếu. Hãy đảm bảo đạt mức Trung bình (kết hợp các loại ký tự).");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -148,66 +175,116 @@ export default function UserSettings() {
     await triggerSendOTP(user.email, "yêu cầu Đổi Số điện thoại");
   };
 
-  // --- OTP Verification Logic ---
-  const onVerifyOTP = async (inputOTP) => {
-    if (inputOTP !== generatedOTP) {
-      toast.error("Mã OTP không chính xác hoặc đã hết hạn!");
+  // --- Start Username Change ---
+  const startUsernameChange = async (e) => {
+    e.preventDefault();
+    const cleanUsername = newUsername.trim().toLowerCase();
+    
+    if (!/^[a-z0-9_]{3,20}$/.test(cleanUsername)) {
+      setUsernameError("Tên đăng nhập phải từ 3-20 ký tự (chữ thường, số, gạch dưới)");
+      return;
+    }
+    
+    if (cleanUsername === user.username) {
+      setUsernameError("Tên đăng nhập mới trùng với tên hiện tại");
       return;
     }
 
-    if (otpMode === 'PASSWORD') {
-      try {
-        await updateUserPassword(newPassword);
-        
-        // Thông báo vào Hộp thư
-        await createNotification(user.uid, "🔐 Bảo mật tài khoản", "Bạn đã thay đổi mật khẩu thành công.", "success");
+    setLoading(true);
+    const isUnique = await checkUsernameUnique(cleanUsername, user.uid);
+    setLoading(false);
 
-        toast.success("Đổi mật khẩu thành công! Hệ thống sẽ Đăng Xuất sau 2 giây để bảo mật...");
-        setNewPassword("");
-        setConfirmPassword("");
-        setShowPasswordForm(false);
-        setTimeout(() => logoutUser(), 2000);
-      } catch (err) {
-        toast.error(handleErrorStr(err));
-      }
-      setOtpMode(null);
-    } 
-    else if (otpMode === 'EMAIL_STEP_1') {
-      toast.success("Vòng 1 chuẩn xác! Đang tạo OTP cuối cùng gửi tới Email Mới của bạn...");
-      setOtpMode('EMAIL_STEP_2');
-      // Bước 2: Gửi vào email MỚI để chốt kèo
-      await triggerSendOTP(newEmail, "xác nhận hộp thư mới (Vòng 2/2)");
+    if (!isUnique) {
+      setUsernameError("Tên đăng nhập này đã được sử dụng bởi người khác");
+      return;
     }
-    else if (otpMode === 'EMAIL_STEP_2') {
-      try {
-        await updateUserEmail(user.uid, newEmail);
 
-        // Thông báo vào Hộp thư
-        await createNotification(user.uid, "📧 Thay đổi Email", `Bạn đã đổi địa chỉ Email thành: ${newEmail}`, "success");
+    setUsernameError("");
+    setOtpMode('USERNAME');
+    await triggerSendOTP(user.email, "yêu cầu Thay đổi Tên đăng nhập");
+  };
 
-        toast.success("Đổi Email thành công! Hệ thống sẽ Đăng Xuất sau 2 giây để áp dụng quyền...");
-        setNewEmail("");
-        setShowEmailForm(false);
-        setTimeout(() => logoutUser(), 2000);
-      } catch (err) {
-        toast.error(handleErrorStr(err));
+  // --- OTP Verification Logic ---
+  const onVerifyOTP = async (inputOTP) => {
+    setIsSendingOTP(true);
+    try {
+      const res = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: user.uid, otp: inputOTP })
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        toast.error(data.message || "Mã OTP không chính xác!");
+        if (data.shouldLogout) setTimeout(() => logoutUser(), 2000);
+        return;
       }
-      setOtpMode(null);
-    }
-    else if (otpMode === 'PHONE') {
-      try {
-        await updateUserProfile(user.uid, { phone: newPhone });
-
-        // Thông báo vào Hộp thư
-        await createNotification(user.uid, "📞 Cập nhật Số điện thoại", `Bạn đã đổi số điện thoại thành: ${newPhone}`, "success");
-
-        toast.success("Cập nhật Số điện thoại thành công!");
-        setNewPhone("");
+      if (otpMode === 'PASSWORD') {
+        try {
+          await updateUserPassword(newPassword);
+          await createNotification(user.uid, "🔐 Bảo mật tài khoản", "Bạn đã thay đổi mật khẩu thành công.", "success");
+          toast.success("Đổi mật khẩu thành công! Hệ thống sẽ Đăng Xuất sau 2 giây để bảo mật...");
+          setNewPassword("");
+          setConfirmPassword("");
+          setShowPasswordForm(false);
+          setTimeout(() => logoutUser(), 2000);
+        } catch (err) {
+          toast.error(handleErrorStr(err));
+        }
         setOtpMode(null);
-      } catch (err) {
-        toast.error(handleErrorStr(err));
+      } 
+      else if (otpMode === 'EMAIL_STEP_1') {
+        toast.success("Vòng 1 chuẩn xác! Đang tạo OTP cuối cùng gửi tới Email Mới của bạn...");
+        setOtpMode('EMAIL_STEP_2');
+        await triggerSendOTP(newEmail, "xác nhận hộp thư mới (Vòng 2/2)");
+      }
+      else if (otpMode === 'EMAIL_STEP_2') {
+        try {
+          await updateUserEmail(user.uid, newEmail);
+          await createNotification(user.uid, "📧 Thay đổi Email", `Bạn đã đổi địa chỉ Email thành: ${newEmail}`, "success");
+          toast.success("Đổi Email thành công! Hệ thống sẽ Đăng Xuất sau 2 giây để áp dụng quyền...");
+          setNewEmail("");
+          setShowEmailForm(false);
+          setTimeout(() => logoutUser(), 2000);
+        } catch (err) {
+          toast.error(handleErrorStr(err));
+        }
         setOtpMode(null);
       }
+      else if (otpMode === 'PHONE') {
+        try {
+          await updateUserProfile(user.uid, { phone: newPhone });
+          await createNotification(user.uid, "📞 Cập nhật Số điện thoại", `Bạn đã đổi số điện thoại thành: ${newPhone}`, "success");
+          toast.success("Cập nhật Số điện thoại thành công!");
+          setNewPhone("");
+          setOtpMode(null);
+        } catch (err) {
+          toast.error(handleErrorStr(err));
+          setOtpMode(null);
+        }
+      }
+      else if (otpMode === 'USERNAME') {
+        try {
+          const cleanUsername = newUsername.trim().toLowerCase();
+          await updateUserProfile(user.uid, { username: cleanUsername });
+          await createNotification(user.uid, "🆔 Đổi Tên đăng nhập", `Bạn đã đổi tên đăng nhập thành: ${cleanUsername}`, "success");
+          
+          toast.success("Đổi Tên đăng nhập thành công! Hệ thống sẽ Đăng Xuất sau 2 giây để bảo mật...");
+          setNewUsername("");
+          setShowUsernameForm(false);
+          setTimeout(() => logoutUser(), 2000);
+        } catch (err) {
+          toast.error(handleErrorStr(err));
+        }
+        setOtpMode(null);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi xác thực hoặc hết hạn phiên làm việc. Vui lòng thử lại.");
+    } finally {
+      setIsSendingOTP(false);
     }
   };
 
@@ -313,6 +390,43 @@ export default function UserSettings() {
               </p>
             )}
           </div>
+          
+          {/* Cập Nhật Tên Đăng Nhập */}
+          <div className={styles.card} style={{ border: '1px solid rgba(187, 134, 252, 0.1)', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#bb86fc' }}></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.3rem', color: '#bb86fc' }}>Quản lý Tên đăng nhập</h3>
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', margin: 0 }}>Tên hiện tại: <strong>{user?.username || "Chưa thiết lập"}</strong></p>
+              </div>
+              <button type="button" onClick={() => setShowUsernameForm(!showUsernameForm)} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {showUsernameForm ? "Hủy thay đổi" : "Đổi định danh ▸"}
+              </button>
+            </div>
+
+            {showUsernameForm && (
+              <form onSubmit={startUsernameChange} style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'grid', gap: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Nhập Tên Đăng Nhập Mới</label>
+                  <input 
+                    type="text" 
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value.toLowerCase())}
+                    placeholder="ví dụ: library_user_99..."
+                    style={{ width: '100%', padding: '0.9rem', borderRadius: '8px', border: '1px solid rgba(187, 134, 252, 0.3)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                    required
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.2rem' }}>
+                    * Chỉ gồm chữ thường, số và dấu gạch dưới (_). Độ dài 3-20 ký tự.
+                  </p>
+                </div>
+                {usernameError && <p style={{ color: '#ff5f56', fontSize: '0.9rem', margin: 0 }}>{usernameError}</p>}
+                <button type="submit" className="btn-primary" disabled={loading} style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', width: 'fit-content' }}>
+                  {loading ? "Đang kiểm tra..." : "Yêu Cầu Xác Thực OTP"}
+                </button>
+              </form>
+            )}
+          </div>
 
           {/* Cập Nhật Mật Khẩu */}
           <div className={styles.card}>
@@ -329,28 +443,23 @@ export default function UserSettings() {
             {showPasswordForm && (
               <form onSubmit={startPasswordChange} style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'grid', gap: '1rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Mật khẩu mới (Tối thiểu 8 ký tự)</label>
-                    <input 
-                      type="password" 
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Nhập khóa mới (>= 8 ký tự)..."
-                      style={{ padding: '0.9rem', borderRadius: '8px', border: '1px solid rgba(187, 134, 252, 0.3)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                      required
-                    />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Xác nhận Mật khẩu mới</label>
-                    <input 
-                      type="password" 
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Nhập lại khóa mới để chốt..."
-                      style={{ padding: '0.9rem', borderRadius: '8px', border: '1px solid rgba(187, 134, 252, 0.3)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                      required
-                    />
-                  </div>
+                  <PremiumPasswordInput
+                    label="Mật khẩu mới (Cực mạnh)"
+                    placeholder="Nhập khóa mới (>= 8 ký tự)..."
+                    value={newPassword}
+                    onChange={setNewPassword}
+                    required
+                  />
+                  <PremiumPasswordInput
+                    label="Xác nhận Mật khẩu mới"
+                    placeholder="Nhập lại để chốt..."
+                    value={confirmPassword}
+                    onChange={setConfirmPassword}
+                    required
+                    showStrength={false}
+                    showChecklist={false}
+                    error={confirmPassword && newPassword !== confirmPassword ? "Mật khẩu xác nhận không khớp" : ""}
+                  />
                 </div>
                 {passwordError && <p style={{ color: '#ff5f56', fontSize: '0.9rem', margin: 0 }}>{passwordError}</p>}
                 <button type="submit" className="btn-primary" style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', width: 'fit-content' }}>

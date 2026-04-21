@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
-import { updateCategory, deleteCategory } from '../../../../services/db';
+import { updateCategory, deleteCategory, checkNameExists } from '../../../../services/db';
 
 export async function PATCH(request, context) {
   try {
     const { id } = await context.params;
     const body = await request.json();
+
+    if (body.name) {
+      // Kiểm tra trùng tên
+      const exists = await checkNameExists('categories', body.name, id);
+      if (exists) {
+        return NextResponse.json({ error: 'Tên thể loại đã tồn tại' }, { status: 400 });
+      }
+    }
 
     await updateCategory(id, body);
 

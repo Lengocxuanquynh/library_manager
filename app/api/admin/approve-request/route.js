@@ -40,29 +40,40 @@ export async function POST(request) {
       return NextResponse.json({ message: 'Không tìm thấy thông tin sách để duyệt. Kiểm tra lại cấu trúc phiếu.' }, { status: 400 });
     }
 
-    // Cập nhật trạng thái phiếu yêu cầu -> APPROVED
-    await updateBorrowRequestStatus(requestId, 'APPROVED');
-
-    // Tạo 1 phiếu mượn duy nhất chứa toàn bộ sách
-    const finalBooks = hasBooksArray ? books : [{ bookId, bookTitle }];
+    // Gom nhóm sách để trừ tồn kho một lần duy nhất bằng transaction
+    const finalBooks = [];
+    const booksToProcess = hasBooksArray ? books : [{ bookId, bookTitle }];
+    const bookCounts = {};
     
-    // Dự trữ sách (Reservation model): giảm tồn kho ngay lập tức
-    for (const b of finalBooks) {
-      if (b.bookId) {
+    booksToProcess.forEach(b => {
+      bookCounts[b.bookId] = (bookCounts[b.bookId] || 0) + 1;
+    });
+
+    // 1. CHUẨN BỊ MẢNG finalBooks (Không trừ kho nữa vì đã trừ ở bước Request)
+    try {
+      // Lấy giá và chuẩn bị mảng finalBooks
+      for (const b of booksToProcess) {
+        let price = 0;
         const bookRef = doc(db, 'books', b.bookId);
-        await updateDoc(bookRef, { 
-          quantity: increment(-1)
+        const bookSnap = await getDoc(bookRef);
+        if (bookSnap.exists()) {
+          price = bookSnap.data().price || 0;
+        }
+        finalBooks.push({
+          bookId: b.bookId,
+          bookTitle: b.bookTitle,
+          price: price
         });
       }
+    } catch (err) {
+      console.error(err);
+      return NextResponse.json({ message: 'Lỗi lấy thông tin sách khi duyệt.' }, { status: 400 });
     }
 
     await createBorrowRecord(
       userId,
       userName,
-      finalBooks.map(b => ({
-        bookId: b.bookId,
-        bookTitle: b.bookTitle
-      })),
+      finalBooks,
       null, // use current date
       null, // use default 14 days
       false, // already decremented above manually (to keep control)

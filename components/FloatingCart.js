@@ -1,18 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "./AuthProvider";
 import { useCart } from "./CartProvider";
 import { toast } from "sonner";
 import { useRouter, usePathname } from "next/navigation";
 import OTPModal from "./OTPModal";
 import { sendMail } from "../services/emailService";
+import { Reorder, AnimatePresence, motion } from "framer-motion";
 
 export default function FloatingCart() {
-  const { cart, isDrawerOpen, setIsDrawerOpen, removeFromCart, clearCart } = useCart();
+  const { cart, setCart, isDrawerOpen, setIsDrawerOpen, removeFromCart, clearCart, remainingSlots, refreshQuota } = useCart();
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const bottomRef = useRef(null);
 
   const handleContinueShopping = () => {
     setIsDrawerOpen(false);
@@ -47,6 +49,22 @@ export default function FloatingCart() {
     }
   }, [user]);
 
+  // Auto-scroll to bottom when new item added
+  useEffect(() => {
+    if (isDrawerOpen && cart.length > 0) {
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 500);
+    }
+  }, [cart.length, isDrawerOpen]);
+
+  // Refresh quota whenever drawer opens
+  useEffect(() => {
+    if (isDrawerOpen && user?.uid) {
+      refreshQuota(user.uid);
+    }
+  }, [isDrawerOpen, user?.uid]);
+
   const handleCheckoutClick = async () => {
     if (!user) {
       toast.error("Vui lòng đăng nhập để mượn sách");
@@ -55,23 +73,26 @@ export default function FloatingCart() {
       return;
     }
     
-    // Gửi OTP xác nhận
     setIsSendingOTP(true);
-    const newOTP = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOTP(newOTP);
+    const isMock = typeof window !== "undefined" && localStorage.getItem("DEV_MOCK_EMAIL") === "true";
 
     try {
-      const result = await sendMail(
-        email, 
-        user.displayName || "Thành viên Thư Viện", 
-        newOTP 
-        // Dùng tạm khuôn OTP đăng nhập, tương lai có thể thay bằng Template mượn sách
-      );
-      
-      if (result.mock) {
-        toast.success(`[DEV MODE] OTP mô phỏng: ${result.otp}`, { duration: 10000 });
+      const response = await fetch('/api/auth/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: user.uid, email: email, name: user.displayName || "Thành viên", isMock })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Không thể gửi OTP");
+      }
+
+      if (result.devOtp) {
+        toast.success(`[🛠 MOCK MODE] OTP xác nhận mượn sách: ${result.devOtp}`, { duration: 10000 });
       } else {
-        toast.success("Mã đóng dấu OTP đã được gửi về email của bạn!");
+        toast.success("Mã OTP xác thực đã được gửi về email của bạn!");
       }
       setShowOTP(true);
     } catch (err) {
@@ -82,22 +103,45 @@ export default function FloatingCart() {
     }
   };
 
-  const onVerifyOTP = (inputOTP) => {
-    if (inputOTP === generatedOTP) {
-      toast.success("Xác thực Chữ ký số thành công!");
-      setShowOTP(false);
-      submitBorrowRequest(); // Đi tới chốt đơn Firestore
-    } else {
-      toast.error("Mã OTP không chính xác.");
+  const onVerifyOTP = async (inputOTP) => {
+    const loadingToast = toast.loading("Đang xác thực mã...");
+    try {
+      const res = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: user.uid, otp: inputOTP })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        toast.success("Xác thực Chữ ký số thành công!", { id: loadingToast });
+        setShowOTP(false);
+        submitBorrowRequest();
+      } else {
+        toast.error(data.message || "Mã OTP không chính xác.", { id: loadingToast });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi kết nối máy chủ", { id: loadingToast });
     }
   };
 
   const submitBorrowRequest = async () => {
-    if (cart.length === 0) return;
+    const separatorIndex = cart.findIndex(item => item.isSeparator);
+    const borrowTarget = cart.slice(0, separatorIndex !== -1 ? separatorIndex : 0);
+    
+    if (borrowTarget.length === 0) {
+      toast.error("Vùng mượn đang trống. Hãy kéo sách lên trên vạch ranh giới.");
+      return;
+    }
+
     setSubmitting(true);
     const loadingToast = toast.loading("Đang gửi yêu cầu mượn sách...");
 
     try {
+      const isMock = typeof window !== "undefined" && localStorage.getItem("DEV_MOCK_EMAIL") === "true";
+      
       const res = await fetch("/api/borrow-batch-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -106,16 +150,20 @@ export default function FloatingCart() {
           userName: user.displayName || email || "Ẩn danh",
           email: email.trim(),
           phone: user.phone || "Chưa có SĐT", 
-          books: cart.map(b => ({ bookId: b.id, bookTitle: b.title })),
-          paymentStatus: "PENDING", // Will define logic
+          books: borrowTarget.map(b => ({ bookId: b.id, bookTitle: b.title })),
+          paymentStatus: "PENDING", 
           isAdmin: user.role === 'admin',
+          isMock: isMock
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        toast.success("Đã mượn sách thành công! Hệ thống đã ghi nhận.", { id: loadingToast });
-        clearCart();
+        toast.success(`Đã mượn thành công ${borrowTarget.length} cuốn!`, { id: loadingToast });
+        // Xóa những cuốn đã mượn và giữ nguyên phần còn lại (bao gồm separator và hàng đợi)
+        const newCart = cart.filter(item => !borrowTarget.some(bt => bt.cartItemId === item.cartItemId));
+        setCart(newCart);
+        refreshQuota(user.uid); 
         setIsDrawerOpen(false);
       } else {
         toast.error(data.error || "Có lỗi xảy ra", { id: loadingToast });
@@ -126,6 +174,30 @@ export default function FloatingCart() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Quota Enforcement: Đảm bảo vạch separator không bao giờ vượt quá remainingSlots
+  useEffect(() => {
+    if (cart.length > 0) {
+      const sepIndex = cart.findIndex(i => i.isSeparator);
+      if (sepIndex > remainingSlots) {
+        const newCart = [...cart];
+        const [sepItem] = newCart.splice(sepIndex, 1);
+        // Đẩy vạch lên vị trí bằng đúng số suất còn lại
+        newCart.splice(remainingSlots, 0, sepItem);
+        setCart(newCart);
+      }
+    }
+  }, [remainingSlots, cart.length, isDrawerOpen]);
+
+  const handleReorder = (newCart) => {
+    const newSepIndex = newCart.findIndex(item => item.isSeparator);
+    // Nếu kéo sách từ dưới lên làm vạch nhảy xuống vượt quá remainingSlots -> Chặn
+    if (newSepIndex > remainingSlots) {
+       toast.error(`Bạn chỉ còn ${remainingSlots} suất mượn trống.`);
+       return;
+    }
+    setCart(newCart);
   };
 
   const isCartEmpty = cart.length === 0;
@@ -204,19 +276,6 @@ export default function FloatingCart() {
         )}
       </div>
 
-      {/* Backdrop */}
-      {isDrawerOpen && (
-        <div 
-          onClick={() => setIsDrawerOpen(false)}
-          style={{
-            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(4px)",
-            zIndex: 1001,
-          }}
-        />
-      )}
-
       {/* Drawer */}
       <div style={{
         position: "fixed",
@@ -254,23 +313,103 @@ export default function FloatingCart() {
               </button>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              {cart.map(book => (
-                <div key={book.cartItemId} style={{ display: "flex", gap: "1rem", background: "rgba(255,255,255,0.03)", padding: "0.8rem", borderRadius: "10px" }}>
-                  <div style={{ width: "60px", height: "85px", backgroundImage: `url(${book.coverImage || 'https://via.placeholder.com/100x150'})`, backgroundSize: "cover", backgroundPosition: "center", borderRadius: "6px" }} />
-                  <div style={{ flex: 1 }}>
-                    <h4 style={{ margin: "0 0 0.3rem 0", fontSize: "0.95rem", color: "#fff" }}>{book.title}</h4>
-                    <p style={{ margin: 0, fontSize: "0.8rem", color: "rgba(255,255,255,0.5)" }}>{book.author}</p>
-                  </div>
-                  <button 
-                    onClick={() => removeFromCart(book.cartItemId)}
-                    style={{ background: "transparent", border: "none", color: "#ff5f56", cursor: "pointer", fontSize: "1.2rem", height: "fit-content" }}
-                    title="Xóa khỏi giỏ"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <div style={{ padding: '0.4rem 0', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ 
+                  fontSize: '0.75rem', 
+                  fontWeight: '800', 
+                  border: remainingSlots > 0 ? '1px solid #bb86fc' : '1px solid rgba(255,255,255,0.2)', 
+                  color: remainingSlots > 0 ? '#bb86fc' : 'rgba(255,255,255,0.5)', 
+                  padding: '2px 10px', 
+                  borderRadius: '4px', 
+                  textTransform: 'uppercase',
+                  background: remainingSlots > 0 ? 'rgba(187,134,252,0.1)' : 'transparent'
+                }}>
+                  {remainingSlots > 0 ? `Vùng Mượn Sách (CÒN ${remainingSlots} SUẤT)` : `PHIẾU ĐÃ ĐẦY (CÓ 3 CUỐN)`}
+                </span>
+                <div style={{ flex: 1, height: '1px', background: remainingSlots > 0 ? 'rgba(187,134,252,0.2)' : 'rgba(255,255,255,0.1)' }} />
+              </div>
+              
+              <Reorder.Group axis="y" values={cart} onReorder={handleReorder} style={{ display: "flex", flexDirection: "column", gap: "0.8rem", padding: 0, listStyle: 'none' }}>
+                <AnimatePresence mode="popLayout">
+                  {cart.map((item, index) => {
+                    const sepIndex = cart.findIndex(i => i.isSeparator);
+                    const isPriority = index < sepIndex;
+                    
+                    if (item.isSeparator) {
+                      return (
+                        <Reorder.Item 
+                          key="cart-separator" 
+                          value={item}
+                          drag={false} // Không cho phép cầm vạch kéo, chỉ cho phép kéo sách qua vạch
+                          style={{ 
+                            padding: '0.4rem 0', 
+                            marginTop: '0.5rem', 
+                            marginBottom: '0.8rem', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.6rem',
+                            cursor: 'default'
+                          }}
+                        >
+                          <span style={{ fontSize: '0.65rem', fontWeight: '700', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                            Hàng đợi mượn đợt sau
+                          </span>
+                          <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.05)' }} />
+                        </Reorder.Item>
+                      );
+                    }
+
+                    return (
+                      <Reorder.Item 
+                        key={item.cartItemId}
+                        value={item}
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, scale: 0.9, x: -20 }}
+                        whileDrag={{ scale: 1.05, boxShadow: "0 20px 40px rgba(0,0,0,0.5)", zIndex: 100 }}
+                        style={{ 
+                          display: "flex", 
+                          gap: "1rem", 
+                          background: isPriority ? "rgba(187,134,252,0.06)" : "rgba(255,255,255,0.02)", 
+                          padding: "0.8rem", 
+                          borderRadius: "12px",
+                          border: `1px solid ${isPriority ? 'rgba(187,134,252,0.2)' : 'rgba(255,255,255,0.05)'}`,
+                          position: 'relative',
+                          cursor: 'grab',
+                          marginBottom: '0.8rem'
+                        }}
+                      >
+                        {/* Priority Badge */}
+                        <div style={{ 
+                          width: '24px', height: '24px', borderRadius: '50%', 
+                          background: isPriority ? '#bb86fc' : 'rgba(255,255,255,0.1)',
+                          color: isPriority ? '#000' : 'rgba(255,255,255,0.5)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.75rem', fontWeight: '800', flexShrink: 0
+                        }}>
+                          {isPriority ? (index + 1) : '-'}
+                        </div>
+
+                        <div style={{ width: "50px", height: "70px", backgroundImage: `url(${item.coverImage || 'https://via.placeholder.com/100x150'})`, backgroundSize: "cover", backgroundPosition: "center", borderRadius: "6px", flexShrink: 0 }} />
+                        
+                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                          <h4 style={{ margin: "0 0 0.2rem 0", fontSize: "0.9rem", color: "#fff", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</h4>
+                          <p style={{ margin: 0, fontSize: "0.75rem", color: isPriority ? "rgba(187,134,252,0.6)" : "rgba(255,255,255,0.3)" }}>{item.author}</p>
+                        </div>
+
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); removeFromCart(item.cartItemId); }}
+                          style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.2)", cursor: "pointer", fontSize: "1rem", padding: '4px' }}
+                        >
+                          ✕
+                        </button>
+                      </Reorder.Item>
+                    );
+                  })}
+                  <div ref={bottomRef} style={{ height: '10px' }} />
+                </AnimatePresence>
+              </Reorder.Group>
             </div>
           )}
           
@@ -278,24 +417,19 @@ export default function FloatingCart() {
 
         {/* Footer */}
         <div style={{ padding: "1.5rem", borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)" }}>
-          {cart.length > 3 && (
-            <p style={{ color: "#ff5f56", fontSize: "0.85rem", margin: "0 0 1rem 0", textAlign: "center" }}>
-              Bạn chỉ được mượn tối đa 3 cuốn sách
-            </p>
-          )}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
             <button 
               onClick={handleCheckoutClick}
-              disabled={isCartEmpty || cart.length > 3 || submitting}
+              disabled={isCartEmpty || submitting || (cart.findIndex(i => i.isSeparator) === 0)}
               style={{
                 width: "100%", padding: "1rem", borderRadius: "10px", border: "none",
-                background: (isCartEmpty || cart.length > 3 || submitting) ? "rgba(255,255,255,0.05)" : "linear-gradient(135deg, #bb86fc, #9965f4)",
-                color: (isCartEmpty || cart.length > 3 || submitting) ? "rgba(255,255,255,0.3)" : "#fff",
-                fontWeight: "bold", cursor: (isCartEmpty || cart.length > 3 || submitting) ? "not-allowed" : "pointer",
+                background: (isCartEmpty || submitting || (cart.findIndex(i => i.isSeparator) === 0)) ? "rgba(255,255,255,0.05)" : "linear-gradient(135deg, #bb86fc, #9965f4)",
+                color: (isCartEmpty || submitting || (cart.findIndex(i => i.isSeparator) === 0)) ? "rgba(255,255,255,0.3)" : "#fff",
+                fontWeight: "bold", cursor: (isCartEmpty || submitting || (cart.findIndex(i => i.isSeparator) === 0)) ? "not-allowed" : "pointer",
                 transition: "all 0.2s"
               }}
             >
-              {submitting ? "Đang xử lý..." : "Xác Nhận Mượn"}
+              {submitting ? "Đang xử lý..." : (remainingSlots > 0 ? "Xác Nhận Mượn" : "Đã Hết Suất Mượn")}
             </button>
             <button 
               onClick={handleContinueShopping}

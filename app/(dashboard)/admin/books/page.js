@@ -26,6 +26,7 @@ function InventoryHubContent() {
   // Author States
   const [authors, setAuthors] = useState([]);
   const [newAuthorName, setNewAuthorName] = useState("");
+  const [editingAuthorId, setEditingAuthorId] = useState(null);
   const [syncingAuthors, setSyncingAuthors] = useState(false);
 
   // Category States
@@ -187,23 +188,42 @@ function InventoryHubContent() {
   // ========================
   // AUTHOR HANDLERS
   // ========================
-  const handleAddAuthor = async (e) => {
+  const handleAuthorSubmit = async (e) => {
     e.preventDefault();
     if (!newAuthorName.trim()) return;
+
+    const url = editingAuthorId ? `/api/authors/${editingAuthorId}` : '/api/authors';
+    const method = editingAuthorId ? 'PATCH' : 'POST';
+
     try {
-      const res = await fetch('/api/authors', {
-        method: 'POST',
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newAuthorName })
+        body: JSON.stringify({ name: newAuthorName.trim() })
       });
+      
+      const data = await res.json();
+
       if (res.ok) {
-        setNewAuthorName("");
+        toast.success(editingAuthorId ? "Đã cập nhật tác giả" : "Đã thêm tác giả");
+        resetAuthorForm();
         fetchAuthors();
-        toast.success("Đã thêm tác giả");
+      } else {
+        toast.error(data.error || "Lỗi thao tác tác giả");
       }
     } catch (error) {
-      toast.error("Lỗi thêm tác giả");
+      toast.error("Lỗi kết nối máy chủ");
     }
+  };
+
+  const handleEditAuthor = (author) => {
+    setNewAuthorName(author.name);
+    setEditingAuthorId(author.id);
+  };
+
+  const resetAuthorForm = () => {
+    setNewAuthorName("");
+    setEditingAuthorId(null);
   };
 
   const handleDeleteAuthor = async (id, force = false) => {
@@ -235,22 +255,32 @@ function InventoryHubContent() {
 
   const handleSyncAuthors = async () => {
     setSyncingAuthors(true);
-    const tid = toast.loading("Đang đồng bộ tác giả...");
+    const tid = toast.loading("Đang phân tích và đồng bộ tác giả...");
     try {
-      const currentAuthors = [...new Set(books.map(b => b.author).filter(Boolean))];
-      let count = 0;
-      for (const name of currentAuthors) {
+      // Chuẩn hóa tên từ kho sách để so sánh
+      const currentBookAuthors = [...new Set(books.map(b => b.author).filter(Boolean))];
+      let addedCount = 0;
+      let skippedCount = 0;
+
+      for (const name of currentBookAuthors) {
         const res = await fetch('/api/authors', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name })
         });
-        if (res.ok) count++;
+        
+        if (res.ok) {
+          addedCount++;
+        } else if (res.status === 400) {
+          // Thường là do đã tồn tại
+          skippedCount++;
+        }
       }
+      
       fetchAuthors();
-      toast.success(`Đã đồng bộ ${count} tác giả mới`, { id: tid });
+      toast.success(`Đã đồng bộ xong: +${addedCount} mới, ${skippedCount} đã tồn tại.`, { id: tid });
     } catch (error) {
-      toast.error("Lỗi đồng bộ", { id: tid });
+      toast.error("Lỗi đồng bộ dữ liệu", { id: tid });
     } finally {
       setSyncingAuthors(false);
     }
@@ -269,13 +299,16 @@ function InventoryHubContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(categoryFormData)
       });
+      const data = await res.json();
       if (res.ok) {
         toast.success(editingCategoryId ? "Cập nhật thành công" : "Thêm mới thành công");
         resetCategoryForm();
         fetchCategories();
+      } else {
+        toast.error(data.error || "Lỗi thao tác thể loại");
       }
     } catch (error) {
-      toast.error("Lỗi thao tác");
+      toast.error("Lỗi kết nối máy chủ");
     }
   };
 
@@ -480,7 +513,16 @@ function InventoryHubContent() {
                                     <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>{book.author}</p>
                                     <div style={{ marginTop: '0.8rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                                         <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'rgba(187,134,252,0.1)', color: '#bb86fc', borderRadius: '4px' }}>{book.category}</span>
-                                        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: (book.quantity ?? 0) > 0 ? 'rgba(39,201,63,0.1)' : 'rgba(255,95,86,0.1)', color: (book.quantity ?? 0) > 0 ? '#27c93f' : '#ff5f56', borderRadius: '4px' }}>{(book.quantity ?? 0)} bản</span>
+                                        <span style={{ 
+                                          fontSize: '0.7rem', 
+                                          padding: '0.2rem 0.5rem', 
+                                          background: (book.quantity - (book.damagedCount || 0)) > 0 ? 'rgba(39,201,63,0.1)' : 'rgba(255,95,86,0.1)', 
+                                          color: (book.quantity - (book.damagedCount || 0)) > 0 ? '#27c93f' : '#ff5f56', 
+                                          borderRadius: '4px',
+                                          fontWeight: (book.quantity - (book.damagedCount || 0)) <= 0 ? 'bold' : 'normal'
+                                        }}>
+                                          {(book.quantity - (book.damagedCount || 0))} khả dụng / {book.quantity} tổng
+                                        </span>
                                         {book.damagedCount > 0 && (
                                           <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'rgba(255,165,0,0.1)', color: '#ffa502', borderRadius: '4px', border: '1px solid rgba(255,165,0,0.2)' }}>
                                             ⚠️ {book.damagedCount} hỏng
@@ -516,10 +558,13 @@ function InventoryHubContent() {
         {activeTab === 'authors' && (
            <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem' }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <h3 style={{ margin: '0 0 1.5rem' }}>Thêm Tác Giả</h3>
-                    <form onSubmit={handleAddAuthor} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <input type="text" placeholder="Tên tác giả..." value={newAuthorName} onChange={e => setNewAuthorName(e.target.value)} style={{ padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} />
-                        <button type="submit" className="btn-primary">Lưu Tác Giả</button>
+                    <h3 style={{ margin: '0 0 1.5rem' }}>{editingAuthorId ? "Sửa Tác Giả" : "Thêm Tác Giả"}</h3>
+                    <form onSubmit={handleAuthorSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <input type="text" placeholder="Tên tác giả..." value={newAuthorName} onChange={e => setNewAuthorName(e.target.value)} style={{ padding: '0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', color: '#fff' }} required />
+                        <div style={{ display: 'flex', gap: '0.8rem' }}>
+                          <button type="submit" className="btn-primary" style={{ flex: 1 }}>{editingAuthorId ? "Cập nhật" : "Lưu Tác Giả"}</button>
+                          {editingAuthorId && <button type="button" className="btn-outline" onClick={resetAuthorForm}>Hủy</button>}
+                        </div>
                     </form>
                     <div style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                         <p style={{ fontSize: '0.85rem', opacity: 0.5 }}>Chức năng đặc biệt:</p>
@@ -543,9 +588,12 @@ function InventoryHubContent() {
                         {authors
                           .filter(a => a.name.toLowerCase().includes(authorSearchTerm.toLowerCase()))
                           .map(a => (
-                            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <span>{a.name}</span>
-                                <button onClick={() => handleDeleteAuthor(a.id)} style={{ background: 'transparent', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
+                            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.8rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span style={{ fontSize: '0.95rem' }}>{a.name}</span>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button onClick={() => handleEditAuthor(a)} style={{ background: 'transparent', border: 'none', color: '#bb86fc', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600' }}>SỬA</button>
+                                    <button onClick={() => handleDeleteAuthor(a.id)} style={{ background: 'transparent', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 'bold' }}>×</button>
+                                </div>
                             </div>
                         ))}
                     </div>

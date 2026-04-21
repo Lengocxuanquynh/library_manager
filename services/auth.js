@@ -7,14 +7,24 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   updatePassword,
-  updateEmail
+  updateEmail,
+  getAdditionalUserInfo
 } from "firebase/auth";
-import { doc, setDoc, getDoc, collection, getCountFromServer } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, getCountFromServer, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 
 // Register user and store role
-export const registerUser = async (email, password, name, role = "user", phone = "") => {
+export const registerUser = async (email, password, name, role = "user", phone = "", username = "") => {
   try {
+    // Check if username already exists
+    if (username) {
+      const uQuery = query(collection(db, "users"), where("username", "==", username.toLowerCase()));
+      const uSnap = await getDocs(uQuery);
+      if (!uSnap.empty) {
+        throw new Error("Tên đăng nhập đã được sử dụng. Vui lòng chọn tên khác.");
+      }
+    }
+
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
@@ -30,10 +40,12 @@ export const registerUser = async (email, password, name, role = "user", phone =
     await setDoc(doc(db, "users", user.uid), {
       id: user.uid,
       name,
+      username: username.toLowerCase() || email.split('@')[0],
       email,
       phone,
       role,
-      memberCode
+      memberCode,
+      createdAt: new Date().toISOString()
     });
 
     return { user, role };
@@ -43,8 +55,21 @@ export const registerUser = async (email, password, name, role = "user", phone =
 };
 
 // Login user
-export const loginUser = async (email, password) => {
+export const loginUser = async (identifier, password) => {
   try {
+    let email = identifier;
+
+    // Check if identifier is an email. If not, treat as username
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    if (!isEmail) {
+      const q = query(collection(db, "users"), where("username", "==", identifier.toLowerCase()));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        throw new Error("Tên đăng nhập không tồn tại.");
+      }
+      email = snap.docs[0].data().email;
+    }
+
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
@@ -62,34 +87,29 @@ export const loginUser = async (email, password) => {
   }
 };
 
-// Login with Google
 export const loginWithGoogle = async () => {
   try {
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(auth, provider);
     const user = result.user;
+    const additionalInfo = getAdditionalUserInfo(result);
 
-    // Check if user document exists in Firestore
-    const userDocRef = doc(db, "users", user.uid);
-    const userDoc = await getDoc(userDocRef);
-    
     let role = "user";
-    if (userDoc.exists()) {
-      role = userDoc.data().role;
-    } else {
+
+    if (additionalInfo?.isNewUser) {
       // First time Google login, create user doc
       const snapshot = await getCountFromServer(collection(db, "users"));
       const count = snapshot.data().count;
       const memberCode = `DG-${String(count + 1).padStart(4, '0')}`;
 
-      await setDoc(userDocRef, {
+      await setDoc(doc(db, "users", user.uid), {
         id: user.uid,
         name: user.displayName,
         email: user.email,
         role: "user",
         memberCode,
         createdAt: new Date().toISOString()
-      });
+      }, { merge: true });
     }
 
     return { user, role };
@@ -111,26 +131,52 @@ export const logoutUser = async () => {
 
 // Listen to auth state changes
 export const subscribeToAuthChanges = (callback) => {
-  return onAuthStateChanged(auth, async (user) => {
+  let unsubscribeSnapshot = null;
+
+  const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+    // Dọn dẹp listener cũ nếu có
+    if (unsubscribeSnapshot) {
+      unsubscribeSnapshot();
+      unsubscribeSnapshot = null;
+    }
+
     if (user) {
       const userDocRef = doc(db, "users", user.uid);
-      const userDoc = await getDoc(userDocRef);
-      let role = "user";
-      let isLocked = false;
-      let memberCode = `DG-${user.uid.slice(-5).toUpperCase()}`; // Fallback tức thời
-      let phone = "";
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        role = userData.role || "user";
-        isLocked = userData.isLocked || false;
-        if (userData.memberCode) memberCode = userData.memberCode;
-        if (userData.phone) phone = userData.phone;
-      }
-      callback({ user: { ...user, memberCode, phone }, role, isLocked });
+      
+      // Sử dụng onSnapshot để lắng nghe thay đổi thời gian thực từ Firestore
+      unsubscribeSnapshot = onSnapshot(userDocRef, (userDoc) => {
+        let role = "user";
+        let isLocked = false;
+        let memberCode = `DG-${user.uid.slice(-5).toUpperCase()}`;
+        let phone = "";
+        let username = "";
+
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          role = userData.role || "user";
+          isLocked = userData.isLocked || false;
+          if (userData.memberCode) memberCode = userData.memberCode;
+          if (userData.phone) phone = userData.phone;
+          username = userData.username || "";
+          
+          callback({ user: { ...user, memberCode, phone, username }, role, isLocked });
+        } else {
+          // Trường hợp user mới (VD: Login Google lần đầu chưa có doc)
+          callback({ user: { ...user, memberCode, phone: "", username: "" }, role: "user", isLocked: false });
+        }
+      }, (error) => {
+        console.error("Firestore Snapshot Error:", error);
+      });
     } else {
       callback(null);
     }
   });
+
+  // Trả về hàm hủy đăng ký cả Auth và Snapshot
+  return () => {
+    unsubscribeAuth();
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+  };
 };
 
 // Update user profile
@@ -194,5 +240,26 @@ export const updateUserEmail = async (uid, newEmail) => {
     return true;
   } catch (error) {
     throw error;
+  }
+};
+
+// Kiểm tra Tên đăng nhập duy nhất
+export const checkUsernameUnique = async (username, currentUid) => {
+  try {
+    const q = query(
+      collection(db, "users"),
+      where("username", "==", username.toLowerCase())
+    );
+    const snapshot = await getDocs(q);
+    
+    // Nếu trống -> Duy nhất
+    if (snapshot.empty) return true;
+    
+    // Nếu có người dùng trùng, kiểm tra xem có phải là chính mình không
+    const otherUser = snapshot.docs.find(doc => doc.id !== currentUid);
+    return !otherUser;
+  } catch (error) {
+    console.error("Check Username Error:", error);
+    return false;
   }
 };

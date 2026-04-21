@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthors, addAuthor } from '../../../services/db';
+import { getAuthors, addAuthor, checkNameExists } from '../../../services/db';
 
 export async function GET() {
   try {
@@ -16,6 +16,12 @@ export async function POST(request) {
     const { name } = await request.json();
     if (!name) {
       return NextResponse.json({ error: 'Tên tác giả là bắt buộc' }, { status: 400 });
+    }
+
+    // Kiểm tra trùng tên
+    const exists = await checkNameExists('authors', name);
+    if (exists) {
+      return NextResponse.json({ error: 'Tên tác giả đã tồn tại' }, { status: 400 });
     }
 
     const docRef = await addAuthor(name);

@@ -4,9 +4,10 @@ import React, { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { useConfirm } from "@/components/ConfirmProvider";
 import styles from "../../dashboard.module.css";
-import { formatDate } from "@/lib/utils";
+import { formatDate, toJsDate } from "@/lib/utils";
 import { toast } from "sonner";
 import PremiumSelect from "@/components/PremiumSelect";
+import { getBook } from "@/services/db";
 
 export default function ManageLoans() {
   const { user } = useAuth();
@@ -45,8 +46,11 @@ export default function ManageLoans() {
   const [penaltyFee, setPenaltyFee] = useState(0); // This will be lateFee
   const [damageFee, setDamageFee] = useState(0);
   const [isLost, setIsLost] = useState(false);
+  const [isDamaged, setIsDamaged] = useState(false);
   const [returning, setReturning] = useState(false);
   const [isNotifying, setIsNotifying] = useState(false);
+  const [startDate, setStartDate] = useState(""); // YYYY-MM-DD
+  const [endDate, setEndDate] = useState("");     // YYYY-MM-DD
 
   // Bulk Return states
   const [isBulkReturnModalOpen, setIsBulkReturnModalOpen] = useState(false);
@@ -204,16 +208,31 @@ const handleOpenDetail = (record) => {
     setIsDetailModalOpen(true);
   };
 
-  const handleReturnClick = (record, book) => {
+  const handleReturnClick = async (record, book) => {
     if (!record || !book) return;
-    setSelectedReturnRecord({ record, book });
+    
+    // Fallback: Nếu phiếu mượn cũ thiếu giá, lôi giá từ Đầu Sách lên
+    let currentBook = { ...book };
+    if (!currentBook.price || currentBook.price === 0) {
+      try {
+        const bookData = await getBook(book.bookId);
+        if (bookData && bookData.price) {
+          currentBook.price = bookData.price;
+        }
+      } catch (err) {
+        console.error("Failed to fetch latest book price:", err);
+      }
+    }
+
+    setSelectedReturnRecord({ record, book: currentBook });
     setReturnNote("");
     
-    // Tự động tính tiền phạt: 5.000đ/ngày trễ
+    // Tự động tính tiền phạt: 5.000đ/ngày trễ (Day-based)
     const dueDate = toJsDate(record.dueDate);
     if (dueDate && currentTime > dueDate) {
       const diffMs = currentTime - dueDate;
-      // Làm tròn lên số ngày trễ (ví dụ trễ 1 phút cũng tính 1 ngày)
+      // Chỉ tính phạt khi đã bước sang 0h00 ngày hôm sau
+      // Ví dụ: dueDate là 23:59:59 ngày 14, trả lúc 0h01 ngày 15 -> 1 ngày trễ
       const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
       setPenaltyFee(diffDays * 5000);
     } else {
@@ -245,8 +264,9 @@ const handleOpenDetail = (record) => {
           bookUid: selectedReturnRecord.book.uid, // Thay bookId bằng bookUid
           adminId: user.uid,
           returnNote: returnNote,
-          penaltyAmount: Number(penaltyFee), // Late fee
+          penaltyAmount: Number(penaltyFee), 
           isLost: isLost,
+          isDamaged: isDamaged,
           damageFee: Number(damageFee)
         })
       });
@@ -274,8 +294,23 @@ const handleOpenDetail = (record) => {
   const handleIsLostToggle = (checked) => {
     setIsLost(checked);
     if (checked) {
-      // Khi báo mất, tự động điền giá của cuốn sách vào damageFee
-      setDamageFee(selectedReturnRecord?.book?.price || 100000);
+      setIsDamaged(false);
+      // Khi báo mất, tự động điền giá của cuốn sách vào damageFee CHỈ KHI ô nhập đang trống hoặc bằng 0
+      if (!damageFee || Number(damageFee) === 0) {
+        setDamageFee(selectedReturnRecord?.book?.price || 0);
+      }
+      if (!returnNote) setReturnNote("Sách báo mất");
+    } else {
+      setDamageFee(0);
+    }
+  };
+
+  const handleIsDamagedToggle = (checked) => {
+    setIsDamaged(checked);
+    if (checked) {
+      setIsLost(false);
+      // Khi báo hỏng, KHÔNG tự động lấy giá niêm yết (để người dùng tự nhập mức phạt tùy theo độ hỏng)
+      if (!returnNote) setReturnNote("Sách hư hỏng");
     } else {
       setDamageFee(0);
     }
@@ -284,28 +319,39 @@ const handleOpenDetail = (record) => {
   // ==================
   // BULK RETURN HANDLERS
   // ==================
-  const handleOpenBulkReturn = (record) => {
+  const handleOpenBulkReturn = async (record) => {
     if (!record || !record.books) return;
     
     const now = new Date();
     const dueDate = toJsDate(record.dueDate);
     
-    // Chỉ lấy những cuốn chưa trả
-    const items = record.books
+    // Tự động lôi giá từ Đầu Sách lên cho tất cả sách thiếu giá trong phiếu
+    const itemsWithPrices = await Promise.all(record.books
       .filter(b => !['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(b.status))
-      .map(b => ({
+      .map(async (b) => {
+        let price = b.price || 0;
+        if (!price || price === 0) {
+          try {
+            const bookData = await getBook(b.bookId);
+            if (bookData && bookData.price) price = bookData.price;
+          } catch (err) {
+            console.error(`Failed to fetch price for book ${b.bookId}:`, err);
+          }
+        }
+        return {
           uid: b.uid,
           bookId: b.bookId,
           bookTitle: b.bookTitle,
-          lateFee: 0, // No longer per-book
+          lateFee: 0,
           damageFee: 0,
           isLost: false,
-          isDamaged: false, // New state
-          price: b.price || 100000,
+          isDamaged: false,
+          price: price,
           returnNote: ""
+        };
       }));
       
-    if (items.length === 0) {
+    if (itemsWithPrices.length === 0) {
       toast.error("Tất cả sách trong phiếu này đã được trả.");
       return;
     }
@@ -317,7 +363,7 @@ const handleOpenDetail = (record) => {
       recordLateFee = diffDays * 5000;
     }
     
-    setBulkReturnItems(items);
+    setBulkReturnItems(itemsWithPrices);
     // Tạm mượn state penaltyFee để lưu phí trễ cả đơn trong ngữ cảnh này
     setPenaltyFee(recordLateFee); 
     setIsBulkReturnModalOpen(true);
@@ -329,7 +375,7 @@ const handleOpenDetail = (record) => {
         const updated = { ...item, [field]: value };
         // Nếu bật Lost, tự điền damageFee (giá sách)
         if (field === 'isLost' && value === true) {
-          updated.damageFee = item.price || 100000;
+          updated.damageFee = item.price || 0;
           if (!updated.returnNote) updated.returnNote = "Sách báo mất";
         } else if (field === 'isLost' && value === false) {
           updated.damageFee = 0;
@@ -444,13 +490,37 @@ const handleOpenDetail = (record) => {
     }
   };
 
-  // Helper: parse any Firestore/JS date to JS Date object
-  const toJsDate = (d) => {
-    if (!d) return null;
-    if (typeof d?.toDate === 'function') return d.toDate();
-    if (d?._seconds) return new Date(d._seconds * 1000);
-    if (d?.seconds) return new Date(d.seconds * 1000);
-    return new Date(d);
+  const handleSettleViolation = async (record) => {
+    const totalFee = (record.books || []).reduce((acc, b) => acc + (b.damageFee || 0), 0) + (record.penaltyAmount || 0);
+    const confirmed = await confirmPremium(
+      `Xác nhận độc giả ${record.memberName} đã nộp đầy đủ ${totalFee.toLocaleString('vi-VN')}đ tiền bồi thường (Mất/Hỏng sách)? \n\nHành động này sẽ: \n1. Cập nhật phiếu thành 'Đã đền bù' \n2. Tự động MỞ KHÓA tài khoản độc giả.`,
+      "💰 Xác nhận đóng phạt & Mở khóa"
+    );
+    if (!confirmed) return;
+
+    const loadingToast = toast.loading("Đang xử lý hoàn tất...");
+    try {
+      const res = await fetch('/api/admin/settle-violation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          recordId: record.id, 
+          userId: record.userId,
+          adminId: user.uid 
+        })
+      });
+
+      if (res.ok) {
+        toast.success("Đã xử lý vi phạm và mở khóa tài khoản thành công!", { id: loadingToast });
+        fetchData();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Xử lý thất bại", { id: loadingToast });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi kết nối máy chủ", { id: loadingToast });
+    }
   };
 
   // Helper: render countdown from deadline to now
@@ -510,6 +580,20 @@ const handleOpenDetail = (record) => {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       startOfMonth.setHours(0, 0, 0, 0);
       return date >= startOfMonth;
+    }
+
+    if (timeRange === "CUSTOM") {
+      if (!startDate && !endDate) return true;
+      
+      const start = startDate ? new Date(startDate) : null;
+      if (start) start.setHours(0, 0, 0, 0);
+
+      const end = endDate ? new Date(endDate) : null;
+      if (end) end.setHours(23, 59, 59, 999);
+
+      if (start && end) return date >= start && date <= end;
+      if (start) return date >= start;
+      if (end) return date <= end;
     }
 
     return true;
@@ -613,18 +697,57 @@ const handleOpenDetail = (record) => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
             <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>Thời gian:</span>
-            <div style={{ width: '220px' }}>
+            <div style={{ width: '180px' }}>
               <PremiumSelect 
                 value={timeRange} 
                 onChange={setTimeRange}
                 options={[
-                  { value: "ALL", label: "Tất cả thời gian" },
+                  { value: "ALL", label: "Tất cả" },
                   { value: "TODAY", label: "Hôm nay" },
                   { value: "WEEK", label: "Tuần này" },
-                  { value: "MONTH", label: "Tháng này" }
+                  { value: "MONTH", label: "Tháng này" },
+                  { value: "CUSTOM", label: "Chọn ngày ▸" }
                 ]}
               />
             </div>
+            {timeRange === "CUSTOM" && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', opacity: 0.5 }}>Từ:</span>
+                  <input 
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    style={{
+                      padding: '0.7rem 0.8rem 0.7rem 2.2rem',
+                      borderRadius: '10px',
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(187,134,252,0.4)',
+                      color: '#fff',
+                      fontSize: '0.85rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', opacity: 0.5 }}>Đến:</span>
+                  <input 
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    style={{
+                      padding: '0.7rem 0.8rem 0.7rem 2.5rem',
+                      borderRadius: '10px',
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(187,134,252,0.4)',
+                      color: '#fff',
+                      fontSize: '0.85rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -693,6 +816,19 @@ const handleOpenDetail = (record) => {
             }}
           >
             ⚠️ Quá Hạn ({overdueCount})
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('records'); setFilterStatus('LOST_LOCKED'); }}
+            style={{
+              background: (activeTab === 'records' && filterStatus === 'LOST_LOCKED') ? 'rgba(255,176,32,0.2)' : 'transparent',
+              border: '1px solid ' + ((activeTab === 'records' && filterStatus === 'LOST_LOCKED') ? '#ffb020' : 'rgba(255,176,32,0.3)'),
+              color: '#ffb020', padding: '0.6rem 1.1rem',
+              borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '0.9rem',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            🆘 Vi phạm ({records.filter(r => r.status === 'LOST_LOCKED').length})
           </button>
 
           <button
@@ -1031,10 +1167,31 @@ const handleOpenDetail = (record) => {
                             </span>
                           </td>
                           <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                              <button onClick={() => handleOpenDetail(rec)} style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Xem</button>
-                              {filterStatus !== 'ALL' && status === 'APPROVED_PENDING_PICKUP' && (
-                                <button onClick={() => handleConfirmPickup(rec.id)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600' }}>Lấy Sách</button>
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                              {status === 'LOST_LOCKED' ? (
+                                <button 
+                                  onClick={() => handleSettleViolation(rec)} 
+                                  style={{ 
+                                    background: 'rgba(255,176,32,0.15)', 
+                                    color: '#ffb020', 
+                                    border: '1px solid rgba(255,176,32,0.3)', 
+                                    padding: '0.4rem 0.8rem', 
+                                    borderRadius: '8px', 
+                                    cursor: 'pointer', 
+                                    fontSize: '0.8rem', 
+                                    fontWeight: '800', 
+                                    whiteSpace: 'nowrap' 
+                                  }}
+                                >
+                                  Đóng phạt & Mở khóa
+                                </button>
+                              ) : (
+                                <>
+                                  <button onClick={() => handleOpenDetail(rec)} style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Xem</button>
+                                  {filterStatus !== 'ALL' && status === 'APPROVED_PENDING_PICKUP' && (
+                                    <button onClick={() => handleConfirmPickup(rec.id)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', whiteSpace: 'nowrap' }}>Lấy Sách</button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </td>
@@ -1348,14 +1505,53 @@ const handleOpenDetail = (record) => {
                     type="number"
                     value={damageFee}
                     onChange={(e) => setDamageFee(e.target.value)}
+                    readOnly={isLost}
                     style={{
                       width: '100%', padding: '0.8rem', borderRadius: '10px',
-                      background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(187,134,252,0.3)',
-                      color: '#fff', fontSize: '1rem', fontWeight: 'bold', outline: 'none'
+                      background: isLost ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)', 
+                      border: isLost ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(187,134,252,0.3)',
+                      color: isLost ? 'rgba(255,255,255,0.4)' : '#fff', 
+                      fontSize: '1rem', fontWeight: 'bold', outline: 'none',
+                      cursor: isLost ? 'not-allowed' : 'text'
                     }}
                   />
                   <p style={{ fontSize: '0.65rem', color: 'rgba(187,134,252,0.5)', marginTop: '0.3rem' }}>* Tự nhập nếu có hư hỏng</p>
                 </div>
+              </div>
+
+              <div style={{ 
+                marginBottom: '1rem', 
+                padding: '1rem', 
+                borderRadius: '12px', 
+                background: isDamaged ? 'rgba(255,176,32,0.1)' : 'rgba(255,255,255,0.02)',
+                border: '1px solid ' + (isDamaged ? 'rgba(255,176,32,0.2)' : 'rgba(255,255,255,0.05)'),
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', color: isDamaged ? '#ffb020' : '#fff' }}>Báo hỏng sách</h4>
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
+                    Ghi nhận sách bị hư hỏng, cần bồi thường
+                  </p>
+                </div>
+                <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={isDamaged} 
+                    onChange={(e) => handleIsDamagedToggle(e.target.checked)}
+                    style={{ opacity: 0, width: 0, height: 0 }} 
+                  />
+                  <span style={{ 
+                    position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, 
+                    backgroundColor: isDamaged ? '#ffb020' : '#333', transition: '0.4s', borderRadius: '34px'
+                  }}>
+                    <span style={{
+                      position: 'absolute', content: '""', height: '18px', width: '18px', left: isDamaged ? '28px' : '4px', bottom: '4px',
+                      backgroundColor: 'white', transition: '0.4s', borderRadius: '50%'
+                    }}></span>
+                  </span>
+                </label>
               </div>
 
               <div style={{ 
@@ -1371,7 +1567,7 @@ const handleOpenDetail = (record) => {
                 <div>
                   <h4 style={{ margin: 0, fontSize: '0.9rem', color: isLost ? '#ff5f56' : '#fff' }}>Báo mất sách</h4>
                   <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
-                    {isLost ? "Sẽ không cộng lại vào kho. Tự động lấy giá niêm yết." : "Ghi nhận nếu độc giả báo làm mất"}
+                    Sẽ không cộng lại vào kho. Tự động lấy giá niêm yết.
                   </p>
                 </div>
                 <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px' }}>
@@ -1497,10 +1693,14 @@ const handleOpenDetail = (record) => {
                               type="number"
                               value={item.damageFee}
                               onChange={(e) => handleBulkItemChange(item.uid, 'damageFee', e.target.value)}
+                              readOnly={item.isLost}
                               style={{
                                 width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px',
-                                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)',
-                                color: '#fff', textAlign: 'right', fontSize: '0.9rem', outline: 'none'
+                                background: item.isLost ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.03)', 
+                                border: item.isLost ? '1px solid rgba(255,255,255,0.03)' : '1px solid rgba(255,255,255,0.1)',
+                                color: item.isLost ? 'rgba(255,255,255,0.3)' : '#fff', 
+                                textAlign: 'right', fontSize: '0.9rem', outline: 'none',
+                                cursor: item.isLost ? 'not-allowed' : 'text'
                               }}
                             />
                           </div>

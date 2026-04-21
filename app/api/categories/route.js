@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addCategory, getCategories } from '../../../services/db';
+import { addCategory, getCategories, checkNameExists } from '../../../services/db';
 
 export async function GET() {
   try {
@@ -19,6 +19,15 @@ export async function POST(request) {
     if (!name) {
       return NextResponse.json(
         { error: 'Tên thể loại là bắt buộc' },
+        { status: 400 }
+      );
+    }
+
+    // Kiểm tra trùng tên
+    const exists = await checkNameExists('categories', name);
+    if (exists) {
+      return NextResponse.json(
+        { error: 'Tên thể loại đã tồn tại' },
         { status: 400 }
       );
     }
