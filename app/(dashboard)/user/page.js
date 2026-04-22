@@ -488,9 +488,12 @@ export default function UserDashboard() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                 {books.map((b, i) => (
                                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', background: 'rgba(255,255,255,0.02)', padding: '0.4rem 0.8rem', borderRadius: '6px' }}>
-                                    <span style={{ fontWeight: '500', color: (b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE') ? 'rgba(255,255,255,0.3)' : '#fff' }}>
-                                      {b.bookTitle}
-                                    </span>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                      <span style={{ fontWeight: '500', color: (b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE') ? 'rgba(255,255,255,0.3)' : '#fff' }}>
+                                        {b.bookTitle}
+                                      </span>
+                                      <span style={{ fontSize: '0.7rem', color: '#bb86fc', opacity: 0.8, fontWeight: '600' }}>#{b.copyId || 'N/A'}</span>
+                                    </div>
                                     {(b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE') && (
                                       <span style={{ fontSize: '0.75rem', color: '#27c93f', fontStyle: 'italic' }}>✓ Đã trả</span>
                                     )}

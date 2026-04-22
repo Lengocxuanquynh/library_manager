@@ -42,6 +42,12 @@ function InventoryHubContent() {
   const [authorSearchTerm, setAuthorSearchTerm] = useState("");
   const [categorySearchTerm, setCategorySearchTerm] = useState("");
   const itemsPerPage = 8;
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [selectedBookForCopies, setSelectedBookForCopies] = useState(null);
+  const [isCopiesModalOpen, setIsCopiesModalOpen] = useState(false);
+  const [bookCopies, setBookCopies] = useState([]);
+  const [loadingCopies, setLoadingCopies] = useState(false);
+  const [newCopiesCount, setNewCopiesCount] = useState(1);
 
   // Form Data for Books
   const [bookFormData, setBookFormData] = useState({
@@ -185,6 +191,76 @@ function InventoryHubContent() {
     }
   };
 
+  const handleManageCopies = async (book) => {
+    setSelectedBookForCopies(book);
+    setIsCopiesModalOpen(true);
+    fetchBookCopies(book.id);
+  };
+
+  const fetchBookCopies = async (bookId) => {
+    setLoadingCopies(true);
+    try {
+      const res = await fetch(`/api/admin/books/${bookId}/copies`);
+      const data = await res.json();
+      setBookCopies(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoadingCopies(false);
+    }
+  };
+
+  const handleAddMoreCopies = async () => {
+    if (!selectedBookForCopies || newCopiesCount <= 0) return;
+    const tid = toast.loading(`Đang tạo ${newCopiesCount} bản sao mới...`);
+    try {
+      const res = await fetch(`/api/admin/books/${selectedBookForCopies.id}/copies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: newCopiesCount, bookTitle: selectedBookForCopies.title })
+      });
+      if (res.ok) {
+        toast.success("Đã thêm bản sao mới", { id: tid });
+        setNewCopiesCount(1);
+        fetchBookCopies(selectedBookForCopies.id);
+        fetchBooks(); // Update total quantity
+      } else {
+        toast.error("Lỗi khi thêm bản sao", { id: tid });
+      }
+    } catch (error) {
+      toast.error("Lỗi kết nối", { id: tid });
+    }
+  };
+
+  const handleMigrateBooks = async () => {
+    const ok = await confirmPremium(
+      "Hệ thống sẽ quét toàn bộ kho sách và tự động tạo mã định danh (Copy ID) cho những cuốn sách cũ chưa có mã. Bạn có muốn thực hiện không?",
+      "⚙️ Chuẩn hóa dữ liệu sách cũ"
+    );
+    if (!ok) return;
+
+    setIsMigrating(true);
+    const tid = toast.loading("Đang chuẩn hóa dữ liệu toàn hệ thống...");
+    try {
+      const res = await fetch('/api/admin/migrate-copies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: 'ADMIN' }) 
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Xong! Đã xử lý ${data.details.processed} đầu sách, tạo ${data.details.copiesCreated} bản sao.`, { id: tid });
+        fetchBooks();
+      } else {
+        toast.error(data.error || "Lỗi khi di chuyển dữ liệu", { id: tid });
+      }
+    } catch (error) {
+      toast.error("Lỗi kết nối máy chủ", { id: tid });
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
   // ========================
   // AUTHOR HANDLERS
   // ========================
@@ -212,7 +288,28 @@ function InventoryHubContent() {
         toast.error(data.error || "Lỗi thao tác tác giả");
       }
     } catch (error) {
-      toast.error("Lỗi kết nối máy chủ");
+      toast.error("Lỗi khi thêm bản sao");
+    }
+  };
+
+  const handleDeleteCopy = async (copyId) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa bản sao này? Số lượng tổng của đầu sách sẽ giảm tương ứng.")) return;
+    
+    try {
+      const res = await fetch(`/api/admin/books/${selectedBookForCopies.id}/copies/${copyId}?adminId=${user.uid}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        toast.success("Đã xóa bản sao");
+        fetchBookCopies(selectedBookForCopies.id);
+        fetchBooks(); // To update the main quantity in the list
+      } else {
+        toast.error(data.error || "Lỗi khi xóa bản sao");
+      }
+    } catch (error) {
+      toast.error("Lỗi kết nối");
     }
   };
 
@@ -428,9 +525,19 @@ function InventoryHubContent() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Quản Lý Đầu Sách</h2>
-                <button className="btn-primary" onClick={() => setShowBookForm(!showBookForm)}>
-                    {showBookForm ? "Đóng Form" : "+ Đăng Ký Sách Mới"}
-                </button>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button 
+                      className="btn-outline" 
+                      onClick={handleMigrateBooks} 
+                      disabled={isMigrating}
+                      style={{ borderColor: '#ffb020', color: '#ffb020' }}
+                    >
+                        {isMigrating ? "Đang xử lý..." : "⚙️ Chuẩn hóa sách cũ"}
+                    </button>
+                    <button className="btn-primary" onClick={() => setShowBookForm(!showBookForm)}>
+                        {showBookForm ? "Đóng Form" : "+ Đăng Ký Sách Mới"}
+                    </button>
+                </div>
             </div>
 
             {showBookForm && (
@@ -516,12 +623,12 @@ function InventoryHubContent() {
                                         <span style={{ 
                                           fontSize: '0.7rem', 
                                           padding: '0.2rem 0.5rem', 
-                                          background: (book.quantity - (book.damagedCount || 0)) > 0 ? 'rgba(39,201,63,0.1)' : 'rgba(255,95,86,0.1)', 
-                                          color: (book.quantity - (book.damagedCount || 0)) > 0 ? '#27c93f' : '#ff5f56', 
+                                          background: (book.quantity - (book.borrowedCount || 0) - (book.damagedCount || 0)) > 0 ? 'rgba(39,201,63,0.1)' : 'rgba(255,95,86,0.1)', 
+                                          color: (book.quantity - (book.borrowedCount || 0) - (book.damagedCount || 0)) > 0 ? '#27c93f' : '#ff5f56', 
                                           borderRadius: '4px',
-                                          fontWeight: (book.quantity - (book.damagedCount || 0)) <= 0 ? 'bold' : 'normal'
+                                          fontWeight: (book.quantity - (book.borrowedCount || 0) - (book.damagedCount || 0)) <= 0 ? 'bold' : 'normal'
                                         }}>
-                                          {(book.quantity - (book.damagedCount || 0))} khả dụng / {book.quantity} tổng
+                                          {Math.max(0, Math.min(book.quantity, book.quantity - (book.borrowedCount || 0) - (book.damagedCount || 0)))} khả dụng / {book.quantity} tổng
                                         </span>
                                         {book.damagedCount > 0 && (
                                           <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'rgba(255,165,0,0.1)', color: '#ffa502', borderRadius: '4px', border: '1px solid rgba(255,165,0,0.2)' }}>
@@ -536,6 +643,7 @@ function InventoryHubContent() {
                             </div>
                             <div style={{ display: 'flex', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                                 <button onClick={() => handleEditBook(book)} style={{ flex: 1, padding: '0.8rem', background: 'transparent', border: 'none', color: '#bb86fc', cursor: 'pointer', fontSize: '0.85rem' }}>Sửa</button>
+                                <button onClick={() => handleManageCopies(book)} style={{ flex: 1, padding: '0.8rem', background: 'transparent', border: 'none', color: '#27c93f', cursor: 'pointer', fontSize: '0.85rem' }}>Bản Sao</button>
                                 <button onClick={() => handleDeleteBook(book.id)} style={{ flex: 1, padding: '0.8rem', background: 'transparent', border: 'none', color: '#ff5f56', cursor: 'pointer', fontSize: '0.85rem' }}>Xóa</button>
                             </div>
                         </div>
@@ -645,6 +753,122 @@ function InventoryHubContent() {
         )}
 
       </div>
+
+      {/* COPIES MANAGEMENT MODAL */}
+      {isCopiesModalOpen && selectedBookForCopies && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(8px)'
+        }}>
+          <div style={{
+            background: '#1a1a1a', width: '90%', maxWidth: '650px', maxHeight: '85vh',
+            borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            boxShadow: '0 30px 60px rgba(0,0,0,0.6)'
+          }}>
+            <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
+              <div>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#fff', margin: 0 }}>Quản Lý Bản Sao Vật Lý</h2>
+                <p style={{ fontSize: '0.85rem', color: '#bb86fc', marginTop: '0.2rem' }}>{selectedBookForCopies.title}</p>
+              </div>
+              <button onClick={() => setIsCopiesModalOpen(false)} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div style={{ padding: '1.5rem 2rem', overflowY: 'auto', flex: 1 }}>
+              {/* Add More Section */}
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', marginBottom: '2rem', padding: '1rem', background: 'rgba(187,134,252,0.05)', borderRadius: '16px', border: '1px solid rgba(187,134,252,0.1)' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', opacity: 0.5, marginBottom: '0.5rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Thêm bản sao mới (Số lượng)</label>
+                  <input 
+                    type="number" 
+                    value={newCopiesCount} 
+                    onChange={e => setNewCopiesCount(parseInt(e.target.value))} 
+                    min="1"
+                    style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(187,134,252,0.3)', color: '#fff' }}
+                  />
+                </div>
+                <button onClick={handleAddMoreCopies} className="btn-primary" style={{ height: '42px', padding: '0 1.5rem' }}>+ Tạo Bản Sao</button>
+              </div>
+
+              {loadingCopies ? <p style={{ textAlign: 'center', opacity: 0.5 }}>Đang tải danh sách bản sao...</p> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {bookCopies.length === 0 ? <p style={{ textAlign: 'center', opacity: 0.4, padding: '2rem' }}>Chưa có bản sao vật lý nào cho đầu sách này.</p> : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.8rem', opacity: 0.4 }}>
+                          <th style={{ padding: '0.5rem 0' }}>MÃ CUỐN SÁCH</th>
+                          <th>TRẠNG THÁI</th>
+                          <th>CHẤT LƯỢNG</th>
+                          <th>HÀNH ĐỘNG</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bookCopies.map(copy => (
+                          <tr key={copy.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                            <td style={{ padding: '0.8rem 0', fontFamily: 'monospace', fontWeight: '700', color: '#bb86fc' }}>#{copy.copyId}</td>
+                            <td>
+                              <span style={{ 
+                                fontSize: '0.7rem', 
+                                padding: '0.2rem 0.6rem', 
+                                borderRadius: '4px',
+                                background: copy.status === 'AVAILABLE' ? 'rgba(39,201,63,0.1)' : copy.status === 'BORROWED' ? 'rgba(187,134,252,0.1)' : 'rgba(255,95,86,0.1)',
+                                color: copy.status === 'AVAILABLE' ? '#27c93f' : copy.status === 'BORROWED' ? '#bb86fc' : '#ff5f56',
+                                fontWeight: '800'
+                              }}>
+                                {copy.status === 'AVAILABLE' ? 'SẴN SÀNG' : copy.status === 'BORROWED' ? 'ĐANG MƯỢN' : copy.status}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ 
+                                fontSize: '0.7rem', 
+                                color: (!copy.condition || copy.condition === 'EXCELLENT') ? '#27c93f' : 
+                                       copy.condition === 'GOOD' ? '#4caf50' : 
+                                       copy.condition === 'FAIR' ? '#ffb020' : '#ff5f56',
+                                fontWeight: '700'
+                              }}>
+                                {(!copy.condition || copy.condition === 'EXCELLENT') ? 'Hoàn hảo' : 
+                                 copy.condition === 'GOOD' ? 'Tốt' : 
+                                 copy.condition === 'FAIR' ? 'Trung bình' : 
+                                 copy.condition === 'POOR' ? 'Kém' : 'Hỏng'}
+                              </span>
+                              {copy.conditionNote && (
+                                <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: '0.2rem' }}>
+                                  📝 {copy.conditionNote}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                               <button 
+                                 onClick={() => handleDeleteCopy(copy.id)}
+                                 disabled={copy.status !== 'AVAILABLE'}
+                                 style={{ 
+                                   background: 'none', 
+                                   border: 'none', 
+                                   color: copy.status === 'AVAILABLE' ? '#ff5f56' : 'rgba(255,255,255,0.1)', 
+                                   cursor: copy.status === 'AVAILABLE' ? 'pointer' : 'not-allowed',
+                                   fontSize: '0.8rem',
+                                   fontWeight: '700'
+                                 }}
+                               >
+                                 XÓA
+                               </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div style={{ padding: '1.2rem 2rem', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)', textAlign: 'right' }}>
+              <button onClick={() => setIsCopiesModalOpen(false)} className="btn-outline">Đóng</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

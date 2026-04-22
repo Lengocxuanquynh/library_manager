@@ -5,7 +5,7 @@ import { verifyAdmin } from '@/services/admin-check';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { recordId, adminId } = body;
+    const { recordId, adminId, manualCopyIds } = body;
 
     if (!recordId || !adminId) {
       return NextResponse.json({ message: 'Thiếu thông tin yêu cầu' }, { status: 400 });
@@ -16,7 +16,7 @@ export async function POST(request) {
       return NextResponse.json({ message: 'Bạn không có quyền thực hiện hành động này' }, { status: 403 });
     }
 
-    await confirmBorrowPickup(recordId);
+    await confirmBorrowPickup(recordId, manualCopyIds || {});
 
     return NextResponse.json({
       success: true,
@@ -24,6 +24,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('Error in confirm-pickup API:', error);
-    return NextResponse.json({ message: 'Lỗi hệ thống khi xác nhận lấy sách.' }, { status: 500 });
+    return NextResponse.json({ message: error.message || 'Lỗi hệ thống khi xác nhận lấy sách.' }, { status: 500 });
   }
 }

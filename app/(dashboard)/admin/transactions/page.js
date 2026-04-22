@@ -46,12 +46,18 @@ export default function ManageLoans() {
   const [returnNote, setReturnNote] = useState("");
   const [penaltyFee, setPenaltyFee] = useState(0); // This will be lateFee
   const [damageFee, setDamageFee] = useState(0);
+  const [bookCondition, setBookCondition] = useState("EXCELLENT");
+  const [conditionNote, setConditionNote] = useState("");
   const [isLost, setIsLost] = useState(false);
   const [isDamaged, setIsDamaged] = useState(false);
   const [returning, setReturning] = useState(false);
   const [isNotifying, setIsNotifying] = useState(false);
   const [startDate, setStartDate] = useState(""); // YYYY-MM-DD
   const [endDate, setEndDate] = useState("");     // YYYY-MM-DD
+  const [quickSearchCopyId, setQuickSearchCopyId] = useState("");
+  const [isSearchingCopy, setIsSearchingCopy] = useState(false);
+  const [assigningCopyIds, setAssigningCopyIds] = useState({}); // { [uid]: 'BK-123' }
+  const [validationStatuses, setValidationStatuses] = useState({}); // { [uid]: { status: 'idle', message: '' } }
 
   const [config, setConfig] = useState({ excludeSundays: true, holidays: [] });
   const [isBulkReturnModalOpen, setIsBulkReturnModalOpen] = useState(false);
@@ -218,8 +224,18 @@ export default function ManageLoans() {
     }
   };
 
-const handleOpenDetail = (record) => {
+  const handleOpenDetail = (record) => {
     setSelectedDetailRecord(record);
+    // Khởi tạo state gán mã và trạng thái xác thực
+    const initialIds = {};
+    const initialStatus = {};
+    (record.books || []).forEach(b => {
+      const hasId = b.copyId && b.copyId !== "N/A";
+      initialIds[b.uid] = hasId ? b.copyId : "";
+      initialStatus[b.uid] = { status: hasId ? 'valid' : 'idle', message: '' };
+    });
+    setAssigningCopyIds(initialIds);
+    setValidationStatuses(initialStatus);
     setIsDetailModalOpen(true);
   };
 
@@ -241,6 +257,10 @@ const handleOpenDetail = (record) => {
 
     setSelectedReturnRecord({ record, book: currentBook });
     setReturnNote("");
+    setDamageFee(0);
+    setBookCondition(book.condition || "EXCELLENT");
+    setConditionNote("");
+    setIsReturnModalOpen(true);
     
     // Tự động tính tiền phạt: 5.000đ/ngày trễ (Day-based)
     const jsDueDate = toJsDate(record.dueDate);
@@ -248,7 +268,7 @@ const handleOpenDetail = (record) => {
     setPenaltyFee(penaltyInfo.penaltyFine);
 
     setIsLost(false);
-    setDamageFee(0);
+    setIsDamaged(false);
     
     if (record.status === 'LOST_LOCKED' || penaltyInfo.isLocked) {
       toast.info("Phiếu này đang ở trạng thái PHONG TỎA THẺ. Bạn vẫn có thể thực hiện thu hồi và báo hỏng/mất để xử lý bồi thường.");
@@ -289,8 +309,10 @@ const handleOpenDetail = (record) => {
           returnNote: returnNote,
           penaltyAmount: Number(penaltyFee), 
           isLost: isLost,
-          isDamaged: isDamaged,
-          damageFee: Number(damageFee)
+          damageFee: Number(damageFee) || 0,
+          isDamaged: isLost ? false : (bookCondition === 'DAMAGED'),
+          condition: bookCondition,
+          conditionNote: conditionNote
         })
       });
       if (res.ok) {
@@ -478,7 +500,29 @@ const handleOpenDetail = (record) => {
     }
   }, [records]);
 
-  const handleConfirmPickup = async (transactionId, books) => {
+  const validateCopyId = async (uid, bookId, copyIdLabel) => {
+    if (!copyIdLabel || copyIdLabel.trim() === "") {
+      setValidationStatuses(prev => ({ ...prev, [uid]: { status: 'idle', message: '' } }));
+      return;
+    }
+
+    setValidationStatuses(prev => ({ ...prev, [uid]: { status: 'loading', message: 'Đang kiểm tra...' } }));
+    
+    try {
+      const res = await fetch(`/api/admin/validate-copy?copyId=${copyIdLabel}&bookId=${bookId}&adminId=${user.uid}`);
+      const data = await res.json();
+      
+      if (data.valid) {
+        setValidationStatuses(prev => ({ ...prev, [uid]: { status: 'valid', message: 'Hợp lệ' } }));
+      } else {
+        setValidationStatuses(prev => ({ ...prev, [uid]: { status: 'invalid', message: data.message || 'Mã không hợp lệ' } }));
+      }
+    } catch (error) {
+      setValidationStatuses(prev => ({ ...prev, [uid]: { status: 'invalid', message: 'Lỗi kết nối' } }));
+    }
+  };
+
+  const handleConfirmPickup = async (transactionId, manualCopyIds = {}) => {
     if (!await confirmPremium("Xác nhận hội viên đã đến lấy toàn bộ sách trong phiếu?", "📦 Xác nhận nhận sách")) return;
     const loadingToast = toast.loading("Đang xác nhận lấy sách...");
     try {
@@ -487,7 +531,8 @@ const handleOpenDetail = (record) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recordId: transactionId,
-          adminId: user.uid
+          adminId: user.uid,
+          manualCopyIds: manualCopyIds
         })
       });
       if (res.ok) {
@@ -602,6 +647,32 @@ const handleOpenDetail = (record) => {
     );
   };
 
+  const handleQuickReturnSearch = async (e) => {
+    if (e) e.preventDefault();
+    if (!quickSearchCopyId.trim()) return;
+
+    setIsSearchingCopy(true);
+    const loadingToast = toast.loading(`Đang tìm mã sách: ${quickSearchCopyId.toUpperCase()}...`);
+    
+    try {
+      const res = await fetch(`/api/admin/find-copy?copyId=${quickSearchCopyId}&adminId=${user.uid}`);
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.dismiss(loadingToast);
+        setQuickSearchCopyId(""); // Clear input
+        handleReturnClick(data.record, data.book);
+      } else {
+        toast.error(data.error || "Không tìm thấy thông tin mã sách này.", { id: loadingToast });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi kết nối máy chủ", { id: loadingToast });
+    } finally {
+      setIsSearchingCopy(false);
+    }
+  };
+
   // Helper: Check if record date matches the selected time range
   const isWithinTimeRange = (dateRaw) => {
     if (timeRange === "ALL") return true;
@@ -691,6 +762,63 @@ const handleOpenDetail = (record) => {
     <div style={{ position: 'relative' }}>
       <div className={styles.headerArea} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
         <h1 className={styles.pageTitle}>Quản Lý Mượn Trả</h1>
+        
+        {/* 🚀 QUICK ACCESS BAR - NEW */}
+        <div style={{
+          width: '100%',
+          display: 'flex',
+          gap: '1rem',
+          background: 'linear-gradient(90deg, rgba(187, 134, 252, 0.1), rgba(0,0,0,0.2))',
+          padding: '1rem 1.5rem',
+          borderRadius: '16px',
+          border: '1px solid rgba(187, 134, 252, 0.2)',
+          marginTop: '1rem',
+          alignItems: 'center',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '1.2rem' }}>⚡</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: '800', color: '#bb86fc', textTransform: 'uppercase', letterSpacing: '1px' }}>Trả sách nhanh:</span>
+          </div>
+          
+          <form onSubmit={handleQuickReturnSearch} style={{ flex: 1, display: 'flex', gap: '0.5rem' }}>
+            <input
+              type="text"
+              placeholder="Quét hoặc nhập mã cuốn sách (VD: DE-A1B2C)..."
+              value={quickSearchCopyId}
+              onChange={(e) => setQuickSearchCopyId(e.target.value.toUpperCase())}
+              style={{
+                flex: 1,
+                padding: '0.8rem 1.2rem',
+                borderRadius: '12px',
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid rgba(187,134,252,0.3)',
+                color: '#fff',
+                fontSize: '1rem',
+                fontWeight: '600',
+                outline: 'none',
+                fontFamily: 'monospace'
+              }}
+            />
+            <button
+              type="submit"
+              disabled={isSearchingCopy || !quickSearchCopyId.trim()}
+              style={{
+                padding: '0 1.5rem',
+                borderRadius: '12px',
+                background: '#bb86fc',
+                color: '#000',
+                border: 'none',
+                fontWeight: '800',
+                cursor: 'pointer',
+                opacity: (isSearchingCopy || !quickSearchCopyId.trim()) ? 0.5 : 1,
+                transition: 'all 0.2s'
+              }}
+            >
+              {isSearchingCopy ? '...' : 'TÌM KIẾM'}
+            </button>
+          </form>
+        </div>
         
         {/* 🔍 FILTER BAR - REAL VERSION */}
         <div style={{
@@ -1166,9 +1294,29 @@ const handleOpenDetail = (record) => {
                             {rec.borrowerPhone && <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem' }}>{rec.borrowerPhone}</div>}
                           </td>
                           <td style={{ padding: '0.8rem 1rem' }}>
-                            <div style={{ fontSize: '0.85rem', color: '#fff' }}>{books.length} sách</div>
-                            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {books.map(b => b.bookTitle).join(', ')}
+                            <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: '700', marginBottom: '0.4rem' }}>{books.length} sách</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                              {books.map((b, idx) => (
+                                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    • {b.bookTitle}
+                                  </span>
+                                  {b.copyId && b.copyId !== "N/A" && (
+                                    <span style={{ 
+                                      background: 'rgba(187,134,252,0.15)', 
+                                      color: '#bb86fc', 
+                                      padding: '0.1rem 0.4rem', 
+                                      borderRadius: '4px', 
+                                      fontSize: '0.65rem',
+                                      fontWeight: '800',
+                                      fontFamily: 'monospace',
+                                      border: '1px solid rgba(187,134,252,0.2)'
+                                    }}>
+                                      {b.copyId}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           </td>
                           {filterStatus === 'APPROVED_PENDING_PICKUP' ? (
@@ -1313,8 +1461,77 @@ const handleOpenDetail = (record) => {
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: '1rem', fontWeight: '700', color: isReturned ? 'rgba(255,255,255,0.5)' : '#fff', margin: '0 0 0.3rem 0' }}>
-                            {idx + 1}. {book.bookTitle}
+                          <p style={{ fontSize: '1rem', fontWeight: '700', color: isReturned ? 'rgba(255,255,255,0.5)' : '#fff', margin: '0 0 0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                            <span>{idx + 1}. {book.bookTitle}</span>
+                            {selectedDetailRecord?.status === 'APPROVED_PENDING_PICKUP' ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <input 
+                                    type="text"
+                                    value={assigningCopyIds[book.uid] || ""}
+                                    onChange={(e) => {
+                                      const val = e.target.value.toUpperCase();
+                                      setAssigningCopyIds({ ...assigningCopyIds, [book.uid]: val });
+                                      // Trigger validation after 500ms
+                                      if (window[`timer_${book.uid}`]) clearTimeout(window[`timer_${book.uid}`]);
+                                      window[`timer_${book.uid}`] = setTimeout(() => validateCopyId(book.uid, book.bookId, val), 600);
+                                    }}
+                                    onBlur={(e) => validateCopyId(book.uid, book.bookId, e.target.value)}
+                                    placeholder="Nhập mã gáy sách..."
+                                    style={{
+                                      background: 'rgba(187,134,252,0.05)',
+                                      border: '1px solid ' + (
+                                        validationStatuses[book.uid]?.status === 'valid' ? '#27c93f' : 
+                                        validationStatuses[book.uid]?.status === 'invalid' ? '#ff5f56' : 
+                                        'rgba(255,176,32,0.5)'
+                                      ),
+                                      color: validationStatuses[book.uid]?.status === 'valid' ? '#27c93f' : '#bb86fc',
+                                      padding: '0.3rem 0.7rem',
+                                      borderRadius: '8px',
+                                      fontSize: '0.85rem',
+                                      fontWeight: '900',
+                                      fontFamily: 'monospace',
+                                      width: '160px',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                  <span style={{ fontSize: '1.1rem' }}>
+                                    {validationStatuses[book.uid]?.status === 'loading' && "⏳"}
+                                    {validationStatuses[book.uid]?.status === 'valid' && "✅"}
+                                    {validationStatuses[book.uid]?.status === 'invalid' && "❌"}
+                                  </span>
+                                </div>
+                                {validationStatuses[book.uid]?.message && (
+                                  <div style={{ 
+                                    fontSize: '0.65rem', 
+                                    color: validationStatuses[book.uid]?.status === 'valid' ? '#27c93f' : '#ff5f56',
+                                    fontWeight: '600'
+                                  }}>
+                                    {validationStatuses[book.uid]?.message}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              book.copyId && book.copyId !== "N/A" ? (
+                                <span style={{ 
+                                  fontSize: '0.85rem', 
+                                  color: '#bb86fc', 
+                                  fontWeight: '900',
+                                  background: 'rgba(187,134,252,0.15)',
+                                  padding: '0.2rem 0.6rem',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(187,134,252,0.3)',
+                                  fontFamily: 'monospace',
+                                  letterSpacing: '0.5px'
+                                }}>
+                                  #{book.copyId}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.75rem', color: '#ffb020', background: 'rgba(255,176,32,0.1)', padding: '0.2rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(255,176,32,0.2)' }}>
+                                  ⚠️ Chờ gán mã
+                                </span>
+                              )
+                            )}
                           </p>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                             <span style={{ 
@@ -1390,11 +1607,16 @@ const handleOpenDetail = (record) => {
               {selectedDetailRecord?.status === 'APPROVED_PENDING_PICKUP' && (
                 <button
                   onClick={() => {
-                    handleConfirmPickup(selectedDetailRecord.id);
+                    handleConfirmPickup(selectedDetailRecord.id, assigningCopyIds);
                     setIsDetailModalOpen(false);
                   }}
                   className="btn-primary"
-                  style={{ padding: '0.7rem 1.5rem' }}
+                  disabled={Object.values(validationStatuses).some(v => v.status !== 'valid')}
+                  style={{ 
+                    padding: '0.7rem 1.5rem',
+                    opacity: Object.values(validationStatuses).some(v => v.status !== 'valid') ? 0.5 : 1,
+                    cursor: Object.values(validationStatuses).some(v => v.status !== 'valid') ? 'not-allowed' : 'pointer'
+                  }}
                 >
                   Xác nhận lấy tất cả sách
                 </button>
@@ -1480,8 +1702,11 @@ const handleOpenDetail = (record) => {
               {/* THÔNG TIN SÁCH */}
               <div style={{ marginBottom: '1.5rem', background: 'rgba(187,134,252,0.05)', padding: '1rem', borderRadius: '12px', borderLeft: '4px solid #bb86fc' }}>
                 <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem' }}>Cuốn sách đang chọn:</p>
-                <p style={{ fontSize: '1.1rem', fontWeight: '700', color: '#bb86fc', margin: 0 }}>
+                <p style={{ fontSize: '1.1rem', fontWeight: '700', color: '#bb86fc', margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   {selectedReturnRecord?.book?.bookTitle || selectedReturnRecord?.bookTitle}
+                  <span style={{ fontSize: '0.85rem', background: '#bb86fc', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '4px' }}>
+                    {selectedReturnRecord?.book?.copyId || 'N/A'}
+                  </span>
                 </p>
                 
                 {selectedReturnRecord?.record?.books && selectedReturnRecord.record.books.length > 1 && (
@@ -1500,18 +1725,53 @@ const handleOpenDetail = (record) => {
                 )}
               </div>
 
-              {/* TÌNH TRẠNG & GHI CHÚ */}
+              {/* TÌNH TRẠNG VẬT LÝ - NEW */}
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ block: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Ghi chú tình trạng (Nếu có)</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.8rem', fontWeight: '700' }}>Tình trạng sách khi trả:</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.6rem' }}>
+                  {[
+                    { val: 'EXCELLENT', label: '🌟 Hoàn hảo', color: '#27c93f' },
+                    { val: 'GOOD', label: '✨ Tốt', color: '#4caf50' },
+                    { val: 'FAIR', label: '📚 Trung bình', color: '#ffb020' },
+                    { val: 'POOR', label: '📉 Kém', color: '#ff5f56' },
+                    { val: 'DAMAGED', label: '❌ Hỏng nặng', color: '#ff3131' }
+                  ].map(c => (
+                    <button
+                      key={c.val}
+                      onClick={() => {
+                        setBookCondition(c.val);
+                        if (c.val === 'DAMAGED' && damageFee === 0) setDamageFee(50000); 
+                      }}
+                      style={{
+                        padding: '0.6rem 0.4rem',
+                        borderRadius: '8px',
+                        background: bookCondition === c.val ? `${c.color}20` : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${bookCondition === c.val ? c.color : 'rgba(255,255,255,0.1)'}`,
+                        color: bookCondition === c.val ? c.color : 'rgba(255,255,255,0.6)',
+                        fontSize: '0.75rem',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* GHI CHÚ & CHI PHÍ */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Ghi chú tình trạng (Nếu có)</label>
                 <textarea
                   placeholder="Ví dụ: Sách còn mới, rách trang 20, mất bìa..."
-                  value={returnNote}
-                  onChange={(e) => setReturnNote(e.target.value)}
+                  value={conditionNote}
+                  onChange={(e) => setConditionNote(e.target.value)}
                   style={{
                     width: '100%', padding: '0.8rem', borderRadius: '10px',
                     background: 'rgba(255,255,255,0.06)', 
-                    border: (isDamaged || isLost) && (!returnNote || !returnNote.trim()) ? '1px solid rgba(255,95,86,0.6)' : '1px solid rgba(255,255,255,0.1)', 
-                    color: '#fff', fontSize: '0.95rem', outline: 'none', minHeight: '80px', resize: 'vertical'
+                    border: '1px solid rgba(255,255,255,0.1)', 
+                    color: '#fff', fontSize: '0.95rem', outline: 'none', minHeight: '60px', resize: 'vertical'
                   }}
                 />
               </div>
