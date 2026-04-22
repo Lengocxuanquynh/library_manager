@@ -383,8 +383,12 @@ export const getBorrowRecords = async (userId = null) => {
 
     // If active and past due date, mark as OVERDUE
     const isActive = (currentStatus === 'BORROWING' || currentStatus === 'Active' || currentStatus === 'PARTIALLY_RETURNED');
-    if (isActive && dueDate && dueDate < now) {
-      currentStatus = 'OVERDUE';
+    if (isActive && dueDate) {
+      const endOfDueDate = new Date(dueDate);
+      endOfDueDate.setHours(23, 59, 59, 999);
+      if (now > endOfDueDate) {
+        currentStatus = 'OVERDUE';
+      }
     }
 
     return { ...record, books, status: currentStatus };
@@ -591,16 +595,18 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", pen
 
   // CẬP NHẬT KHO SÁCH ĐỒNG BỘ
   const bookRef = doc(db, "books", bookItem.bookId);
-  if (!isLost && !isDamaged) {
-    // Sách bình thường -> Trả về kho
+  if (!isLost) {
+    // Nếu không phải bị mất (tức là có trả lại xác sách hỏng hoặc bình thường)
+    // Thì tăng lại quantity vì sách đã về thư viện
     await updateDoc(bookRef, { quantity: increment(1) });
-  } else {
-    // Sách hỏng hoặc mất -> Không trả về kho, tăng biến đếm tương ứng
+    
     if (isDamaged) {
+      // Nếu hỏng thì tăng thêm biến đếm hỏng để loại khỏi SL khả dụng
       await updateDoc(bookRef, { damagedCount: increment(1) });
-    } else if (isLost) {
-      await updateDoc(bookRef, { lostCount: increment(1) });
     }
+  } else {
+    // Sách bị mất hoàn toàn -> Không trả về kho, chỉ tăng biến đếm mất
+    await updateDoc(bookRef, { lostCount: increment(1) });
   }
 
   return { success: true, allReturned };
@@ -705,8 +711,10 @@ export const canUserRenew = async (userId, recordId) => {
   // 2. Kiểm tra sách đã bị quá hạn chưa (Chỉ được gia hạn khi chưa trễ)
   if (recordSnap.exists()) {
     const data = recordSnap.data();
-    const dueDate = data.dueDate?.toDate ? data.dueDate.toDate() : new Date(data.dueDate);
-    if (dueDate < new Date()) {
+    const rawDueDate = data.dueDate?.toDate ? data.dueDate.toDate() : new Date(data.dueDate);
+    const endOfDueDate = new Date(rawDueDate);
+    endOfDueDate.setHours(23, 59, 59, 999);
+    if (new Date() > endOfDueDate) {
       return { canRenew: false, reason: "Sách đã quá hạn trả, không được phép gia hạn thêm. Vui lòng mang trả ngay." };
     }
   }

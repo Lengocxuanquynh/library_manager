@@ -111,7 +111,7 @@ export default function ManageLoans() {
         const dueDate = toJsDate(rec.dueDate);
         const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'PARTIALLY_RETURNED' || rec.status === 'OVERDUE';
         const isLost = rec.status === 'LOST_LOCKED';
-        const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < now);
+        const isOverdue = rec.status === 'OVERDUE';
         
         if (isLost) return; // Không đếm vào hàng đợi đang xử lý
         if (isOverdue) oCount++;
@@ -1098,7 +1098,7 @@ const handleOpenDetail = (record) => {
                   {getFilteredData(records, 'record').filter(rec => {
                     const dueDate = toJsDate(rec.dueDate);
                     const isActive = rec.status === 'Active' || rec.status === 'BORROWING' || rec.status === 'PARTIALLY_RETURNED' || rec.status === 'OVERDUE';
-                    const isOverdue = rec.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
+                    const isOverdue = rec.status === 'OVERDUE';
 
                     // 1. Filter by Status
                     let statusMatch = true;
@@ -1123,7 +1123,7 @@ const handleOpenDetail = (record) => {
                       const dueDate = toJsDate(rec.dueDate);
                       const status = rec.status;
                       const isActive = status === 'Active' || status === 'BORROWING' || status === 'PARTIALLY_RETURNED' || status === 'OVERDUE';
-                      const isOverdue = status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
+                      const isOverdue = status === 'OVERDUE';
 
                       // 1. Filter by Status
                       let statusMatch = true;
@@ -1149,7 +1149,7 @@ const handleOpenDetail = (record) => {
                       const dueDate = toJsDate(rec.dueDate);
                       const status = rec.status;
                       const isActive = status === 'Active' || status === 'BORROWING' || status === 'PARTIALLY_RETURNED' || status === 'OVERDUE';
-                      const isOverdue = status === 'OVERDUE' || (isActive && dueDate && dueDate < new Date());
+                      const isOverdue = status === 'OVERDUE';
                       const isFinished = status === 'RETURNED' || status === 'RETURNED_OVERDUE' || status === 'CANCELLED_EXPIRED';
                       
                       const books = rec.books || [];

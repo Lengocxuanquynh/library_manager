@@ -222,7 +222,7 @@ export default function UserDashboard() {
 
       {activeDashboardTab === "borrow" ? (
         <>
-          {transactions.some(tx => (tx.status === 'BORROWING' || tx.status === 'OVERDUE' || tx.status === 'PARTIALLY_RETURNED') && (tx.dueDate?.toDate ? tx.dueDate.toDate() : new Date(tx.dueDate)) < new Date()) && (
+          {transactions.some(tx => tx.status === 'OVERDUE') && (
             <div style={{
               background: 'rgba(255, 95, 86, 0.1)',
               border: '1px solid rgba(255, 95, 86, 0.3)',
