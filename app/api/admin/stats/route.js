@@ -19,9 +19,19 @@ export async function GET() {
     // 2. Base Counts
     const totalBooks = booksSnap.size;
     const totalMembers = membersSnap.size;
+    const totalInventoryQuantity = booksSnap.docs.reduce((acc, doc) => {
+      const b = doc.data();
+      return acc + (Number.parseInt(b?.quantity, 10) || 0);
+    }, 0);
+    const totalDamagedInventoryQuantity = booksSnap.docs.reduce((acc, doc) => {
+      const b = doc.data();
+      return acc + (Number.parseInt(b?.damagedCount, 10) || 0);
+    }, 0);
 
     // 3. Centralized Aggregation (Multi-book aware)
     let activeBorrowsCount = 0;
+    let activeBorrowedBooksForDashboard = 0; // BORROWING/ACTIVE/OVERDUE only (matches dashboard)
+    let overdueBooksForDashboard = 0; // Active + dueDate < now OR status OVERDUE
     let totalRevenue = 0;
     let lostBooksCount = 0;
     let damagedBooksCount = 0;
@@ -50,6 +60,7 @@ export async function GET() {
       const uid = record.userId || 'unknown';
       const userName = record.userName || 'Ẩn danh';
       const userPhone = record.borrowerPhone || 'N/A';
+      const dueDate = record.dueDate?.toDate ? record.dueDate.toDate() : (record.dueDate ? new Date(record.dueDate) : null);
 
       // Fallback for legacy flat records (pre-multi-book system)
       if (books.length === 0 && record.bookId) {
@@ -78,6 +89,7 @@ export async function GET() {
 
         const s = (book.status || '').toUpperCase();
         const isActive = (s === 'BORROWING' || s === 'OVERDUE' || s === 'APPROVED_PENDING_PICKUP' || s === 'ACTIVE' || s === 'PARTIALLY_PICKED_UP');
+        const isActiveForDashboard = (s === 'BORROWING' || s === 'OVERDUE' || s === 'ACTIVE');
         const isReturned = (s === 'RETURNED' || s === 'RETURNED_OVERDUE');
         const pAmount = Number(book.penaltyAmount) || 0;
 
@@ -93,6 +105,15 @@ export async function GET() {
               status: s
             });
           }
+        }
+
+        // 1.1 Dashboard-aligned active/overdue (multi-book aware)
+        if (isActiveForDashboard) {
+          activeBorrowedBooksForDashboard++;
+        }
+        const isOverdueForDashboard = (s === 'OVERDUE') || (isActiveForDashboard && dueDate && dueDate < nowServer);
+        if (isOverdueForDashboard) {
+          overdueBooksForDashboard++;
         }
         
         // 1.5. Lost & Damaged stats
@@ -139,7 +160,6 @@ export async function GET() {
         }
 
         // 3. Late Returners (History + Current)
-        const dueDate = record.dueDate?.toDate ? record.dueDate.toDate() : (record.dueDate ? new Date(record.dueDate) : null);
         const isCurrentlyLate = isActive && dueDate && dueDate < nowServer;
         const isHistoryLate = (s === 'RETURNED_OVERDUE');
 
@@ -190,7 +210,14 @@ export async function GET() {
           activeBorrows: activeBorrowsCount,
           totalRevenue,
           lostBooks: lostBooksCount,
-          damagedBooks: damagedBooksCount
+          damagedBooks: damagedBooksCount,
+
+          // Dashboard-aligned summary (kept here so dashboard + stats are consistent)
+          totalInventoryQuantity,
+          totalDamagedInventoryQuantity,
+          activeBorrowedBooksForDashboard,
+          overdueBooksForDashboard,
+          totalLibraryBooksForDashboard: totalInventoryQuantity + activeBorrowedBooksForDashboard
         },
         lostBooksList,
         damagedBooksList,

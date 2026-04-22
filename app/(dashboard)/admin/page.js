@@ -51,49 +51,40 @@ export default function AdminDashboard() {
       if (!user?.uid) return;
       
       try {
-        const [booksRes, membersRes, recordsRes] = await Promise.all([
+        const [booksRes, membersRes, recordsRes, statsRes] = await Promise.all([
           fetch('/api/books'),
           fetch('/api/members'),
-          fetch(`/api/admin/borrow-records?adminId=${user.uid}`)
+          fetch(`/api/admin/borrow-records?adminId=${user.uid}`),
+          fetch('/api/admin/stats')
         ]);
 
-        if (!booksRes.ok || !membersRes.ok || !recordsRes.ok) {
+        if (!booksRes.ok || !membersRes.ok || !recordsRes.ok || !statsRes.ok) {
            throw new Error("Một hoặc nhiều yêu cầu dữ liệu thất bại");
         }
 
-        const [books, members, recordsRaw] = await Promise.all([
+        const [books, members, recordsRaw, statsJson] = await Promise.all([
           booksRes.json().catch(() => ({ error: 'Invalid JSON' })),
           membersRes.json().catch(() => ({ error: 'Invalid JSON' })),
-          recordsRes.json().catch(() => ({ error: 'Invalid JSON' }))
+          recordsRes.json().catch(() => ({ error: 'Invalid JSON' })),
+          statsRes.json().catch(() => ({ error: 'Invalid JSON' }))
         ]);
         
         const records = Array.isArray(recordsRaw) ? recordsRaw : [];
         const booksArray = Array.isArray(books) ? books : [];
 
-        // Calculate specific stats
-        const borrowing = records.filter(r => r.status === 'BORROWING' || r.status === 'Active' || r.status === 'OVERDUE');
-        const overdue = records.filter(r => {
-          let dueDate = null;
-          if (r.dueDate?._seconds) dueDate = new Date(r.dueDate._seconds * 1000);
-          else if (r.dueDate?.seconds || r.dueDate?.seconds === 0) dueDate = new Date(r.dueDate.seconds * 1000);
-          else if (r.dueDate) dueDate = new Date(r.dueDate);
-          
-          const isActive = r.status === 'Active' || r.status === 'BORROWING' || r.status === 'OVERDUE';
-          return r.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
-        });
-
-        // Unique readers count
-        const activeBorrowerIds = new Set(borrowing.map(r => r.userId).filter(Boolean));
-
-        const inventoryCount = booksArray.reduce((acc, b) => acc + (parseInt(b.quantity) || 0), 0);
-        const damagedCountTotal = booksArray.reduce((acc, b) => acc + (parseInt(b.damagedCount) || 0), 0);
+        const summary = statsJson?.success ? (statsJson?.data?.summary || {}) : {};
+        const inventoryCount = Number(summary.totalInventoryQuantity ?? booksArray.reduce((acc, b) => acc + (parseInt(b.quantity) || 0), 0)) || 0;
+        const damagedCountTotal = Number(summary.totalDamagedInventoryQuantity ?? booksArray.reduce((acc, b) => acc + (parseInt(b.damagedCount) || 0), 0)) || 0;
+        const borrowingCountFromStats = Number(summary.activeBorrowedBooksForDashboard ?? 0) || 0;
+        const overdueCountFromStats = Number(summary.overdueBooksForDashboard ?? 0) || 0;
+        const totalLibraryBooksFromStats = Number(summary.totalLibraryBooksForDashboard ?? (inventoryCount + borrowingCountFromStats)) || 0;
 
         setStats({
           totalInventory: inventoryCount,
           activeMembers: Array.isArray(members) ? members.length : 0,
-          borrowingCount: borrowing.length,
-          overdueCount: overdue.length,
-          totalLibraryBooks: inventoryCount + borrowing.length,
+          borrowingCount: borrowingCountFromStats,
+          overdueCount: overdueCountFromStats,
+          totalLibraryBooks: totalLibraryBooksFromStats,
           totalDamaged: damagedCountTotal
         });
 
@@ -117,29 +108,9 @@ export default function AdminDashboard() {
     }
   }, [user]);
 
-  // DYNAMIC CALCULATIONS (Computed values that react to currentTime)
-  const borrowingRecords = data.allRecords.filter(r => r.status === 'BORROWING' || r.status === 'Active' || r.status === 'OVERDUE');
-  const overdueRecords = data.allRecords.filter(r => {
-    let dueDate = null;
-    if (r.dueDate?._seconds) dueDate = new Date(r.dueDate._seconds * 1000);
-    else if (r.dueDate?.seconds || r.dueDate?.seconds === 0) dueDate = new Date(r.dueDate.seconds * 1000);
-    else if (r.dueDate) dueDate = new Date(r.dueDate);
-    
-    const isActive = r.status === 'Active' || r.status === 'BORROWING' || r.status === 'OVERDUE';
-    return r.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
-  });
-
-  // Đếm tổng số cuốn sách thực tế trong các phiếu đang mượn/quá hạn
-  const totalBooksBorrowing = borrowingRecords.reduce((acc, r) => acc + (Array.isArray(r.books) ? r.books.length : 1), 0);
-  const totalBooksOverdue = overdueRecords.reduce((acc, r) => acc + (Array.isArray(r.books) ? r.books.filter(b => {
-      // Chỉ đếm những cuốn chưa trả trong phiếu quá hạn
-      const status = b.status || r.status;
-      return !['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(status);
-  }).length : 1), 0);
-
-  const borrowingCount = totalBooksBorrowing;
-  const overdueCount = totalBooksOverdue;
-  const totalLibraryBooks = stats.totalInventory + borrowingCount;
+  const borrowingCount = stats.borrowingCount;
+  const overdueCount = stats.overdueCount;
+  const totalLibraryBooks = stats.totalLibraryBooks;
 
   return (
     <div>
