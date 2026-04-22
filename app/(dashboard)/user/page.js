@@ -674,8 +674,12 @@ export default function UserDashboard() {
       <UserTour 
         isOpen={user?.isNewUser || manualTour}
         onComplete={() => {
-          completeUserTour(user.uid);
           setManualTour(false);
+          // Nếu đang là tour tự động cho user mới, chuyển hướng sang trang sách để tiếp tục
+          if (user?.isNewUser) {
+            localStorage.setItem('tour_ongoing', 'true');
+            router.push('/user/books');
+          }
         }}
         steps={[
           {

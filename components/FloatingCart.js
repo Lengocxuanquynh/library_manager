@@ -224,6 +224,7 @@ export default function FloatingCart() {
     <>
       {/* Floating Button */}
       <div 
+        id="tour-cart-btn"
         onClick={() => setIsDrawerOpen(true)}
         style={{
           position: "fixed",
