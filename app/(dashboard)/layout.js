@@ -77,6 +77,16 @@ export default function DashboardLayout({ children }) {
           >
             ← Về Trang Chủ
           </Link>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('start-user-tour'));
+              setIsMobileOpen(false);
+            }} 
+            className={styles.navItem}
+            style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', border: '1px dashed rgba(187, 134, 252, 0.3)', marginBottom: '0.5rem', width: '100%', textAlign: 'center' }}
+          >
+            Hướng dẫn ❓
+          </button>
           <button onClick={handleLogout} className={styles.logoutBtn}>Đăng Xuất</button>
         </div>
       </aside>

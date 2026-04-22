@@ -22,6 +22,7 @@ export default function UserDashboard() {
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [selectedRenewBook, setSelectedRenewBook] = useState(null);
   const [config, setConfig] = useState({ excludeSundays: true, holidays: [] });
+  const [manualTour, setManualTour] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -145,6 +146,11 @@ export default function UserDashboard() {
     if (user?.uid) {
       loadRecords();
     }
+
+    // Lắng nghe sự kiện bắt đầu Tour từ Sidebar
+    const handleStartTour = () => setManualTour(true);
+    window.addEventListener('start-user-tour', handleStartTour);
+    return () => window.removeEventListener('start-user-tour', handleStartTour);
   }, [user]);
 
   return (
@@ -666,8 +672,11 @@ export default function UserDashboard() {
 
       {/* INTERACTIVE TOUR */}
       <UserTour 
-        isOpen={user?.isNewUser}
-        onComplete={() => completeUserTour(user.uid)}
+        isOpen={user?.isNewUser || manualTour}
+        onComplete={() => {
+          completeUserTour(user.uid);
+          setManualTour(false);
+        }}
         steps={[
           {
             targetId: 'tour-welcome',
