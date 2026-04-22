@@ -65,7 +65,13 @@ export default function AdminDashboard() {
         });
 
         // Sách mới nhập (last 5)
-        const sortedBooks = Array.isArray(books) ? [...books].sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)) : [];
+        const getMillis = (ts) => {
+          if (!ts) return 0;
+          if (ts._seconds) return ts._seconds * 1000;
+          if (ts.seconds !== undefined) return ts.seconds * 1000;
+          return new Date(ts).getTime() || 0;
+        };
+        const sortedBooks = Array.isArray(books) ? [...books].sort((a,b) => getMillis(b.createdAt) - getMillis(a.createdAt)) : [];
 
         setData({
           recentRecords: records.slice(0, 5),

@@ -76,13 +76,12 @@ export default function BookList() {
     return <div className={styles.booksContainer}><p>Đang tải danh sách sách...</p></div>;
   }
 
-  // Merge formal categories with existing book categories for backup
-  const bookCategories = [...new Set(books.map(b => b.category || "Khác").filter(Boolean))];
-  const managedNames = formalCategories.map(c => c.name);
+  // Merge formal categories with existing book categories for backup and ensure uniqueness
+  const bookCategories = books.map(b => b.category || "Khác").filter(Boolean);
+  const managedNames = formalCategories.map(c => c.name).filter(Boolean);
   const categories = [
     "Tất cả", 
-    ...managedNames,
-    ...bookCategories.filter(name => !managedNames.includes(name))
+    ...new Set([...managedNames, ...bookCategories])
   ];
 
 
