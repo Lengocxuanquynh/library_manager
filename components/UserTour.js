@@ -33,8 +33,23 @@ export default function UserTour({ steps, onComplete, isOpen }) {
       };
 
       updateSpotlight();
+      
+      // Kiểm tra lại nhiều lần để bắt kịp modal/animation
+      const timers = [
+        setTimeout(updateSpotlight, 100),
+        setTimeout(updateSpotlight, 300),
+        setTimeout(updateSpotlight, 600),
+        setTimeout(updateSpotlight, 1000)
+      ];
+
       window.addEventListener('resize', updateSpotlight);
-      return () => window.removeEventListener('resize', updateSpotlight);
+      window.addEventListener('scroll', updateSpotlight);
+
+      return () => {
+        timers.forEach(clearTimeout);
+        window.removeEventListener('resize', updateSpotlight);
+        window.removeEventListener('scroll', updateSpotlight);
+      };
     }
   }, [currentStep, isOpen, steps]);
 
@@ -44,6 +59,10 @@ export default function UserTour({ steps, onComplete, isOpen }) {
   const isLastStep = currentStep === steps.length - 1;
 
   const handleNext = () => {
+    if (step.action) {
+      step.action();
+    }
+    
     if (isLastStep) {
       onComplete();
     } else {
@@ -90,13 +109,13 @@ export default function UserTour({ steps, onComplete, isOpen }) {
         <p style={styles.description}>{step.description}</p>
         
         <div style={styles.actions}>
-          <button onClick={onComplete} style={styles.skipBtn}>Bỏ qua</button>
+          <div style={{ flex: 1 }} />
           <div style={{ display: 'flex', gap: '8px' }}>
             {currentStep > 0 && (
               <button onClick={handlePrev} style={styles.prevBtn}>Quay lại</button>
             )}
             <button onClick={handleNext} style={styles.nextBtn}>
-              {isLastStep ? 'Hoàn tất 🎉' : 'Tiếp theo →'}
+              {isLastStep ? (step.finishText || 'Hoàn tất 🎉') : 'Tiếp theo →'}
             </button>
           </div>
         </div>
@@ -138,7 +157,7 @@ const styles = {
     position: 'fixed',
     inset: 0,
     zIndex: 99999,
-    pointerEvents: 'auto',
+    pointerEvents: 'none',
   },
   spotlightOverlay: {
     position: 'absolute',
@@ -163,6 +182,7 @@ const styles = {
     border: '1px solid rgba(255,255,255,0.1)',
     boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
     zIndex: 100000,
+    pointerEvents: 'auto',
     transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
   },
   centerPosition: {
