@@ -40,6 +40,10 @@ export default function ManageLoans() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedDetailRecord, setSelectedDetailRecord] = useState(null);
 
+  // Request Detail Modal states (borrowRequests - tab "Chờ Duyệt")
+  const [isRequestDetailModalOpen, setIsRequestDetailModalOpen] = useState(false);
+  const [selectedRequestDetail, setSelectedRequestDetail] = useState(null);
+
   // Return Book Modal states
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [selectedReturnRecord, setSelectedReturnRecord] = useState(null); // { record, book }
@@ -221,6 +225,12 @@ export default function ManageLoans() {
 const handleOpenDetail = (record) => {
     setSelectedDetailRecord(record);
     setIsDetailModalOpen(true);
+  };
+
+  const handleOpenRequestDetail = (req) => {
+    if (!req) return;
+    setSelectedRequestDetail(req);
+    setIsRequestDetailModalOpen(true);
   };
 
   const handleReturnClick = async (record, book) => {
@@ -948,7 +958,11 @@ const handleOpenDetail = (record) => {
                             {req.userPhone || 'Không có SĐT'}
                           </div>
                         </td>
-                        <td style={{ padding: '0.8rem 1rem' }}>
+                        <td
+                          style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}
+                          onClick={() => handleOpenRequestDetail(req)}
+                          title="Bấm để xem chi tiết (có ID sách)"
+                        >
                           <div style={{ fontSize: '0.9rem', color: '#fff' }}>{req.books?.length || 1} cuốn sách</div>
                           <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '250px' }}>
                             {req.books ? req.books.map(b => b.bookTitle).join(', ') : req.bookTitle}
@@ -1236,6 +1250,220 @@ const handleOpenDetail = (record) => {
           </>
         )}
       </div>
+
+      {/* REQUEST DETAIL MODAL (TAB: CHỜ DUYỆT) */}
+      {isRequestDetailModalOpen && selectedRequestDetail && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: 'rgba(0,0,0,0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 998,
+            backdropFilter: 'blur(8px)'
+          }}
+          onClick={() => setIsRequestDetailModalOpen(false)}
+        >
+          <div
+            style={{
+              background: '#1a1a1a',
+              width: '92%',
+              maxWidth: '720px',
+              maxHeight: '85vh',
+              borderRadius: '24px',
+              border: '1px solid rgba(255,255,255,0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: '0 30px 60px rgba(0,0,0,0.6)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '1.5rem 2rem',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'rgba(255,255,255,0.02)'
+              }}
+            >
+              <div>
+                <h2 style={{ fontSize: '1.35rem', fontWeight: '800', color: '#fff', margin: 0 }}>
+                  Chi Tiết Yêu Cầu Mượn
+                </h2>
+                <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>
+                  Mã yêu cầu: {selectedRequestDetail.id}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsRequestDetailModalOpen(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: 'none',
+                  color: '#fff',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '1.8rem 2rem', overflowY: 'auto', flex: 1 }}>
+              <div
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  padding: '1.2rem',
+                  borderRadius: '16px',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  marginBottom: '1.5rem'
+                }}
+              >
+                <h4
+                  style={{
+                    margin: '0 0 0.8rem 0',
+                    color: '#ff9800',
+                    fontSize: '0.85rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em'
+                  }}
+                >
+                  Thông tin hội viên
+                </h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: '800', color: '#fff' }}>
+                      {selectedRequestDetail.userName || '—'}
+                    </div>
+                    <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)' }}>
+                      📞 {selectedRequestDetail.userPhone || 'Trống'}
+                    </div>
+                    <div style={{ marginTop: '0.15rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)' }}>
+                      ✉️ {selectedRequestDetail.userEmail || 'Trống'}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>Thời điểm gửi</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: '#fff' }}>
+                      {formatDate(selectedRequestDetail.createdAt, true)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#fff', marginBottom: '0.9rem' }}>
+                Danh sách sách yêu cầu ({selectedRequestDetail.books?.length || 1})
+              </h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                {(Array.isArray(selectedRequestDetail.books) && selectedRequestDetail.books.length > 0
+                  ? selectedRequestDetail.books
+                  : [{ bookId: selectedRequestDetail.bookId, bookTitle: selectedRequestDetail.bookTitle }]
+                ).map((b, idx) => (
+                  <div
+                    key={(b?.bookId || 'noid') + '-' + idx}
+                    style={{
+                      background: 'rgba(255,255,255,0.02)',
+                      padding: '1rem 1.2rem',
+                      borderRadius: '14px',
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '1rem'
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: '800', color: '#fff', marginBottom: '0.25rem' }}>
+                        {idx + 1}. {b?.bookTitle || 'Không rõ tên sách'}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>
+                        ID sách: <span style={{ color: '#bb86fc', fontWeight: '800' }}>{b?.bookId || '—'}</span>
+                      </div>
+                    </div>
+                    {b?.bookId && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(String(b.bookId));
+                            toast.success("Đã copy ID sách");
+                          } catch {
+                            toast.error("Không thể copy ID sách");
+                          }
+                        }}
+                        style={{
+                          background: 'rgba(187,134,252,0.12)',
+                          color: '#bb86fc',
+                          border: '1px solid rgba(187,134,252,0.25)',
+                          padding: '0.5rem 0.9rem',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          fontWeight: '800',
+                          fontSize: '0.8rem',
+                          whiteSpace: 'nowrap'
+                        }}
+                        title="Copy ID sách"
+                      >
+                        Copy ID
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '1.2rem 2rem',
+                borderTop: '1px solid rgba(255,255,255,0.05)',
+                background: 'rgba(255,255,255,0.02)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.8rem'
+              }}
+            >
+              <button
+                onClick={() => {
+                  setIsRequestDetailModalOpen(false);
+                  handleApprove(selectedRequestDetail);
+                }}
+                style={{
+                  background: 'rgba(39, 201, 63, 0.12)',
+                  color: '#27c93f',
+                  border: '1px solid rgba(39, 201, 63, 0.25)',
+                  padding: '0.7rem 1.3rem',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '800'
+                }}
+              >
+                Duyệt
+              </button>
+              <button
+                onClick={() => setIsRequestDetailModalOpen(false)}
+                className="btn-outline"
+                style={{ padding: '0.7rem 1.3rem' }}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 {/* DETAIL MODAL */}
       {isDetailModalOpen && selectedDetailRecord && (
         <div style={{
@@ -1316,6 +1544,36 @@ const handleOpenDetail = (record) => {
                           <p style={{ fontSize: '1rem', fontWeight: '700', color: isReturned ? 'rgba(255,255,255,0.5)' : '#fff', margin: '0 0 0.3rem 0' }}>
                             {idx + 1}. {book.bookTitle}
                           </p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
+                              ID sách: <span style={{ color: '#bb86fc', fontWeight: '800' }}>{book.bookId || '—'}</span>
+                            </span>
+                            {book.bookId && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(String(book.bookId));
+                                    toast.success("Đã copy ID sách");
+                                  } catch {
+                                    toast.error("Không thể copy ID sách");
+                                  }
+                                }}
+                                style={{
+                                  background: 'rgba(255,255,255,0.04)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  color: 'rgba(255,255,255,0.7)',
+                                  padding: '0.25rem 0.55rem',
+                                  borderRadius: '8px',
+                                  cursor: 'pointer',
+                                  fontSize: '0.72rem',
+                                  fontWeight: '800'
+                                }}
+                                title="Copy ID sách"
+                              >
+                                Copy
+                              </button>
+                            )}
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                             <span style={{ 
                               fontSize: '0.7rem', 
