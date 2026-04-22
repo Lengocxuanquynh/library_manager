@@ -38,11 +38,24 @@ export async function POST(req) {
         throw new Error("Không tìm thấy đầu sách trong kho");
       }
 
-      const currentQuantity = bookDoc.data().quantity || 0;
+      const bookData = bookDoc.data();
+      const currentQuantity = bookData.quantity || 0;
+      const currentDamaged = bookData.damagedCount || 0;
+      const currentLost = bookData.lostCount || 0;
+
+      // Find the specific book in the record to know its status
+      const targetBookInRecord = (recordData.books || []).find(b => b.uid === bookUid);
+      const isDamaged = targetBookInRecord?.status === 'Damaged';
+      const isLost = targetBookInRecord?.status === 'Lost';
 
       // 3. Thực hiện cập nhật
       transaction.update(recordRef, { books: updatedBooks });
-      transaction.update(bookRef, { quantity: currentQuantity + 1 });
+      
+      const bookUpdates = { quantity: currentQuantity + 1 };
+      if (isDamaged && currentDamaged > 0) bookUpdates.damagedCount = currentDamaged - 1;
+      if (isLost && currentLost > 0) bookUpdates.lostCount = currentLost - 1;
+      
+      transaction.update(bookRef, bookUpdates);
     });
 
     console.log(`>>> [SERVER] Restored book ${bookId} (UID: ${bookUid}) from record ${recordId}`);

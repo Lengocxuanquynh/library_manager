@@ -16,11 +16,22 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { toTitleCase } from "../lib/utils";
+import { calculateSmartDueDate } from "../lib/penalty-utils";
 
 // Helper for getting collection data
 const getCollectionData = async (colRef) => {
   const snapshot = await getDocs(colRef);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+const getLibraryConfig = async () => {
+  try {
+    const configSnap = await getDoc(doc(db, 'library_config', 'settings'));
+    if (configSnap.exists()) return configSnap.data();
+    return { excludeSundays: true, holidays: [] };
+  } catch (error) {
+    return { excludeSundays: true, holidays: [] };
+  }
 };
 
 /**
@@ -173,6 +184,46 @@ export const updateMember = async (id, data) => {
 export const deleteMember = async (id) => {
   const docRef = doc(db, "members", id);
   return await deleteDoc(docRef);
+};
+
+/**
+ * Checks if email or phone already exists in 'users' or 'members'
+ * Useful for preventing duplicate registrations/additions.
+ */
+export const checkMemberDuplicate = async (email, phone, excludeId = null) => {
+  // 1. Check in 'users' collection
+  const userEmailQuery = query(collection(db, "users"), where("email", "==", email));
+  const userPhoneQuery = phone ? query(collection(db, "users"), where("phone", "==", phone)) : null;
+  
+  const [uEmailSnap, uPhoneSnap] = await Promise.all([
+    getDocs(userEmailQuery),
+    userPhoneQuery ? getDocs(userPhoneQuery) : Promise.resolve({ empty: true })
+  ]);
+
+  if (!uEmailSnap.empty) {
+    if (!excludeId || uEmailSnap.docs.some(d => d.id !== excludeId)) return { exists: true, field: 'Email', source: 'tài khoản hệ thống' };
+  }
+  if (!uPhoneSnap.empty) {
+    if (!excludeId || uPhoneSnap.docs.some(d => d.id !== excludeId)) return { exists: true, field: 'Số điện thoại', source: 'tài khoản hệ thống' };
+  }
+
+  // 2. Check in 'members' collection
+  const memEmailQuery = query(collection(db, "members"), where("email", "==", email));
+  const memPhoneQuery = phone ? query(collection(db, "members"), where("phone", "==", phone)) : null;
+
+  const [mEmailSnap, mPhoneSnap] = await Promise.all([
+    getDocs(memEmailQuery),
+    memPhoneQuery ? getDocs(memPhoneQuery) : Promise.resolve({ empty: true })
+  ]);
+
+  if (!mEmailSnap.empty) {
+    if (!excludeId || mEmailSnap.docs.some(d => d.id !== excludeId)) return { exists: true, field: 'Email', source: 'danh sách hội viên' };
+  }
+  if (!mPhoneSnap.empty) {
+    if (!excludeId || mPhoneSnap.docs.some(d => d.id !== excludeId)) return { exists: true, field: 'Số điện thoại', source: 'danh sách hội viên' };
+  }
+
+  return { exists: false };
 };
 
 // ========================
@@ -345,13 +396,14 @@ export const getBorrowRecords = async (userId = null) => {
   });
 };
 
-export const createBorrowRecord = async (userId, userName, books, customBorrowDate = null, customDueDate = null, autoDecrement = true, borrowerPhone = "", userEmail = "") => {
+export const createBorrowRecord = async (userId, userName, books, customBorrowDate = null, customDueDate = null, autoDecrement = true, borrowerPhone = "", userEmail = "", pickupDeadline = null) => {
   const borrowDateObj = customBorrowDate ? new Date(customBorrowDate) : new Date();
   const dueDateObj = customDueDate ? new Date(customDueDate) : new Date(borrowDateObj);
 
   if (!customDueDate) {
-    dueDateObj.setDate(dueDateObj.getDate() + 14); // Default 14 days
-    dueDateObj.setHours(23, 59, 59, 999); // Luôn kết thúc vào cuối ngày cuối cùng
+    const config = await getLibraryConfig();
+    const smartDueDate = calculateSmartDueDate(borrowDateObj, 14, config);
+    dueDateObj.setTime(smartDueDate.getTime());
   }
 
   const initialStatus = autoDecrement ? 'BORROWING' : 'APPROVED_PENDING_PICKUP';
@@ -397,6 +449,7 @@ export const createBorrowRecord = async (userId, userName, books, customBorrowDa
     borrowerPhone: borrowerPhone || "",
     borrowDate: autoDecrement ? (customBorrowDate ? borrowDateObj : serverTimestamp()) : null,
     dueDate: autoDecrement ? dueDateObj : null,
+    pickupDeadline: pickupDeadline,
     status: initialStatus,
     createdAt: serverTimestamp()
   });
@@ -409,9 +462,8 @@ export const confirmBorrowPickup = async (recordId) => {
   if (!recordSnap.exists()) return;
   const data = recordSnap.data();
 
-  const dueDateObj = new Date();
-  dueDateObj.setDate(dueDateObj.getDate() + 14);
-  dueDateObj.setHours(23, 59, 59, 999); // Hạn trả luôn là cuối ngày (thực tế hội viên được mượn trọn 14 ngày)
+  const config = await getLibraryConfig();
+  const dueDateObj = calculateSmartDueDate(new Date(), 14, config);
 
   // Update all books status
   const updatedBooks = (data.books || []).map(b => ({
@@ -447,31 +499,6 @@ export const approveBorrowRequest = async (requestId, userId, userName, books) =
 };
 
 export const rejectBorrowRequest = async (requestId) => {
-  // 1. Lấy thông tin đơn để biết sách nào cần hoàn kho
-  const reqRef = doc(db, "borrowRequests", requestId);
-  const reqSnap = await getDoc(reqRef);
-  
-  if (reqSnap.exists()) {
-    const data = reqSnap.data();
-    const books = data.books || [];
-    
-    // Nếu đơn đang ở trạng thái PENDING, thì mới hoàn kho (vì lúc đó mới trừ kho ở bước Request)
-    if (data.status === 'PENDING') {
-      const bookCounts = {};
-      books.forEach(b => {
-        bookCounts[b.bookId] = (bookCounts[b.bookId] || 0) + 1;
-      });
-
-      for (const [bid, count] of Object.entries(bookCounts)) {
-        try {
-          await incrementBookStock(bid, count);
-        } catch (err) {
-          console.error(`Hoàn kho thất bại cho sách ${bid}:`, err);
-        }
-      }
-    }
-  }
-
   return await updateBorrowRequestStatus(requestId, 'REJECTED');
 };
 
@@ -498,7 +525,7 @@ export const pickupBorrowRecord = async (recordId, bookUid) => {
   });
 };
 
-export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", penaltyAmount = 0, isLost = false, damageFee = 0) => {
+export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", penaltyAmount = 0, isLost = false, damageFee = 0, isDamaged = false) => {
   const recordRef = doc(db, "borrowRecords", recordId);
   const recordSnap = await getDoc(recordRef);
   if (!recordSnap.exists()) throw new Error("Phiếu mượn không tồn tại");
@@ -510,17 +537,21 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", pen
   if (bookIndex === -1) throw new Error("Không tìm thấy sách trong phiếu");
 
   const bookItem = books[bookIndex];
-  if (['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(bookItem.status)) {
-     throw new Error("Sách này đã được xử lý (trả hoặc báo mất) trước đó");
+  if (['RETURNED', 'RETURNED_OVERDUE', 'LOST', 'DAMAGED'].includes(bookItem.status)) {
+     throw new Error("Sách này đã được xử lý (trả hoặc báo mất/hỏng) trước đó");
   }
 
   // Update book status
   const dueDateObj = data.dueDate?.toDate ? data.dueDate.toDate() : new Date(data.dueDate);
   const isNowOverdue = bookItem.status === 'OVERDUE' || dueDateObj < new Date();
   
-  const finalBookStatus = isLost ? 'LOST' : (isNowOverdue ? 'RETURNED_OVERDUE' : 'RETURNED');
+  // Logic trạng thái cuối cùng
+  let finalBookStatus = 'RETURNED';
+  if (isLost) finalBookStatus = 'LOST';
+  else if (isDamaged) finalBookStatus = 'DAMAGED';
+  else if (isNowOverdue) finalBookStatus = 'RETURNED_OVERDUE';
 
-  const now = new Date(); // Use JS Date for array elements
+  const now = new Date();
 
   books[bookIndex] = {
     ...bookItem,
@@ -532,56 +563,44 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", pen
     penaltyAmount: (Number(penaltyAmount) || 0) + (Number(damageFee) || 0)
   };
 
-  const allReturned = books.every(b => ['RETURNED', 'RETURNED_OVERDUE', 'LOST'].includes(b.status));
+  const allReturned = books.every(b => ['RETURNED', 'RETURNED_OVERDUE', 'LOST', 'DAMAGED'].includes(b.status));
   
   const updates = { 
     books,
     status: allReturned ? 'RETURNED' : 'PARTIALLY_RETURNED'
   };
 
-  // Nếu có cuốn nào trả trễ, báo mất hoặc hư hỏng, cập nhật lịch sử vi phạm
-  if ((isNowOverdue || isLost || Number(damageFee) > 0) && data.userId) {
+  // Nếu có vi phạm, cập nhật lịch sử và thông báo
+  if ((isNowOverdue || isLost || isDamaged || Number(damageFee) > 0) && data.userId) {
     const userRef = doc(db, "users", data.userId);
-    await updateDoc(userRef, { 
-      lastOverdueAt: serverTimestamp() 
-    });
+    await updateDoc(userRef, { lastOverdueAt: serverTimestamp() });
 
-    if (isNowOverdue && !isLost) {
-      await createNotification(
-        data.userId,
-        "⚠️ Tạm khóa quyền gia hạn",
-        `Bạn đã trả cuốn sách "${bookItem.bookTitle}" trễ hạn. Theo quy định, quyền lợi gia hạn của bạn sẽ bị tạm khóa trong 3 tháng tới.`,
-        "warning"
-      ).catch(err => console.error("Notify overdue penalty failed:", err));
+    const msgBase = `Cuốn sách "${bookItem.bookTitle}" `;
+    if (isNowOverdue && !isLost && !isDamaged) {
+      await createNotification(data.userId, "⚠️ Tạm khóa gia hạn", msgBase + "bị trả trễ hạn.", "warning");
     }
-    
-    if (Number(damageFee) > 0 && !isLost) {
-      await createNotification(
-        data.userId,
-        "⚠️ Tạm khóa quyền gia hạn",
-        `Cuốn sách "${bookItem.bookTitle}" được ghi nhận bị hư hỏng khi trả. Quyền lợi gia hạn của bạn sẽ bị tạm khóa trong 3 tháng tới để chờ kiểm soát.`,
-        "warning"
-      ).catch(err => console.error("Notify damage penalty failed:", err));
+    if (isDamaged) {
+      await createNotification(data.userId, "⚠️ Tạm khóa gia hạn", msgBase + "bị hư hỏng khi trả.", "warning");
     }
-
     if (isLost) {
-      await createNotification(
-        data.userId,
-        "❌ Ghi nhận mất sách",
-        `Cuốn sách "${bookItem.bookTitle}" đã được ghi nhận là bị mất. Phí bồi thường đã được cập nhật và quyền gia hạn của bạn bị tạm khóa 3 tháng.`,
-        "error"
-      ).catch(err => console.error("Notify lost book failed:", err));
+      await createNotification(data.userId, "❌ Ghi nhận mất sách", msgBase + "đã được ghi nhận là bị mất.", "error");
     }
   }
 
   await updateDoc(recordRef, updates);
 
-  // Tăng số lượng sách trong kho NẾU sách không bị mất
-  if (!isLost) {
-    const bookRef = doc(db, "books", bookItem.bookId);
-    await updateDoc(bookRef, {
-      quantity: increment(1)
-    });
+  // CẬP NHẬT KHO SÁCH ĐỒNG BỘ
+  const bookRef = doc(db, "books", bookItem.bookId);
+  if (!isLost && !isDamaged) {
+    // Sách bình thường -> Trả về kho
+    await updateDoc(bookRef, { quantity: increment(1) });
+  } else {
+    // Sách hỏng hoặc mất -> Không trả về kho, tăng biến đếm tương ứng
+    if (isDamaged) {
+      await updateDoc(bookRef, { damagedCount: increment(1) });
+    } else if (isLost) {
+      await updateDoc(bookRef, { lostCount: increment(1) });
+    }
   }
 
   return { success: true, allReturned };
@@ -634,8 +653,8 @@ export const processRenewalRequest = async (requestIds, isApproved) => {
       if (recordSnap.exists()) {
         const recordData = recordSnap.data();
         const currentDueDate = recordData.dueDate?.toDate ? recordData.dueDate.toDate() : new Date(recordData.dueDate);
-        const newDueDate = new Date(currentDueDate);
-        newDueDate.setDate(newDueDate.getDate() + 14);
+        const config = await getLibraryConfig();
+        const newDueDate = calculateSmartDueDate(currentDueDate, 14, config);
 
         await updateDoc(recordRef, {
           dueDate: newDueDate,

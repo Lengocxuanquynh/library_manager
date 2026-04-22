@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addMember, getMembers, getBorrowRecords, getUsers } from '../../../services/db';
+import { addMember, getMembers, getBorrowRecords, getUsers, checkMemberDuplicate } from '../../../services/db';
 
 export async function GET(request) {
   try {
@@ -50,6 +50,15 @@ export async function POST(request) {
       return NextResponse.json(
         { error: 'Họ tên và email là bắt buộc' },
         { status: 400 }
+      );
+    }
+
+    // Check for duplicates
+    const duplicate = await checkMemberDuplicate(email, phone);
+    if (duplicate.exists) {
+      return NextResponse.json(
+        { error: `${duplicate.field} này đã tồn tại trong ${duplicate.source}` },
+        { status: 409 }
       );
     }
 

@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import { useAuth, useLucid } from "@/components/AuthProvider";
 import styles from "../dashboard.module.css";
 import Link from "next/link";
-import { formatDate, getTimestamp } from "@/lib/utils";
+import { formatDate, getTimestamp, toJsDate } from "@/lib/utils";
+import { calculatePenaltyDetails } from "@/lib/penalty-utils";
 import RenewalModal from "@/components/RenewalModal";
+import UserTour from "@/components/UserTour";
+import { completeUserTour } from "@/services/auth";
 
 export default function UserDashboard() {
   const { user } = useAuth();
@@ -18,6 +21,21 @@ export default function UserDashboard() {
   const [profileData, setProfileData] = useState(null);
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [selectedRenewBook, setSelectedRenewBook] = useState(null);
+  const [config, setConfig] = useState({ excludeSundays: true, holidays: [] });
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch('/api/config');
+      const data = await res.json();
+      if (data && !data.error) setConfig(data);
+    } catch (error) {
+      console.error("Lỗi tải cấu hình:", error);
+    }
+  };
 
   const loadRecords = async () => {
     if (!user) return;
@@ -131,7 +149,7 @@ export default function UserDashboard() {
 
   return (
     <div>
-      <div className={styles.headerArea}>
+      <div className={styles.headerArea} id="tour-welcome">
         <h1 className={styles.pageTitle}>Xin chào, {user?.displayName || "Độc giả"}</h1>
       </div>
 
@@ -210,7 +228,7 @@ export default function UserDashboard() {
           )}
 
           <div className={styles.grid}>
-            <div className={styles.card} style={{ 
+            <div className={styles.card} id="tour-profile" style={{ 
               gridColumn: '1 / -1', 
               background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
               border: '1px solid rgba(255,255,255,0.08)',
@@ -273,7 +291,7 @@ export default function UserDashboard() {
                 </div>
 
                 {/* RIGHT: PRIVILEGE MONITOR */}
-                <div style={{ 
+                <div id="tour-privilege" style={{ 
                   flex: '1 1 280px', 
                   background: 'rgba(0,0,0,0.2)', 
                   padding: '1.25rem', 
@@ -408,7 +426,7 @@ export default function UserDashboard() {
                 </div>
               )}
 
-              <h3 style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              <h3 id="tour-loans" style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                 Sách Đang Mượn & Lịch Sử (Đã Duyệt)
               </h3>
               {loading ? (
@@ -444,6 +462,10 @@ export default function UserDashboard() {
                         const isOverdue = tx.status === 'OVERDUE';
                         const isLost = tx.status === 'LOST_LOCKED';
                         const isPartiallyReturned = tx.status === 'PARTIALLY_RETURNED';
+                        
+                        // Pre-calculate penalty details once per row
+                        const jsDueDate = toJsDate(tx.dueDate);
+                        const penaltyInfo = calculatePenaltyDetails(jsDueDate, new Date(), config);
 
                         return (
                           <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -463,41 +485,30 @@ export default function UserDashboard() {
                             </td>
                             <td style={{ padding: '1rem', verticalAlign: 'top' }}>{formatDate(tx.borrowDate)}</td>
                             <td style={{ padding: '1rem', verticalAlign: 'top' }}>{formatDate(tx.dueDate)}</td>
-                            {transactions.some(t => {
-                               const d = getTimestamp(t.dueDate);
-                               return (d && new Date() > new Date(d) && t.status !== 'RETURNED' && t.status !== 'RETURNED_OVERDUE');
-                             }) && (
-                               <td style={{ padding: '1rem', verticalAlign: 'top' }}>
-                                 {(() => {
-                                   const dueMs = getTimestamp(tx.dueDate);
-                                   if (!dueMs || new Date().getTime() <= dueMs || tx.status === 'RETURNED' || tx.status === 'RETURNED_OVERDUE') return null;
-                                   
-                                   const diffMs = new Date().getTime() - dueMs;
-                                   const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-                                   const fine = diffDays * 5000;
-                                   if (fine <= 0) return null;
+                            <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                              {(() => {
+                                if (penaltyInfo.penaltyFine <= 0 || tx.status === 'RETURNED' || tx.status === 'RETURNED_OVERDUE') return null;
 
-                                   return (
-                                     <div style={{ color: '#ff5f56', fontWeight: '700', fontSize: '1.1rem' }}>
-                                       {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(fine)}
-                                       <div style={{ fontSize: '0.65rem', opacity: 0.6, fontWeight: '500' }}>
-                                         ({diffDays} ngày trễ)
-                                       </div>
-                                     </div>
-                                   );
-                                 })()}
-                               </td>
-                             )}
+                                return (
+                                  <div style={{ color: '#ff5f56', fontWeight: '700', fontSize: '1.1rem' }}>
+                                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(penaltyInfo.penaltyFine)}
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.6, fontWeight: '500' }}>
+                                      ({penaltyInfo.chargeableDays} ngày phạt)
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </td>
                             <td style={{ padding: '1rem', verticalAlign: 'top' }}>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                  <span style={{
-                                  background: isLost ? 'rgba(255, 10, 10, 0.2)'
+                                  background: (isLost || penaltyInfo.isLocked) ? 'rgba(255, 10, 10, 0.2)'
                                     : isOverdue ? 'rgba(255, 95, 86, 0.2)' 
                                     : isPendingPickup ? 'rgba(187, 134, 252, 0.2)' 
                                     : isPartiallyReturned ? 'rgba(39, 201, 63, 0.1)'
                                     : tx.status === 'BORROWING' ? 'rgba(39, 201, 63, 0.2)' 
                                     : 'rgba(255, 255, 255, 0.1)',
-                                  color: isLost ? '#ff3131'
+                                  color: (isLost || penaltyInfo.isLocked) ? '#ff3131'
                                     : isOverdue ? '#ff5f56' 
                                     : isPendingPickup ? '#bb86fc' 
                                     : isPartiallyReturned ? '#27c93f'
@@ -508,9 +519,9 @@ export default function UserDashboard() {
                                   fontSize: '0.85rem',
                                   fontWeight: '800',
                                   textAlign: 'center',
-                                  border: isLost ? '1px solid rgba(255, 49, 49, 0.4)' : 'none'
+                                  border: (isLost || penaltyInfo.isLocked) ? '1px solid rgba(255, 49, 49, 0.4)' : 'none'
                                 }}>
-                                  {isLost ? 'BỊ KHÓA / MẤT SÁCH'
+                                  {(isLost || penaltyInfo.isLocked) ? 'BỊ KHÓA / MẤT SÁCH'
                                     : isOverdue ? 'QUÁ HẠN' 
                                     : isPendingPickup ? 'CHỜ LẤY SÁCH' 
                                     : isPartiallyReturned ? 'ĐANG TRẢ DẦN'
@@ -649,8 +660,42 @@ export default function UserDashboard() {
           book={selectedRenewBook}
           userId={user?.uid}
           onSuccess={loadRecords}
+          config={config}
         />
       )}
+
+      {/* INTERACTIVE TOUR */}
+      <UserTour 
+        isOpen={user?.isNewUser}
+        onComplete={() => completeUserTour(user.uid)}
+        steps={[
+          {
+            targetId: 'tour-welcome',
+            title: 'Chào mừng bạn đến với Thư viện! 👋',
+            description: 'Tôi là Quản thư ảo, rất vui được hỗ trợ bạn. Đây là trang cá nhân, nơi bạn quản lý mọi hoạt động đọc sách của mình.'
+          },
+          {
+            targetId: 'tour-profile',
+            title: 'Thẻ Độc Giả Số 🆔',
+            description: 'Đây là thông tin định danh của bạn. Hãy ghi nhớ Mã Thành Viên để thực hiện các thủ tục tại quầy nếu cần nhé.'
+          },
+          {
+            targetId: 'tour-privilege',
+            title: 'Quyền Lợi & Uy Tín 🛡️',
+            description: 'Hệ thống đánh giá sự uy tín của bạn dựa trên lịch sử trả sách. Trả sách đúng hạn để tích lũy lượt gia hạn tự động nhé!'
+          },
+          {
+            targetId: 'tour-loans',
+            title: 'Quản Lý Sách Mượn 📚',
+            description: 'Tất cả những cuốn sách bạn đang giữ sẽ hiện ở đây. Bạn có thể theo dõi hạn trả hoặc yêu cầu gia hạn ngay tại mục này.'
+          },
+          {
+            targetId: 'tour-search-nav',
+            title: 'Khám Phá Kho Sách 🔍',
+            description: 'Cuối cùng, hãy bắt đầu hành trình bằng cách tìm kiếm những cuốn sách yêu thích trong danh mục của chúng tôi. Chúc bạn đọc sách vui vẻ!'
+          }
+        ]}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { doc, collection, addDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { updateBorrowRequestStatus, createBorrowRecord, createNotification } from '@/services/db';
+import { updateBorrowRequestStatus, createBorrowRecord, createNotification, decrementBookStock } from '@/services/db';
 import { verifyAdmin } from '@/services/admin-check';
 import { sendMail } from '@/services/emailService';
 import { getDoc } from 'firebase/firestore';
@@ -40,25 +40,24 @@ export async function POST(request) {
       return NextResponse.json({ message: 'Không tìm thấy thông tin sách để duyệt. Kiểm tra lại cấu trúc phiếu.' }, { status: 400 });
     }
 
-    // Gom nhóm sách để trừ tồn kho một lần duy nhất bằng transaction
-    const finalBooks = [];
+    // Gom nhóm sách để trừ tồn kho
     const booksToProcess = hasBooksArray ? books : [{ bookId, bookTitle }];
-    const bookCounts = {};
+    const finalBooks = [];
     
-    booksToProcess.forEach(b => {
-      bookCounts[b.bookId] = (bookCounts[b.bookId] || 0) + 1;
-    });
-
-    // 1. CHUẨN BỊ MẢNG finalBooks (Không trừ kho nữa vì đã trừ ở bước Request)
+    // 1. Thực hiện trừ kho và lấy thông tin giá sách
     try {
-      // Lấy giá và chuẩn bị mảng finalBooks
       for (const b of booksToProcess) {
+        // Trừ kho an toàn
+        await decrementBookStock(b.bookId, 1);
+        
+        // Lấy giá sách
         let price = 0;
         const bookRef = doc(db, 'books', b.bookId);
         const bookSnap = await getDoc(bookRef);
         if (bookSnap.exists()) {
           price = bookSnap.data().price || 0;
         }
+        
         finalBooks.push({
           bookId: b.bookId,
           bookTitle: b.bookTitle,
@@ -66,31 +65,25 @@ export async function POST(request) {
         });
       }
     } catch (err) {
-      console.error(err);
-      return NextResponse.json({ message: 'Lỗi lấy thông tin sách khi duyệt.' }, { status: 400 });
+      console.error('[approve-request] Lỗi trừ kho:', err);
+      return NextResponse.json({ message: err.message || 'Lỗi trừ kho khi duyệt.' }, { status: 400 });
     }
 
+    // 2. Tạo bản ghi mượn sách (Status sẽ là APPROVED_PENDING_PICKUP vì autoDecrement=false)
     await createBorrowRecord(
       userId,
       userName,
       finalBooks,
-      null, // use current date
-      null, // use default 14 days
-      false, // already decremented above manually (to keep control)
-      userPhone, // phone from request
-      userEmail // email from request
+      null, 
+      null, 
+      false, // Không tự động trừ kho nữa vì đã trừ thủ công ở trên
+      userPhone, 
+      userEmail,
+      pickupDeadline // <--- THÊM VÀO ĐÂY
     );
 
-    // Update the record with approval metadata
-    // Wait, createBorrowRecord returns the doc ref.
-    // However, createBorrowRecord in db.js already sets initial status.
-    // Let's refine the record after creation to add approval info if needed,
-    // or just let createBorrowRecord handle it.
-    // Actually, createBorrowRecord now sets status: 'BORROWING' by default if autoDecrement is true.
-    // But here we want 'APPROVED_PENDING_PICKUP'.
-    
-    // Let's fix createBorrowRecord call to use autoDecrement=false to get 'APPROVED_PENDING_PICKUP'
-    // but we already decremented quantity above. Correct.
+    // 3. CẬP NHẬT TRẠNG THÁI PHIẾU YÊU CẦU (Quan trọng: Giải quyết lỗi phân thân)
+    await updateBorrowRequestStatus(requestId, 'APPROVED');
 
     // Gửi email thông báo Phê duyệt thành công
     if (userEmail) {

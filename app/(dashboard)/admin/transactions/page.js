@@ -6,6 +6,7 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import styles from "../../dashboard.module.css";
 import { formatDate, toJsDate } from "@/lib/utils";
 import { toast } from "sonner";
+import { calculatePenaltyDetails } from "@/lib/penalty-utils";
 import PremiumSelect from "@/components/PremiumSelect";
 import { getBook } from "@/services/db";
 
@@ -52,9 +53,23 @@ export default function ManageLoans() {
   const [startDate, setStartDate] = useState(""); // YYYY-MM-DD
   const [endDate, setEndDate] = useState("");     // YYYY-MM-DD
 
-  // Bulk Return states
+  const [config, setConfig] = useState({ excludeSundays: true, holidays: [] });
   const [isBulkReturnModalOpen, setIsBulkReturnModalOpen] = useState(false);
   const [bulkReturnItems, setBulkReturnItems] = useState([]); // [{ uid, bookTitle, lateFee, damageFee, isLost, price }]
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch('/api/config');
+      const data = await res.json();
+      if (data && !data.error) setConfig(data);
+    } catch (error) {
+      console.error("Lỗi tải cấu hình:", error);
+    }
+  };
 
   useEffect(() => {
     if (user) fetchData();
@@ -228,23 +243,15 @@ const handleOpenDetail = (record) => {
     setReturnNote("");
     
     // Tự động tính tiền phạt: 5.000đ/ngày trễ (Day-based)
-    const dueDate = toJsDate(record.dueDate);
-    if (dueDate && currentTime > dueDate) {
-      const diffMs = currentTime - dueDate;
-      // Chỉ tính phạt khi đã bước sang 0h00 ngày hôm sau
-      // Ví dụ: dueDate là 23:59:59 ngày 14, trả lúc 0h01 ngày 15 -> 1 ngày trễ
-      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-      setPenaltyFee(diffDays * 5000);
-    } else {
-      setPenaltyFee(0);
-    }
+    const jsDueDate = toJsDate(record.dueDate);
+    const penaltyInfo = calculatePenaltyDetails(jsDueDate, new Date(), config);
+    setPenaltyFee(penaltyInfo.penaltyFine);
 
     setIsLost(false);
     setDamageFee(0);
     
-    if (record.status === 'LOST_LOCKED') {
-      toast.error("Phiếu mượn này đã bị niêm phong do quá hạn nặng. Vui lòng xử lý tại quầy hỗ trợ.");
-      return;
+    if (record.status === 'LOST_LOCKED' || penaltyInfo.isLocked) {
+      toast.info("Phiếu này đang ở trạng thái PHONG TỎA THẺ. Bạn vẫn có thể thực hiện thu hồi và báo hỏng/mất để xử lý bồi thường.");
     }
     
     setIsReturnModalOpen(true);
@@ -252,6 +259,22 @@ const handleOpenDetail = (record) => {
 
   const confirmReturn = async () => {
     if (!selectedReturnRecord) return;
+    
+    // VALIDATION: Bắt buộc ghi chú và tiền đền bù nếu hỏng/mất
+    if ((isDamaged || isLost) && (!returnNote || !returnNote.trim())) {
+      toast.error(`Vui lòng nhập ghi chú chi tiết tình trạng ${isDamaged ? 'HƯ HỎNG' : 'MẤT'} của sách!`);
+      return;
+    }
+
+    if (isDamaged && (!damageFee || Number(damageFee) <= 0)) {
+      toast.error("Vui lòng nhập số tiền đền bù khi báo hỏng sách!");
+      return;
+    }
+
+    if (isLost && (!damageFee || Number(damageFee) <= 0)) {
+      toast.error("Vui lòng nhập giá trị sách bồi thường khi báo mất!");
+      return;
+    }
     
     setReturning(true);
     const loadingToast = toast.loading("Đang xác nhận trả sách...");
@@ -358,10 +381,9 @@ const handleOpenDetail = (record) => {
 
     // Tính phí trễ hạn TUYỆT ĐỐI cho cả phiếu (chỉ 1 lần)
     let recordLateFee = 0;
-    if (dueDate && now > dueDate) {
-      const diffDays = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
-      recordLateFee = diffDays * 5000;
-    }
+    const jsDueDate = toJsDate(record.dueDate);
+    const penaltyInfo = calculatePenaltyDetails(jsDueDate, new Date(), config);
+    recordLateFee = penaltyInfo.penaltyFine;
     
     setBulkReturnItems(itemsWithPrices);
     // Tạm mượn state penaltyFee để lưu phí trễ cả đơn trong ngữ cảnh này
@@ -395,6 +417,21 @@ const handleOpenDetail = (record) => {
   const confirmBulkReturn = async () => {
     if (!selectedDetailRecord || bulkReturnItems.length === 0) return;
     
+    // VALIDATION: Kiểm tra tất cả các cuốn bị hỏng/mất xem đã có ghi chú và tiền đền bù chưa
+    const missingDetails = bulkReturnItems.find(item => 
+      (item.isDamaged || item.isLost) && (!item.returnNote || !item.returnNote.trim() || !item.damageFee || Number(item.damageFee) <= 0)
+    );
+
+    if (missingDetails) {
+      const type = missingDetails.isLost ? 'MẤT' : 'HỎNG';
+      if (!missingDetails.returnNote || !missingDetails.returnNote.trim()) {
+        toast.error(`Thiếu ghi chú! Vui lòng nhập tình trạng ${type} cho cuốn: "${missingDetails.bookTitle}"`);
+      } else {
+        toast.error(`Thiếu phí bồi thường! Vui lòng nhập số tiền đền bù ${type} cho cuốn: "${missingDetails.bookTitle}"`);
+      }
+      return;
+    }
+
     setReturning(true);
     const loadingToast = toast.loading("Đang xử lý thu hồi hàng loạt...");
     try {
@@ -492,9 +529,11 @@ const handleOpenDetail = (record) => {
 
   const handleSettleViolation = async (record) => {
     const totalFee = (record.books || []).reduce((acc, b) => acc + (b.damageFee || 0), 0) + (record.penaltyAmount || 0);
+    const readerName = record.memberName || record.userName || "Độc giả";
+    
     const confirmed = await confirmPremium(
-      `Xác nhận độc giả ${record.memberName} đã nộp đầy đủ ${totalFee.toLocaleString('vi-VN')}đ tiền bồi thường (Mất/Hỏng sách)? \n\nHành động này sẽ: \n1. Cập nhật phiếu thành 'Đã đền bù' \n2. Tự động MỞ KHÓA tài khoản độc giả.`,
-      "💰 Xác nhận đóng phạt & Mở khóa"
+      `Xác nhận độc giả ${readerName} đã hoàn tất đầy đủ các thủ tục bồi thường và đủ điều kiện để khôi phục quyền lợi mượn sách? \n\n(Tổng tiền bồi thường: ${totalFee.toLocaleString('vi-VN')}đ)`,
+      "🛡️ Xác nhận mở khóa tài khoản"
     );
     if (!confirmed) return;
 
@@ -524,13 +563,22 @@ const handleOpenDetail = (record) => {
   };
 
   // Helper: render countdown from deadline to now
-  const renderCountdown = (pickupDeadlineRaw) => {
-    const deadline = toJsDate(pickupDeadlineRaw);
+  const renderCountdown = (record) => {
+    let deadline = toJsDate(record.pickupDeadline);
+    
+    // Fallback: Nếu không có pickupDeadline nhưng đang chờ lấy, tính từ lúc duyệt (createdAt) + 24h
+    if (!deadline && record.status === 'APPROVED_PENDING_PICKUP') {
+      const start = toJsDate(record.createdAt || record.borrowDate);
+      if (start) {
+        deadline = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+      }
+    }
+
     if (!deadline) return <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>;
 
     const diffMs = deadline - currentTime;
     if (diffMs <= 0) {
-      return <span style={{ color: '#ff5f56', fontWeight: '700' }}>Đã quá hạn</span>;
+      return <span style={{ color: '#ff5f56', fontWeight: '700' }}>Hết hạn lấy</span>;
     }
 
     const totalSeconds = Math.floor(diffMs / 1000);
@@ -1106,6 +1154,10 @@ const handleOpenDetail = (record) => {
                       
                       const books = rec.books || [];
                       const returnedCount = books.filter(b => b.status === 'RETURNED' || b.status === 'RETURNED_OVERDUE').length;
+                      
+                      // Pre-calculate penalty details
+                      const jsDueDateForRecord = toJsDate(rec.dueDate);
+                      const penaltyInfo = calculatePenaltyDetails(jsDueDateForRecord, currentTime, config);
 
                       return (
                         <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
@@ -1121,7 +1173,7 @@ const handleOpenDetail = (record) => {
                           </td>
                           {filterStatus === 'APPROVED_PENDING_PICKUP' ? (
                             <td style={{ padding: '0.8rem 1rem' }}>
-                              {renderCountdown(rec.pickupDeadline)}
+                              {renderCountdown(rec)}
                             </td>
                           ) : (
                             <>
@@ -1136,14 +1188,14 @@ const handleOpenDetail = (record) => {
                           )}
                           <td style={{ padding: '0.8rem 1rem' }}>
                             <span style={{
-                              background: status === 'LOST_LOCKED' ? 'rgba(255,10,10,0.15)' : 
+                              background: (status === 'LOST_LOCKED' || (isActive && penaltyInfo.isLocked)) ? 'rgba(255,10,10,0.15)' : 
                                           status === 'LOST' ? 'rgba(255,10,10,0.2)' :
                                           status === 'DAMAGED' ? 'rgba(255,165,0,0.15)' :
                                           isOverdue ? 'rgba(255,95,86,0.1)' : 
                                           status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.1)' : 
                                           status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187,134,252,0.1)' : 
                                           isActive ? 'rgba(39,201,63,0.1)' : 'rgba(255,255,255,0.05)',
-                              color: status === 'LOST_LOCKED' ? '#ff3131' : 
+                              color: (status === 'LOST_LOCKED' || (isActive && penaltyInfo.isLocked)) ? '#ff3131' : 
                                      status === 'LOST' ? '#ff4b2b' :
                                      status === 'DAMAGED' ? '#ffa502' :
                                      isOverdue ? '#ff5f56' : 
@@ -1152,11 +1204,11 @@ const handleOpenDetail = (record) => {
                                      isActive ? '#27c93f' : 'rgba(255,255,255,0.4)',
                               padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.7rem', fontWeight: '800',
                               whiteSpace: 'nowrap',
-                              border: (status === 'LOST_LOCKED' || status === 'LOST') ? '1px solid rgba(255,49,49,0.3)' : 
+                              border: (status === 'LOST_LOCKED' || status === 'LOST' || (isActive && penaltyInfo.isLocked)) ? '1px solid rgba(255,49,49,0.3)' : 
                                       status === 'DAMAGED' ? '1px solid rgba(255,165,0,0.3)' : 'none',
                               textTransform: 'uppercase'
                             }}>
-                              {status === 'LOST_LOCKED' ? 'Phòng tỏa thẻ' : 
+                              {status === 'LOST_LOCKED' || (isActive && penaltyInfo.isLocked) ? 'Phong tỏa thẻ' : 
                                status === 'LOST' ? 'Mất Sách' :
                                status === 'DAMAGED' ? 'Sách Hỏng' :
                                isOverdue ? 'Quá Hạn' : 
@@ -1168,30 +1220,9 @@ const handleOpenDetail = (record) => {
                           </td>
                           <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
-                              {status === 'LOST_LOCKED' ? (
-                                <button 
-                                  onClick={() => handleSettleViolation(rec)} 
-                                  style={{ 
-                                    background: 'rgba(255,176,32,0.15)', 
-                                    color: '#ffb020', 
-                                    border: '1px solid rgba(255,176,32,0.3)', 
-                                    padding: '0.4rem 0.8rem', 
-                                    borderRadius: '8px', 
-                                    cursor: 'pointer', 
-                                    fontSize: '0.8rem', 
-                                    fontWeight: '800', 
-                                    whiteSpace: 'nowrap' 
-                                  }}
-                                >
-                                  Đóng phạt & Mở khóa
-                                </button>
-                              ) : (
-                                <>
-                                  <button onClick={() => handleOpenDetail(rec)} style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Xem</button>
-                                  {filterStatus !== 'ALL' && status === 'APPROVED_PENDING_PICKUP' && (
-                                    <button onClick={() => handleConfirmPickup(rec.id)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', whiteSpace: 'nowrap' }}>Lấy Sách</button>
-                                  )}
-                                </>
+                              <button onClick={() => handleOpenDetail(rec)} style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Xem</button>
+                              {filterStatus !== 'ALL' && status === 'APPROVED_PENDING_PICKUP' && (
+                                <button onClick={() => handleConfirmPickup(rec.id)} style={{ background: 'rgba(187,134,252,0.15)', color: '#bb86fc', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', whiteSpace: 'nowrap' }}>Lấy Sách</button>
                               )}
                             </div>
                           </td>
@@ -1368,7 +1399,7 @@ const handleOpenDetail = (record) => {
                   Xác nhận lấy tất cả sách
                 </button>
               )}
-              {(selectedDetailRecord?.status === 'BORROWING' || selectedDetailRecord?.status === 'PARTIALLY_RETURNED' || selectedDetailRecord?.status === 'OVERDUE') && (
+              {(selectedDetailRecord?.status === 'BORROWING' || selectedDetailRecord?.status === 'PARTIALLY_RETURNED' || selectedDetailRecord?.status === 'OVERDUE' || selectedDetailRecord?.status === 'LOST_LOCKED') && (
                 <button
                   onClick={() => handleOpenBulkReturn(selectedDetailRecord)}
                   disabled={returning}
@@ -1478,8 +1509,9 @@ const handleOpenDetail = (record) => {
                   onChange={(e) => setReturnNote(e.target.value)}
                   style={{
                     width: '100%', padding: '0.8rem', borderRadius: '10px',
-                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#fff', fontSize: '0.9rem', outline: 'none', minHeight: '80px', resize: 'vertical'
+                    background: 'rgba(255,255,255,0.06)', 
+                    border: (isDamaged || isLost) && (!returnNote || !returnNote.trim()) ? '1px solid rgba(255,95,86,0.6)' : '1px solid rgba(255,255,255,0.1)', 
+                    color: '#fff', fontSize: '0.95rem', outline: 'none', minHeight: '80px', resize: 'vertical'
                   }}
                 />
               </div>
@@ -1771,7 +1803,8 @@ const handleOpenDetail = (record) => {
                                 onChange={(e) => handleBulkItemChange(item.uid, 'returnNote', e.target.value)}
                                 style={{
                                   width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px',
-                                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                  background: 'rgba(255,255,255,0.05)', 
+                                  border: (!item.returnNote || !item.returnNote.trim()) ? '1px solid rgba(255,95,86,0.5)' : '1px solid rgba(255,255,255,0.1)',
                                   color: '#fff', fontSize: '0.85rem', outline: 'none'
                                 }}
                               />
