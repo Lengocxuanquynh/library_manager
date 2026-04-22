@@ -70,6 +70,13 @@ export default function UserSettings() {
   const handleUpdate = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
+    
+    // Case 7: Họ tên không được chứa số
+    if (/\d/.test(name)) {
+      setMessage({ type: 'error', text: 'Họ và Tên không được chứa ký tự số!' });
+      return;
+    }
+
     setLoading(true);
     setMessage({ type: '', text: '' });
     try {
@@ -166,8 +173,8 @@ export default function UserSettings() {
   // --- Start Phone Change ---
   const startPhoneChange = async (e) => {
     e.preventDefault();
-    if (!/^\d{10}$/.test(newPhone)) {
-      setPhoneError("Số điện thoại phải có đúng 10 chữ số");
+    if (!/^0\d{9}$/.test(newPhone)) {
+      setPhoneError("Số điện thoại không hợp lệ (Phải đủ 10 số và bắt đầu bằng số 0)");
       return;
     }
     setPhoneError("");
@@ -319,38 +326,56 @@ export default function UserSettings() {
         <Link href="/user" className="btn-outline">Quay lại Hồ Sơ</Link>
       </div>
 
-      <div className={styles.grid}>
-        {/* Profile Summary */}
-        <div className={styles.card} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '2.5rem' }}>
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+        gap: '2rem',
+        alignItems: 'start'
+      }}>
+        {/* Profile Summary - Left Sidebar on Desktop */}
+        <div className={styles.card} style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          textAlign: 'center', 
+          padding: '3rem 2rem',
+          position: 'sticky',
+          top: '2rem'
+        }}>
           <div style={{ 
-            width: '100px', 
-            height: '100px', 
+            width: '120px', 
+            height: '120px', 
             borderRadius: '50%', 
             backgroundImage: avatar ? `url(${avatar})` : 'none',
             backgroundColor: avatar ? 'transparent' : 'rgba(255,255,255,0.05)',
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            border: '3px solid #bb86fc',
+            border: '4px solid #bb86fc',
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center',
-            fontSize: '2.5rem',
+            fontSize: '3rem',
             fontWeight: 'bold',
             color: 'white',
-            marginBottom: '1.2rem',
-            boxShadow: '0 0 20px rgba(187, 134, 252, 0.2)'
+            marginBottom: '1.5rem',
+            boxShadow: '0 0 30px rgba(187, 134, 252, 0.3)',
+            transition: 'transform 0.3s'
           }}>
             {!avatar && (name ? name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase())}
           </div>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '0.4rem', color: '#fff' }}>{name || "Độc giả"}</h2>
-          <p style={{ color: 'rgba(255,193,7,0.8)', fontSize: '1.1rem', marginBottom: '1.2rem', fontWeight: '800', fontFamily: 'monospace', letterSpacing: '2px' }}> {user?.memberCode} </p>
-          <div style={{ padding: '0.4rem 1rem', background: 'rgba(187, 134, 252, 0.1)', borderRadius: '20px', fontSize: '0.8rem', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.2)' }}>
+          <h2 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '0.5rem', color: '#fff' }}>{name || "Độc giả"}</h2>
+          <p style={{ color: 'rgba(255,193,7,0.9)', fontSize: '1.2rem', marginBottom: '1.5rem', fontWeight: '900', fontFamily: 'monospace', letterSpacing: '3px' }}> {user?.memberCode} </p>
+          <div style={{ padding: '0.6rem 1.2rem', background: 'rgba(187, 134, 252, 0.15)', borderRadius: '30px', fontSize: '0.85rem', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.3)', fontWeight: '600' }}>
             Hạng: <strong>Thành viên Thư Viện</strong>
+          </div>
+          
+          <div style={{ marginTop: '2.5rem', width: '100%', pt: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+             <p style={{ fontSize: '0.85rem', opacity: 0.4, fontStyle: 'italic' }}>"Đọc sách là cách nhanh nhất để du hành xuyên không gian và thời gian."</p>
           </div>
         </div>
 
-        {/* Cài Đặt Khối Thao Tác */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', gridColumn: 'span 2' }}>
+        {/* Cài Đặt Khối Thao Tác - Right Content (Expanded) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', flex: 1 }}>
           
           {/* Cập Nhật Tên */}
           <div className={styles.card}>

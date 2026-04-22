@@ -12,6 +12,7 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, getDoc, collection, getCountFromServer, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
+import { checkMemberDuplicate } from "./db";
 
 // Register user and store role
 export const registerUser = async (email, password, name, role = "user", phone = "", username = "") => {
@@ -23,6 +24,12 @@ export const registerUser = async (email, password, name, role = "user", phone =
       if (!uSnap.empty) {
         throw new Error("Tên đăng nhập đã được sử dụng. Vui lòng chọn tên khác.");
       }
+    }
+
+    // Check if email or phone already exists
+    const duplicate = await checkMemberDuplicate(email, phone);
+    if (duplicate.exists) {
+      throw new Error(`${duplicate.field} đã được sử dụng trong ${duplicate.source}. Vui lòng kiểm tra lại.`);
     }
 
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -45,7 +52,8 @@ export const registerUser = async (email, password, name, role = "user", phone =
       phone,
       role,
       memberCode,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      isNewUser: true // Mặc định là true cho tài khoản mới
     });
 
     return { user, role };
@@ -108,7 +116,8 @@ export const loginWithGoogle = async () => {
         email: user.email,
         role: "user",
         memberCode,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        isNewUser: true // Mặc định là true cho tài khoản mới
       }, { merge: true });
     }
 
@@ -190,6 +199,14 @@ export const updateUserProfile = async (uid, data) => {
       await updateProfile(user, { displayName: data.name });
     }
 
+    // Check for phone duplicate if phone is being updated
+    if (data.phone) {
+      const duplicate = await checkMemberDuplicate("", data.phone, uid);
+      if (duplicate.exists) {
+        throw new Error(`${duplicate.field} đã được sử dụng bởi ${duplicate.source}.`);
+      }
+    }
+
     // Prepare Firestore update data
     const userDocRef = doc(db, "users", uid);
     const firestoreData = { ...data, id: uid };
@@ -260,6 +277,17 @@ export const checkUsernameUnique = async (username, currentUid) => {
     return !otherUser;
   } catch (error) {
     console.error("Check Username Error:", error);
+    return false;
+  }
+};
+// Hoàn tất tour hướng dẫn
+export const completeUserTour = async (uid) => {
+  try {
+    const userDocRef = doc(db, "users", uid);
+    await setDoc(userDocRef, { isNewUser: false }, { merge: true });
+    return true;
+  } catch (error) {
+    console.error("Complete Tour Error:", error);
     return false;
   }
 };

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { updateMember, deleteMember, getBorrowRecords } from '@/services/db';
+import { updateMember, deleteMember, getBorrowRecords, checkMemberDuplicate } from '@/services/db';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
 export async function PATCH(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name } = body;
+    const { name, email, phone } = body;
 
     // 1. Lấy thông tin UID của độc giả từ Document ID
     const memberRef = adminDb.collection('members').doc(id);
@@ -19,7 +19,18 @@ export async function PATCH(request, { params }) {
     const memberData = memberSnap.data();
     const uid = memberData.uid;
 
-    // 2. Chạy cập nhật Firestore Member trước
+    // 2. Check for duplicates if email or phone is changed
+    if (email || phone) {
+      const duplicate = await checkMemberDuplicate(email || memberData.email, phone || memberData.phone, id);
+      if (duplicate.exists) {
+        return NextResponse.json(
+          { error: `${duplicate.field} này đã tồn tại trong ${duplicate.source}` },
+          { status: 409 }
+        );
+      }
+    }
+
+    // 3. Chạy cập nhật Firestore Member trước
     await updateMember(id, body);
 
     // 3. Nếu có đổi tên, tiến hành đồng bộ hóa đa tầng

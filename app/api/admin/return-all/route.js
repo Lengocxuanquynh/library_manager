@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { doc, getDoc, writeBatch, increment, serverTimestamp } from 'firebase/firestore';
+import admin, { adminDb } from '@/lib/firebase-admin';
 import { createNotification } from '@/services/db';
 
 export async function POST(request) {
@@ -17,11 +16,11 @@ export async function POST(request) {
       );
     }
 
-    // Lấy record từ DB
-    const recordRef = doc(db, "borrowRecords", mainId);
-    const recordSnap = await getDoc(recordRef);
+    // Lấy record từ DB (Sử dụng Admin SDK)
+    const recordRef = adminDb.collection("borrowRecords").doc(mainId);
+    const recordSnap = await recordRef.get();
     
-    if (!recordSnap.exists()) {
+    if (!recordSnap.exists) {
       return NextResponse.json(
         { error: 'Không tìm thấy phiếu mượn' },
         { status: 404 }
@@ -30,17 +29,24 @@ export async function POST(request) {
 
     const data = recordSnap.data();
     const currentBooks = data.books || [];
-    const batch = writeBatch(db);
+    const batch = adminDb.batch();
     const now = new Date();
-    const dueDate = data.dueDate?.toDate ? data.dueDate.toDate() : (data.dueDate ? new Date(data.dueDate) : null);
+    const nowISO = now.toISOString();
+    const FieldValue = admin.firestore.FieldValue;
+    
+    // Xử lý dueDate (tương thích nhiều định dạng)
+    let dueDate = null;
+    if (data.dueDate?.toDate) dueDate = data.dueDate.toDate();
+    else if (data.dueDate?._seconds) dueDate = new Date(data.dueDate._seconds * 1000);
+    else if (data.dueDate) dueDate = new Date(data.dueDate);
 
     let anyViolation = false;
     let lateFeeToAssign = Number(recordLateFee) || 0;
     let allProcessedAsReturned = true;
     let lateFeeAssigned = false;
+
     // Duyệt danh sách sách trong phiếu
     const updatedBooks = currentBooks.map(b => {
-      // Tìm cấu hình trả cho cuốn sách này
       const itemConfig = returnItems.find(item => item.uid === b.uid);
       
       let finalBookStatus = b.status;
@@ -48,12 +54,10 @@ export async function POST(request) {
       let currentItemDamageFee = Number(b.damageFee) || 0;
       let currentReturnNote = b.returnNote || '';
 
-      // Nếu có cấu hình trả và sách chưa được trả trước đó
       if (itemConfig && !['RETURNED', 'RETURNED_OVERDUE', 'LOST', 'DAMAGED'].includes(b.status)) {
         const isNowOverdue = b.status === 'OVERDUE' || (dueDate && now > dueDate);
         const { isLost, isDamaged, damageFee, returnNote } = itemConfig;
         
-        // Gán phí trễ hạn của đơn cho cuốn sách đầu tiên tìm thấy
         if (!lateFeeAssigned && lateFeeToAssign > 0) {
            currentItemLateFee = lateFeeToAssign;
            lateFeeAssigned = true;
@@ -62,91 +66,68 @@ export async function POST(request) {
         finalBookStatus = isLost ? 'LOST' : isDamaged ? 'DAMAGED' : (isNowOverdue ? 'RETURNED_OVERDUE' : 'RETURNED');
         if (isLost || isDamaged || isNowOverdue || currentItemLateFee > 0) anyViolation = true;
 
-        // Cập nhật kho nếu KHÔNG mất và KHÔNG hỏng nặng
+        const bookRef = adminDb.collection("books").doc(b.bookId);
         if (!isLost && !isDamaged) {
-          const bookRef = doc(db, "books", b.bookId);
-          batch.update(bookRef, { quantity: increment(1) });
-        } else if (isDamaged) {
-          // Nếu hỏng nặng thì tăng trường damagedCount để làm thống kê
-          const bookRef = doc(db, "books", b.bookId);
-          batch.update(bookRef, { damagedCount: increment(1) });
+          batch.update(bookRef, { quantity: FieldValue.increment(1) });
+        } else {
+          if (isDamaged) {
+            batch.update(bookRef, { damagedCount: FieldValue.increment(1) });
+          } else if (isLost) {
+            batch.update(bookRef, { lostCount: FieldValue.increment(1) });
+          }
         }
 
         currentItemDamageFee = Number(damageFee) || 0;
         currentReturnNote = returnNote || 'Thu hồi hàng loạt';
 
-        // Cập nhật thông tin sách
         const updatedBook = {
           ...b,
           status: finalBookStatus,
-          actualReturnDate: now,
+          actualReturnDate: nowISO,
           returnNote: currentReturnNote,
           lateFee: currentItemLateFee,
           damageFee: currentItemDamageFee,
           penaltyAmount: currentItemLateFee + currentItemDamageFee
         };
 
-        // Kiểm tra xem sau khi cập nhật cuốn này có coi là đã xong chưa
         if (!['RETURNED', 'RETURNED_OVERDUE', 'LOST', 'DAMAGED'].includes(finalBookStatus)) {
           allProcessedAsReturned = false;
         }
-
         return updatedBook;
       }
       
-      // Nếu không có cấu hình trả mới, kiểm tra trạng thái hiện tại của sách
       const isAlreadyReturned = ['RETURNED', 'RETURNED_OVERDUE', 'LOST', 'DAMAGED'].includes(b.status);
       if (!isAlreadyReturned) {
         allProcessedAsReturned = false;
       }
-
       return b;
     });
 
-    // Cập nhật lại Phiếu mượn
     batch.update(recordRef, {
       books: updatedBooks,
       status: allProcessedAsReturned ? 'RETURNED' : 'PARTIALLY_RETURNED'
     });
 
-    // Cập nhật vi phạm cho User nếu có và gửi thông báo chi tiết
     if (anyViolation && data.userId) {
-      const userRef = doc(db, "users", data.userId);
-      batch.update(userRef, { lastOverdueAt: serverTimestamp() });
+      const userRef = adminDb.collection("users").doc(data.userId);
+      batch.update(userRef, { lastOverdueAt: FieldValue.serverTimestamp() });
 
-      // Gửi thông báo cho từng cuốn có vi phạm trong mảng updatedBooks
       for (const b of updatedBooks) {
-        // Chỉ gửi cho những cuốn vừa được xử lý trả trong đợt này (có actualReturnDate mới)
-        if (b.actualReturnDate === now) {
+        if (b.actualReturnDate === nowISO) {
+          const msgBase = `Cuốn sách "${b.bookTitle}" `;
           if (b.status === 'RETURNED_OVERDUE' || b.lateFee > 0) {
-            await createNotification(
-              data.userId,
-              "⚠️ Tạm khóa quyền gia hạn",
-              `Cuốn sách "${b.bookTitle}" bị trả trễ hạn. Quyền lợi gia hạn của bạn bị tạm khóa trong 3 tháng tới.`,
-              "warning"
-            ).catch(err => console.error("Notify bulk overdue failed:", err));
+            await createNotification(data.userId, "⚠️ Tạm khóa gia hạn", msgBase + "bị trả trễ hạn.", "warning");
           }
           if (b.status === 'DAMAGED' || b.damageFee > 0) {
-            await createNotification(
-              data.userId,
-              "⚠️ Tạm khóa quyền gia hạn",
-              `Cuốn sách "${b.bookTitle}" bị hư hỏng khi trả. Quyền lợi gia hạn của bạn bị tạm khóa trong 3 tháng tới.`,
-              "warning"
-            ).catch(err => console.error("Notify bulk damage failed:", err));
+            await createNotification(data.userId, "⚠️ Tạm khóa gia hạn", msgBase + "bị hư hỏng khi trả.", "warning");
           }
           if (b.status === 'LOST') {
-            await createNotification(
-              data.userId,
-              "❌ Ghi nhận mất sách",
-              `Cuốn sách "${b.bookTitle}" được báo mất. Phí bồi thường đã được ghi nhận và quyền gia hạn bị khóa 3 tháng.`,
-              "error"
-            ).catch(err => console.error("Notify bulk lost failed:", err));
+            await createNotification(data.userId, "❌ Ghi nhận mất sách", msgBase + "được báo mất.", "error");
           }
         }
       }
     }
 
-    // Thực thi toàn bộ lệnh cập nhật
     await batch.commit();
 
     return NextResponse.json({
@@ -155,9 +136,9 @@ export async function POST(request) {
     }, { status: 200 });
 
   } catch (error) {
-    console.error('Error processing return-all API:', error);
+    console.error('>>> [ERROR] bulk return-all failed:', error);
     return NextResponse.json(
-      { error: 'Lỗi server khi thu hồi hàng loạt' },
+      { error: 'Lỗi server khi thu hồi hàng loạt: ' + error.message },
       { status: 500 }
     );
   }

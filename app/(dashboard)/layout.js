@@ -29,16 +29,17 @@ export default function DashboardLayout({ children }) {
   const toggleMobileSidebar = () => setIsMobileOpen(!isMobileOpen);
 
   const navLinks = role === "admin" ? [
-    { href: "/admin", label: "Dashboard (Tổng quan)" },
+    { href: "/admin", label: "🏠 Dashboard (Tổng quan)" },
     { href: "/admin/books", label: "📦 Tổng Kho Sách" },
-    { href: "/admin/transactions", label: "Quản lý Phiếu Mượn" },
-    { href: "/admin/members", label: "Quản lý Độc giả" },
-    { href: "/admin/stats", label: "Thống kê" },
-    { href: "/admin/posts", label: "Tin Tức & Blog" },
+    { href: "/admin/transactions", label: "📑 Quản lý Phiếu Mượn" },
+    { href: "/admin/members", label: "👥 Quản lý Độc giả" },
+    { href: "/admin/settings", label: "⚙️ Lịch nghỉ & Phạt" },
+    { href: "/admin/stats", label: "📊 Thống kê" },
+    { href: "/admin/posts", label: "📰 Tin Tức & Blog" },
   ] : [
-    { href: "/user", label: "Trang Cá Nhân Độc Giả" },
-    { href: "/user/books", label: "Danh mục Sách" },
-    { href: "/user/settings", label: "Cài Đặt" },
+    { href: "/user", label: "👤 Trang Cá Nhân Độc Giả" },
+    { href: "/user/books", label: "📚 Danh mục Sách" },
+    { href: "/user/settings", label: "⚙️ Cài Đặt" },
   ];
 
   return (
@@ -59,6 +60,7 @@ export default function DashboardLayout({ children }) {
             <Link
               key={link.href}
               href={link.href}
+              id={link.href === '/user/books' ? 'tour-search-nav' : undefined}
               className={`${styles.navItem} ${pathname === link.href ? styles.active : ""}`}
               onClick={() => setIsMobileOpen(false)}
             >

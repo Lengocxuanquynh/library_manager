@@ -3,13 +3,22 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "./AuthProvider";
+import { calculateSmartDueDate } from "@/lib/penalty-utils";
+import { formatDate } from "@/lib/utils";
 
-export default function RenewalModal({ book, isOpen, onClose, userId, onSuccess }) {
+export default function RenewalModal({ book, isOpen, onClose, userId, onSuccess, config }) {
   const { user } = useAuth();
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
+
+  // Tính toán hạn trả mới dự kiến
+  const currentDueDate = book.dueDate?._seconds 
+    ? new Date(book.dueDate._seconds * 1000) 
+    : (book.dueDate?.seconds ? new Date(book.dueDate.seconds * 1000) : new Date(book.dueDate));
+  
+  const predictedDueDate = calculateSmartDueDate(currentDueDate, 14, config || { excludeSundays: true, holidays: [] });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -65,7 +74,9 @@ export default function RenewalModal({ book, isOpen, onClose, userId, onSuccess 
         <h3 style={{ margin: "0 0 1rem 0", color: "#bb86fc", fontSize: "1.25rem" }}>Yêu Cầu Gia Hạn</h3>
         <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
           Sách: <strong>{book.bookTitle}</strong><br/>
-          Hạn trả hiện tại: {book.dueDateFormatted}
+          Hạn trả hiện tại: {book.dueDateFormatted || formatDate(currentDueDate)}<br/>
+          <span style={{ color: "#27c93f", fontWeight: "bold" }}> Hạn trả mới dự kiến: {formatDate(predictedDueDate)} </span>
+          <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '0.3rem' }}> (Đã bao gồm +14 ngày làm việc, trừ các ngày nghỉ) </div>
         </p>
 
         <form onSubmit={handleSubmit}>
