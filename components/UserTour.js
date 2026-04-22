@@ -96,7 +96,7 @@ export default function UserTour({ steps, onComplete, isOpen }) {
               <button onClick={handlePrev} style={styles.prevBtn}>Quay lại</button>
             )}
             <button onClick={handleNext} style={styles.nextBtn}>
-              {isLastStep ? 'Hoàn tất 🎉' : 'Tiếp theo →'}
+              {isLastStep ? (step.finishText || 'Hoàn tất 🎉') : 'Tiếp theo →'}
             </button>
           </div>
         </div>

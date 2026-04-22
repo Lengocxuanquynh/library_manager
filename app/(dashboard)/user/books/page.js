@@ -36,12 +36,14 @@ export default function BookCatalog() {
   useEffect(() => {
     fetchData();
     if (user) fetchUserProfile();
+  }, [user]);
 
-    // Kiểm tra nếu đang tiếp tục Tour từ Dashboard
-    if (localStorage.getItem('tour_ongoing') === 'true') {
+  useEffect(() => {
+    // Chỉ bắt đầu Tour khi đã tải xong dữ liệu sách để đảm bảo DOM tồn tại
+    if (!loading && localStorage.getItem('tour_ongoing') === 'true') {
       setManualTour(true);
     }
-  }, [user]);
+  }, [loading]);
 
   const fetchData = async () => {
     try {

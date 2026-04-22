@@ -79,8 +79,14 @@ export default function DashboardLayout({ children }) {
           </Link>
           <button 
             onClick={() => {
-              window.dispatchEvent(new CustomEvent('start-user-tour'));
               setIsMobileOpen(false);
+              localStorage.setItem('manual_tour_start', 'true');
+              if (pathname !== '/user') {
+                router.push('/user');
+              } else {
+                // Nếu đang ở /user rồi thì dispatch event ngay
+                window.dispatchEvent(new CustomEvent('start-user-tour'));
+              }
             }} 
             className={styles.navItem}
             style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', border: '1px dashed rgba(187, 134, 252, 0.3)', marginBottom: '0.5rem', width: '100%', textAlign: 'center' }}
