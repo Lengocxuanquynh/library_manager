@@ -9,10 +9,12 @@ import { calculatePenaltyDetails } from "@/lib/penalty-utils";
 import RenewalModal from "@/components/RenewalModal";
 import UserTour from "@/components/UserTour";
 import { completeUserTour } from "@/services/auth";
+import { useRouter } from "next/navigation";
 
 export default function UserDashboard() {
   const { user } = useAuth();
   const lucid = useLucid();
+  const router = useRouter();
   const [transactions, setTransactions] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +24,7 @@ export default function UserDashboard() {
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [selectedRenewBook, setSelectedRenewBook] = useState(null);
   const [config, setConfig] = useState({ excludeSundays: true, holidays: [] });
+  const [manualTour, setManualTour] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -145,6 +148,18 @@ export default function UserDashboard() {
     if (user?.uid) {
       loadRecords();
     }
+
+    // Lắng nghe sự kiện bắt đầu Tour từ Sidebar
+    const handleStartTour = () => setManualTour(true);
+    window.addEventListener('start-user-tour', handleStartTour);
+
+    // Kiểm tra nếu được redirect từ trang khác tới để bắt đầu tour
+    if (localStorage.getItem('manual_tour_start') === 'true') {
+      setManualTour(true);
+      localStorage.removeItem('manual_tour_start');
+    }
+
+    return () => window.removeEventListener('start-user-tour', handleStartTour);
   }, [user]);
 
   return (
@@ -426,9 +441,9 @@ export default function UserDashboard() {
                 </div>
               )}
 
-              <h3 id="tour-loans" style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                Sách Đang Mượn & Lịch Sử (Đã Duyệt)
-              </h3>
+              <div id="tour-loans" style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <h3>Sách Đang Mượn & Lịch Sử (Đã Duyệt)</h3>
+              </div>
               {loading ? (
                 <p style={{ marginTop: '1rem', color: 'rgba(255, 255, 255, 0.5)' }}>Đang tải dữ liệu...</p>
               ) : transactions.length === 0 ? (
@@ -666,8 +681,13 @@ export default function UserDashboard() {
 
       {/* INTERACTIVE TOUR */}
       <UserTour 
-        isOpen={user?.isNewUser}
-        onComplete={() => completeUserTour(user.uid)}
+        isOpen={user?.isNewUser || manualTour}
+        onComplete={() => {
+          setManualTour(false);
+          // Chuyển hướng sang trang sách để tiếp tục Part 2 nếu đang chạy tour
+          localStorage.setItem('tour_ongoing', 'true');
+          router.push('/user/books');
+        }}
         steps={[
           {
             targetId: 'tour-welcome',
@@ -692,7 +712,8 @@ export default function UserDashboard() {
           {
             targetId: 'tour-search-nav',
             title: 'Khám Phá Kho Sách 🔍',
-            description: 'Cuối cùng, hãy bắt đầu hành trình bằng cách tìm kiếm những cuốn sách yêu thích trong danh mục của chúng tôi. Chúc bạn đọc sách vui vẻ!'
+            description: 'Cuối cùng, hãy bắt đầu hành trình bằng cách tìm kiếm những cuốn sách yêu thích trong danh mục của chúng tôi. Chúc bạn đọc sách vui vẻ!',
+            finishText: 'Tiếp tục khám phá →'
           }
         ]}
       />

@@ -167,8 +167,9 @@ export const subscribeToAuthChanges = (callback) => {
           if (userData.memberCode) memberCode = userData.memberCode;
           if (userData.phone) phone = userData.phone;
           username = userData.username || "";
+          const isNewUser = userData.isNewUser || false;
           
-          callback({ user: { ...user, memberCode, phone, username }, role, isLocked });
+          callback({ user: { ...user, memberCode, phone, username, isNewUser }, role, isLocked });
         } else {
           // Trường hợp user mới (VD: Login Google lần đầu chưa có doc)
           callback({ user: { ...user, memberCode, phone: "", username: "" }, role: "user", isLocked: false });

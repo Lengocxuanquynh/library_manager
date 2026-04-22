@@ -7,6 +7,8 @@ import styles from "../../dashboard.module.css";
 import { useRouter } from "next/navigation";
 import { toggleAuthorFavorite } from "@/services/db";
 import { toast } from "sonner";
+import UserTour from "@/components/UserTour";
+import { completeUserTour } from "@/services/auth";
 
 export default function BookCatalog() {
   const { user } = useAuth();
@@ -25,6 +27,7 @@ export default function BookCatalog() {
   const [activeTab, setActiveTab] = useState("TRANG CHỦ"); // TRANG CHỦ, TÁC GIẢ, THỂ LOẠI, THƯ VIỆN
   const [filterAuthor, setFilterAuthor] = useState("Tất cả");
   const [filterCategory, setFilterCategory] = useState("Tất cả");
+  const [manualTour, setManualTour] = useState(false);
 
 
   // Nav Dropdowns state
@@ -34,6 +37,13 @@ export default function BookCatalog() {
     fetchData();
     if (user) fetchUserProfile();
   }, [user]);
+
+  useEffect(() => {
+    // Chỉ bắt đầu Tour khi đã tải xong dữ liệu sách để đảm bảo DOM tồn tại
+    if (!loading && localStorage.getItem('tour_ongoing') === 'true') {
+      setManualTour(true);
+    }
+  }, [loading]);
 
   const fetchData = async () => {
     try {
@@ -237,7 +247,7 @@ export default function BookCatalog() {
             )}
         </div>
 
-        <div className={styles.grid} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '2rem' }}>
+        <div id="tour-book-grid" className={styles.grid} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '2rem' }}>
             {loading ? (
             <div style={{ textAlign: 'center', padding: '4rem', gridColumn: '1/-1' }}>
                 <div className={styles.loader} style={{ margin: '0 auto' }}></div>
@@ -248,12 +258,13 @@ export default function BookCatalog() {
                 <p style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.5)' }}>Không tìm thấy sách nào khớp với lựa chọn của bạn.</p>
             </div>
             ) : (
-            filteredBooks.map(book => {
+            filteredBooks.map((book, index) => {
                 const isAvailable = (book.quantity || 0) > 0;
                 const isFan = userProfile?.favoriteAuthors?.includes(book.author);
                 return (
                 <div 
                     key={book.id} 
+                    id={index === 0 ? "tour-book-card" : undefined}
                     className={styles.card} 
                     onClick={() => setSelectedBook(book)}
                     style={{ 
@@ -410,6 +421,7 @@ export default function BookCatalog() {
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: 'auto' }}>
                     <button 
+                        id="tour-add-to-cart"
                         onClick={() => {
                             addToCart(selectedBook);
                             setSelectedBook(null); // Đóng modal để người dùng thấy giỏ hàng trượt ra
@@ -460,6 +472,42 @@ export default function BookCatalog() {
           </div>
         </div>
       )}
+
+      {/* INTERACTIVE TOUR PART 2 */}
+      <UserTour 
+        isOpen={manualTour}
+        onComplete={() => {
+          completeUserTour(user?.uid);
+          setManualTour(false);
+          localStorage.removeItem('tour_ongoing');
+        }}
+        steps={[
+          {
+            targetId: 'tour-book-grid',
+            title: 'Kho Sách Đa Dạng 📚',
+            description: 'Đây là nơi trưng bày tất cả sách của thư viện. Bạn có thể sử dụng thanh tìm kiếm hoặc bộ lọc Tác giả/Thể loại ở trên để tìm cuốn sách ưng ý.'
+          },
+          {
+            targetId: 'tour-book-card',
+            title: 'Xem Chi Tiết 📖',
+            description: 'Nhấn "Tiếp theo", tôi sẽ mở thử một cuốn sách để bạn xem nội dung chi tiết bên trong nhé.',
+            action: () => {
+              const card = document.getElementById('tour-book-card');
+              if (card) card.click();
+            }
+          },
+          {
+            targetId: 'tour-add-to-cart',
+            title: 'Thêm Vào Giỏ Hàng 🛒',
+            description: 'Tại đây, bạn có thể xem mô tả chi tiết. Khi đã ưng ý, hãy nhấn nút này để đưa sách vào giỏ mượn tạm thời.'
+          },
+          {
+            targetId: 'tour-cart-btn',
+            title: 'Gửi Yêu Cầu Mượn 🚀',
+            description: 'Cuối cùng, hãy nhấn vào biểu tượng Giỏ hàng này để kiểm tra lại danh sách và gửi yêu cầu mượn đến Admin. Chúc bạn có những giây phút đọc sách tuyệt vời!'
+          }
+        ]}
+      />
     </div>
   );
 }
