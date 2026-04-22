@@ -4,9 +4,9 @@ import { returnBorrowRecord } from '@/services/db';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee } = body;
+    const { recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee, isDamaged } = body;
 
-    console.log(">>> [SERVER] API /api/return-book started with:", { recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee });
+    console.log(">>> [SERVER] API /api/return-book started with:", { recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee, isDamaged });
 
     if (!recordId || !bookUid) {
       return NextResponse.json(
@@ -16,7 +16,7 @@ export async function POST(request) {
     }
 
     // Process the return logic
-    await returnBorrowRecord(recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee);
+    await returnBorrowRecord(recordId, bookUid, returnNote, penaltyAmount, isLost, damageFee, isDamaged);
 
     return NextResponse.json({
       success: true,

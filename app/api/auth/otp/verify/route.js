@@ -9,7 +9,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Missing UID or OTP code" }, { status: 400 });
     }
 
-    const result = await verifyOTPSession(uid, otp);
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    const result = await verifyOTPSession(uid, otp, userAgent);
 
     if (result.success) {
       return NextResponse.json({ 

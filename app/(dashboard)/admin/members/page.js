@@ -122,8 +122,8 @@ export default function ManageMembers() {
   const handleUnlock = async (member) => {
     const { id, name } = member;
     const confirmed = await confirmPremium(
-      `Phải đảm bảo xác nhận ${name} đã hoàng thành thủ tục mở khóa tài khoản với phòng chăm sóc sinh viên.`,
-      "🔐 Xác nhận Mở khóa"
+      `Xác nhận độc giả ${name} đã hoàn thành đầy đủ các thủ tục bồi thường và đủ điều kiện để khôi phục quyền lợi mượn sách?`,
+      "🛡️ Xác nhận mở khóa tài khoản"
     );
     if (!confirmed) return;
     
@@ -262,10 +262,10 @@ export default function ManageMembers() {
             <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '30%' }}>Thành viên</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '25%' }}>Thành viên</th>
                   <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '15%' }}>Định danh</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '35%' }}>Liên hệ</th>
-                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '20%' }}>Thao Tác</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '30%' }}>Liên hệ</th>
+                  <th style={{ padding: '1rem', color: 'rgba(255,255,255,0.6)', width: '30%' }}>Thao Tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -285,7 +285,8 @@ export default function ManageMembers() {
                     .map(member => (
                     <tr key={member.id} style={{ 
                       borderBottom: '1px solid rgba(255,255,255,0.05)',
-                      background: member.isLocked ? 'rgba(255, 95, 86, 0.1)' : 'transparent'
+                      background: member.isLocked ? 'rgba(255, 95, 86, 0.1)' : 'transparent',
+                      transition: 'background 0.3s'
                     }}>
                       <td style={{ padding: '1rem' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
@@ -303,8 +304,8 @@ export default function ManageMembers() {
                            {member.memberCode || `DG-${(member.uid || member.id).slice(-5).toUpperCase()}`}
                          </div>
                       </td>
-                      <td style={{ padding: '1rem', maxWidth: '0' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', overflow: 'hidden' }}>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                           <span 
                             title={member.email}
                             style={{ 
@@ -312,7 +313,8 @@ export default function ManageMembers() {
                               fontSize: '0.9rem', 
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
-                              textOverflow: 'ellipsis'
+                              textOverflow: 'ellipsis',
+                              maxWidth: '180px'
                             }}
                           >
                             {member.email}
@@ -321,14 +323,13 @@ export default function ManageMembers() {
                         </div>
                       </td>
                       <td style={{ padding: '1rem' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'nowrap' }}>
                           {member.isLocked ? (
-                            <button onClick={() => handleUnlock(member)} style={{ background: 'rgba(39, 201, 63, 0.15)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.3)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '700' }}>Mở khóa</button>
+                            <button onClick={() => handleUnlock(member)} style={{ background: 'rgba(39, 201, 63, 0.15)', color: '#27c93f', border: '1px solid rgba(39, 201, 63, 0.3)', padding: '0.45rem 0.7rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '800', whiteSpace: 'nowrap' }}>MỞ KHÓA</button>
                           ) : (
-                            <button onClick={() => viewHistory(member)} style={{ background: 'rgba(187, 134, 252, 0.1)', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Lịch sử</button>
+                            <button onClick={() => viewHistory(member)} style={{ background: 'rgba(187, 134, 252, 0.12)', color: '#bb86fc', border: '1px solid rgba(187, 134, 252, 0.25)', padding: '0.45rem 0.7rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap' }}>LỊCH SỬ</button>
                           )}
-                          <button onClick={() => handleResetPassword(member.email)} style={{ background: 'rgba(255, 193, 7, 0.1)', color: '#ffc107', border: '1px solid rgba(255, 193, 7, 0.2)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Reset MK</button>
-                          <button onClick={() => handleDelete(member)} style={{ background: 'rgba(255, 95, 86, 0.05)', color: '#ff5f56', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>Xoá</button>
+                          <button onClick={() => handleDelete(member)} style={{ background: 'rgba(255, 95, 86, 0.08)', color: '#ff5f56', border: '1px solid rgba(255, 95, 86, 0.2)', padding: '0.45rem 0.7rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700', whiteSpace: 'nowrap' }}>XÓA</button>
                         </div>
                       </td>
                     </tr>

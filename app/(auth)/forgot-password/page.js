@@ -105,6 +105,13 @@ export default function ForgotPassword() {
         setStep(2); // Sang bước đặt lại mật khẩu
       } else {
         toast.error(data.message || "Mã OTP không chính xác.");
+        if (data.shouldLogout) {
+          // Bị hacker phá hoặc nhập sai quá 3 lần -> Reset về bước 1 ngay
+          setTimeout(() => {
+            setShowOTP(false);
+            setPendingUser(null);
+          }, 2000);
+        }
       }
     } catch (err) {
       toast.error("Lỗi kết nối máy chủ.");

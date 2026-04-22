@@ -17,7 +17,7 @@ export async function GET() {
     ]);
 
     // 2. Base Counts
-    const totalBooks = booksSnap.size;
+    const totalTitles = booksSnap.size;
     const totalMembers = membersSnap.size;
 
     // 3. Centralized Aggregation (Multi-book aware)
@@ -25,6 +25,7 @@ export async function GET() {
     let totalRevenue = 0;
     let lostBooksCount = 0;
     let damagedBooksCount = 0;
+    let inventoryCopiesCount = 0; // Số bản sao trong kho
     const lostBooksList = [];
     const damagedBooksList = [];
     const activeLoansDetails = [];
@@ -42,6 +43,9 @@ export async function GET() {
       bookData[doc.id] = b;
       const cat = b.category || 'Khác';
       categoryFreq[cat] = (categoryFreq[cat] || 0) + 1;
+      
+      // Tính tổng số bản sao trong kho
+      inventoryCopiesCount += (Number(b.quantity) || 0);
     });
 
     recordsSnap.docs.forEach(doc => {
@@ -185,7 +189,8 @@ export async function GET() {
       success: true,
       data: {
         summary: {
-          totalBooks,
+          totalTitles, // Số lượng đầu sách (34)
+          totalCopies: inventoryCopiesCount + activeBorrowsCount, // Tổng số bản sao vật lý
           totalMembers,
           activeBorrows: activeBorrowsCount,
           totalRevenue,

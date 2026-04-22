@@ -37,7 +37,8 @@ export default function AdminDashboard() {
     borrowingCount: 0,
     overdueCount: 0,
     totalLibraryBooks: 0,
-    totalDamaged: 0
+    totalDamaged: 0,
+    totalTitles: 0
   });
   const [data, setData] = useState({
     recentRecords: [],
@@ -51,20 +52,22 @@ export default function AdminDashboard() {
       if (!user?.uid) return;
       
       try {
-        const [booksRes, membersRes, recordsRes] = await Promise.all([
+        const [booksRes, membersRes, recordsRes, statsRes] = await Promise.all([
           fetch('/api/books'),
           fetch('/api/members'),
-          fetch(`/api/admin/borrow-records?adminId=${user.uid}`)
+          fetch(`/api/admin/borrow-records?adminId=${user.uid}`),
+          fetch('/api/admin/stats')
         ]);
 
-        if (!booksRes.ok || !membersRes.ok || !recordsRes.ok) {
+        if (!booksRes.ok || !membersRes.ok || !recordsRes.ok || !statsRes.ok) {
            throw new Error("Một hoặc nhiều yêu cầu dữ liệu thất bại");
         }
 
-        const [books, members, recordsRaw] = await Promise.all([
+        const [books, members, recordsRaw, statsData] = await Promise.all([
           booksRes.json().catch(() => ({ error: 'Invalid JSON' })),
           membersRes.json().catch(() => ({ error: 'Invalid JSON' })),
-          recordsRes.json().catch(() => ({ error: 'Invalid JSON' }))
+          recordsRes.json().catch(() => ({ error: 'Invalid JSON' })),
+          statsRes.json().catch(() => ({ error: 'Invalid JSON' }))
         ]);
         
         const records = Array.isArray(recordsRaw) ? recordsRaw : [];
@@ -82,20 +85,32 @@ export default function AdminDashboard() {
           return r.status === 'OVERDUE' || (isActive && dueDate && dueDate < currentTime);
         });
 
-        // Unique readers count
-        const activeBorrowerIds = new Set(borrowing.map(r => r.userId).filter(Boolean));
+        const remoteStats = statsData.success ? statsData.data.summary : null;
 
-        const inventoryCount = booksArray.reduce((acc, b) => acc + (parseInt(b.quantity) || 0), 0);
-        const damagedCountTotal = booksArray.reduce((acc, b) => acc + (parseInt(b.damagedCount) || 0), 0);
-
-        setStats({
-          totalInventory: inventoryCount,
-          activeMembers: Array.isArray(members) ? members.length : 0,
-          borrowingCount: borrowing.length,
-          overdueCount: overdue.length,
-          totalLibraryBooks: inventoryCount + borrowing.length,
-          totalDamaged: damagedCountTotal
-        });
+        // Use remote stats if available for perfect synchronization
+        if (remoteStats) {
+          setStats({
+            totalInventory: remoteStats.totalInventory,
+            activeMembers: remoteStats.totalMembers,
+            borrowingCount: remoteStats.activeBorrows,
+            overdueCount: remoteStats.overdueCount || 0,
+            totalLibraryBooks: remoteStats.totalCopies,
+            totalDamaged: remoteStats.damagedBooks,
+            totalTitles: remoteStats.totalTitles
+          });
+        } else {
+          // Fallback local calculation
+          const inventoryCount = booksArray.reduce((acc, b) => acc + (parseInt(b.quantity) || 0), 0);
+          setStats({
+            totalInventory: inventoryCount,
+            activeMembers: Array.isArray(members) ? members.length : 0,
+            borrowingCount: 0,
+            overdueCount: 0,
+            totalLibraryBooks: inventoryCount,
+            totalDamaged: 0,
+            totalTitles: booksArray.length
+          });
+        }
 
         // Sách mới nhập (last 5)
         const sortedBooks = Array.isArray(books) ? [...books].sort((a,b) => getSafeTime(b.createdAt) - getSafeTime(a.createdAt)) : [];
@@ -142,69 +157,81 @@ export default function AdminDashboard() {
   const totalLibraryBooks = stats.totalInventory + borrowingCount;
 
   return (
-    <div>
-      <div className={styles.headerArea}>
-        <h1 className={styles.pageTitle}>Dashboard (Tổng quan)</h1>
+    <div style={{ animation: 'fadeIn 0.8s ease-out' }}>
+      {/* Hero Section */}
+      <div className={styles.heroCard}>
+        <div style={{ zIndex: 1 }}>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: '900', marginBottom: '0.5rem', letterSpacing: '-1px' }}>
+            Chào mừng trở lại, {user?.displayName?.split(' ')[0] || "Admin"}!
+          </h1>
+          <p style={{ opacity: 0.7, fontSize: '1.1rem', maxWidth: '500px' }}>
+            Hôm nay là {currentTime.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}. 
+            Hệ thống đang hoạt động ổn định với {borrowingCount} phiếu mượn đang hoạt động.
+          </p>
+        </div>
+        <div style={{ fontSize: '5rem', opacity: 0.2, fontWeight: '900', userSelect: 'none' }}>
+          {currentTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      </div>
+
+      <div className={styles.headerArea} style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1.5rem', fontWeight: '800' }}>Chỉ số quan trọng</h2>
         <div style={{ display: 'flex', gap: '0.8rem' }}>
-          <Link href="/admin/books" className="btn-outline">Quản lý Sách</Link>
-          <Link href="/admin/transactions" className="btn-primary">Quản lý Phiếu mượn</Link>
+          <Link href="/admin/books" className="btn-outline" style={{ borderRadius: '12px' }}>Kho Sách</Link>
+          <Link href="/admin/transactions" className="btn-primary" style={{ borderRadius: '12px', boxShadow: '0 4px 15px rgba(187, 134, 252, 0.3)' }}>Phiếu mượn</Link>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '4rem', color: 'rgba(255,255,255,0.5)' }}>Đang tải dữ liệu tổng quan...</div>
+        <div className={styles.loading}>Đang tối ưu dữ liệu...</div>
       ) : (
         <>
-
           {/* Stats Grid */}
-          <div className={styles.grid} style={{ marginBottom: '2.5rem' }}>
-            <div className={styles.card} style={{ borderLeft: '4px solid #bb86fc' }} key="total-books">
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tổng số sách thư viện</div>
-              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{totalLibraryBooks}</div>
-              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Hàng tồn + Đang mượn</div>
+          <div className={styles.grid} style={{ marginBottom: '3rem' }}>
+            <div className={styles.card} style={{ background: 'linear-gradient(135deg, rgba(187, 134, 252, 0.1), transparent)' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: '700', opacity: 0.5, textTransform: 'uppercase', marginBottom: '1rem' }}>Tổng đầu sách</div>
+              <div className={styles.statValue}>{stats.totalTitles}</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.4, marginTop: '0.5rem' }}>~ {totalLibraryBooks} cuốn vật lý</div>
+              <div style={{ position: 'absolute', bottom: '-10px', right: '-10px', fontSize: '5rem', opacity: 0.03 }}>📖</div>
             </div>
             
-            <div className={styles.card} style={{ borderLeft: '4px solid #03dac6' }} key="inventory">
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách tồn kho</div>
-              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalInventory}</div>
-              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Sẵn sàng cho mượn</div>
+            <div className={styles.card} style={{ background: 'linear-gradient(135deg, rgba(3, 218, 198, 0.1), transparent)' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: '700', opacity: 0.5, textTransform: 'uppercase', marginBottom: '1rem' }}>Đang mượn</div>
+              <div className={styles.statValue}>{borrowingCount}</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.4, marginTop: '0.5rem' }}>{Math.round((borrowingCount/totalLibraryBooks)*100) || 0}% tỉ lệ lưu thông</div>
+              <div style={{ position: 'absolute', bottom: '-10px', right: '-10px', fontSize: '5rem', opacity: 0.03 }}>📤</div>
             </div>
 
-            <div className={styles.card} style={{ borderLeft: '4px solid #27c93f' }} key="borrowing">
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách đang mượn</div>
-              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{borrowingCount}</div>
-              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Sách đã ra khỏi kho</div>
+            <div className={styles.card} style={{ background: 'linear-gradient(135deg, rgba(255, 95, 86, 0.1), transparent)' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: '700', opacity: 0.5, textTransform: 'uppercase', marginBottom: '1rem' }}>Quá hạn</div>
+              <div className={styles.statValue} style={{ color: '#ff5f56', WebkitTextFillColor: '#ff5f56' }}>{overdueCount}</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.4, marginTop: '0.5rem' }}>Cần xử lý ngay</div>
+              <div style={{ position: 'absolute', bottom: '-10px', right: '-10px', fontSize: '5rem', opacity: 0.03 }}>⚠️</div>
             </div>
 
-            <div className={styles.card} style={{ borderLeft: '4px solid #ff5f56' }} key="overdue">
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Số sách quá hạn</div>
-              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{overdueCount}</div>
-              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Cần thu hồi gấp</div>
-            </div>
-
-            <div className={styles.card} style={{ borderLeft: '4px solid #ffa502' }} key="damaged">
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: '600', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Sách hư hỏng / Thanh lý</div>
-              <div style={{ fontSize: "2.8rem", fontWeight: "900", color: "#fff" }}>{stats.totalDamaged}</div>
-              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>Đã loại khỏi lưu thông</div>
+            <div className={styles.card} style={{ background: 'linear-gradient(135deg, rgba(255, 176, 32, 0.1), transparent)' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: '700', opacity: 0.5, textTransform: 'uppercase', marginBottom: '1rem' }}>Hư hỏng</div>
+              <div className={styles.statValue}>{stats.totalDamaged}</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.4, marginTop: '0.5rem' }}>Đang chờ bảo trì</div>
+              <div style={{ position: 'absolute', bottom: '-10px', right: '-10px', fontSize: '5rem', opacity: 0.03 }}>🔧</div>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-             {/* Recent Activity Table */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h2 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Phiếu mượn gần đây</h2>
-                <Link href="/admin/transactions" style={{ fontSize: '0.85rem', color: '#bb86fc', textDecoration: 'none' }}>Tất cả →</Link>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2.5rem' }}>
+             {/* Recent Activity */}
+            <div className={styles.card} style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: '800' }}>Hoạt động gần đây</h3>
+                <Link href="/admin/transactions" style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: '600' }}>Xem tất cả</Link>
               </div>
 
-              <div className="table-container">
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="table-container" style={{ border: 'none' }}>
+                <table style={{ width: '100%' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Người mượn</th>
-                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Ngày mượn</th>
-                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Hạn trả</th>
-                      <th style={{ padding: '0.75rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Trạng thái</th>
+                    <tr style={{ textAlign: 'left', opacity: 0.3, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      <th style={{ paddingBottom: '1rem' }}>Độc giả</th>
+                      <th style={{ paddingBottom: '1rem' }}>Hạn trả</th>
+                      <th style={{ paddingBottom: '1rem', textAlign: 'right' }}>Trạng thái</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -212,24 +239,21 @@ export default function AdminDashboard() {
                       const isActive = activity.status === 'Active' || activity.status === 'BORROWING' || activity.status === 'OVERDUE';
                       const isOverdue = activity.status === 'OVERDUE' || (isActive && getTimestamp(activity.dueDate) < currentTime.getTime() && getTimestamp(activity.dueDate) !== 0);
                       return (
-                        <tr key={activity.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
-                            <div style={{ fontWeight: '600' }}>{activity.userName || activity.memberName}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>{activity.bookTitle}</div>
+                        <tr key={activity.id} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td style={{ padding: '1.2rem 0' }}>
+                            <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>{activity.userName || activity.memberName}</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>{activity.bookTitle}</div>
                           </td>
-                          <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
-                            {formatDate(activity.borrowDate)}
-                          </td>
-                          <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
+                          <td style={{ padding: '1.2rem 0', fontSize: '0.85rem', opacity: 0.6 }}>
                             {formatDate(activity.dueDate)}
                           </td>
-                          <td style={{ padding: '0.75rem' }}>
-                            <span style={{
-                              padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '700',
-                              background: isOverdue ? 'rgba(255,95,86,0.15)' : activity.status === 'RETURNED_OVERDUE' ? 'rgba(255,176,32,0.15)' : activity.status === 'RETURNED' ? 'rgba(255,255,255,0.06)' : 'rgba(39,201,63,0.15)',
-                              color: isOverdue ? '#ff5f56' : activity.status === 'RETURNED_OVERDUE' ? '#ffb020' : activity.status === 'RETURNED' ? 'rgba(255,255,255,0.4)' : '#27c93f'
+                          <td style={{ padding: '1.2rem 0', textAlign: 'right' }}>
+                            <span className={styles.badge} style={{
+                              background: isOverdue ? 'rgba(255,95,86,0.1)' : activity.status === 'RETURNED' ? 'rgba(255,255,255,0.05)' : activity.status === 'APPROVED_PENDING_PICKUP' ? 'rgba(187, 134, 252, 0.1)' : 'rgba(39,201,63,0.1)',
+                              color: isOverdue ? '#ff5f56' : activity.status === 'RETURNED' ? 'rgba(255,255,255,0.4)' : activity.status === 'APPROVED_PENDING_PICKUP' ? '#bb86fc' : '#27c93f',
+                              border: `1px solid ${isOverdue ? 'rgba(255,95,86,0.2)' : 'transparent'}`
                             }}>
-                              {isOverdue ? 'QUÁ HẠN' : activity.status === 'RETURNED_OVERDUE' ? 'TRẢ MUỘN' : activity.status === 'RETURNED' ? 'ĐÃ TRẢ' : 'MƯỢN'}
+                              {isOverdue ? 'Trễ hạn' : activity.status === 'RETURNED' ? 'Đã trả' : activity.status === 'APPROVED_PENDING_PICKUP' ? 'Chờ lấy sách' : 'Đang mượn'}
                             </span>
                           </td>
                         </tr>
@@ -240,20 +264,24 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* New Books List */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem' }}>Sách mới nhập gần đây</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Inventory Shortcut */}
+            <div className={styles.card} style={{ padding: '2rem' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: '800', marginBottom: '2rem' }}>Sách mới nhập</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                 {data.newBooks.map(book => (
-                  <Link href="/admin/books" key={book.id} style={{ display: 'flex', gap: '1rem', textDecoration: 'none', color: 'inherit', padding: '0.5rem', borderRadius: '10px', background: 'rgba(255,255,255,0.02)' }}>
-                    <div style={{ width: '40px', height: '60px', borderRadius: '4px', background: `url(${book.coverImage || '/placeholder.png'}) center/cover` }}></div>
-                    <div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: '600' }}>{book.title}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>{book.author} • {book.category}</div>
+                  <Link href="/admin/books" key={book.id} style={{ display: 'flex', gap: '1.2rem', textDecoration: 'none', color: 'inherit', padding: '0.75rem', borderRadius: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid transparent', transition: 'all 0.3s' }}>
+                    <div style={{ width: '45px', height: '65px', borderRadius: '8px', background: `url(${book.coverImage || '/placeholder.png'}) center/cover`, boxShadow: '0 4px 10px rgba(0,0,0,0.3)' }}></div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.95rem', fontWeight: '700' }}>{book.title}</div>
+                      <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{book.author}</div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                        <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: 'rgba(187, 134, 252, 0.1)', color: 'var(--primary)', borderRadius: '4px' }}>{book.category}</span>
+                      </div>
                     </div>
                   </Link>
                 ))}
               </div>
+              <Link href="/admin/books" className="btn-outline" style={{ width: '100%', marginTop: '1.5rem', borderRadius: '12px', textAlign: 'center', fontSize: '0.9rem' }}>Quản lý kho sách</Link>
             </div>
           </div>
         </>
