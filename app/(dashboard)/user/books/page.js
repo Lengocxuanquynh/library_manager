@@ -490,12 +490,16 @@ export default function BookCatalog() {
           {
             targetId: 'tour-book-card',
             title: 'Xem Chi Tiết 📖',
-            description: 'Nhấn vào bất kỳ cuốn sách nào để xem mô tả chi tiết, tác giả và thể loại của tác phẩm đó.'
+            description: 'Nhấn "Tiếp theo", tôi sẽ mở thử một cuốn sách để bạn xem nội dung chi tiết bên trong nhé.',
+            action: () => {
+              const card = document.getElementById('tour-book-card');
+              if (card) card.click();
+            }
           },
           {
             targetId: 'tour-add-to-cart',
             title: 'Thêm Vào Giỏ Hàng 🛒',
-            description: 'Khi đã ưng ý, hãy nhấn nút này để đưa sách vào giỏ mượn tạm thời của bạn.'
+            description: 'Tại đây, bạn có thể xem mô tả chi tiết. Khi đã ưng ý, hãy nhấn nút này để đưa sách vào giỏ mượn tạm thời.'
           },
           {
             targetId: 'tour-cart-btn',

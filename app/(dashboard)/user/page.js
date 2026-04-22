@@ -441,9 +441,9 @@ export default function UserDashboard() {
                 </div>
               )}
 
-              <h3 id="tour-loans" style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                Sách Đang Mượn & Lịch Sử (Đã Duyệt)
-              </h3>
+              <div id="tour-loans" style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <h3>Sách Đang Mượn & Lịch Sử (Đã Duyệt)</h3>
+              </div>
               {loading ? (
                 <p style={{ marginTop: '1rem', color: 'rgba(255, 255, 255, 0.5)' }}>Đang tải dữ liệu...</p>
               ) : transactions.length === 0 ? (

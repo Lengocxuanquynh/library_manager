@@ -33,8 +33,23 @@ export default function UserTour({ steps, onComplete, isOpen }) {
       };
 
       updateSpotlight();
+      
+      // Kiểm tra lại nhiều lần để bắt kịp modal/animation
+      const timers = [
+        setTimeout(updateSpotlight, 100),
+        setTimeout(updateSpotlight, 300),
+        setTimeout(updateSpotlight, 600),
+        setTimeout(updateSpotlight, 1000)
+      ];
+
       window.addEventListener('resize', updateSpotlight);
-      return () => window.removeEventListener('resize', updateSpotlight);
+      window.addEventListener('scroll', updateSpotlight);
+
+      return () => {
+        timers.forEach(clearTimeout);
+        window.removeEventListener('resize', updateSpotlight);
+        window.removeEventListener('scroll', updateSpotlight);
+      };
     }
   }, [currentStep, isOpen, steps]);
 
@@ -44,6 +59,10 @@ export default function UserTour({ steps, onComplete, isOpen }) {
   const isLastStep = currentStep === steps.length - 1;
 
   const handleNext = () => {
+    if (step.action) {
+      step.action();
+    }
+    
     if (isLastStep) {
       onComplete();
     } else {
