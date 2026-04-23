@@ -124,11 +124,168 @@ export const getBook = async (id) => {
 };
 
 export const addBook = async (data) => {
-  return await addDoc(collection(db, "books"), data);
+  const bookRef = await addDoc(collection(db, "books"), {
+    ...data,
+    createdAt: serverTimestamp()
+  });
+  
+  // Tự động tạo các bản sao vật lý dựa trên số lượng ban đầu
+  const quantity = Number(data.quantity) || 0;
+  if (quantity > 0) {
+    await addBookCopies(bookRef.id, quantity, data.title);
+  }
+  
+  return bookRef;
+};
+
+export const addBookCopies = async (bookId, count, bookTitle, updateQuantity = true) => {
+  const batch = writeBatch(db);
+  const bookPrefix = bookTitle ? bookTitle.substring(0, 3).toUpperCase().replace(/\s/g, '') : 'BK';
+  
+  for (let i = 0; i < count; i++) {
+    const copyId = `${bookPrefix}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const copyRef = doc(collection(db, "bookCopies"));
+    batch.set(copyRef, {
+      bookId,
+      copyId,
+      status: 'AVAILABLE',
+      condition: 'EXCELLENT',
+      conditionNote: '',
+      createdAt: serverTimestamp()
+    });
+  }
+  await batch.commit();
+  
+  if (updateQuantity) {
+    const bookRef = doc(db, "books", bookId);
+    await updateDoc(bookRef, { 
+      quantity: increment(count) 
+    });
+  }
+};
+
+/**
+ * Lấy danh sách tất cả bản sao của một đầu sách
+ */
+export const getBookCopies = async (bookId) => {
+  const q = query(collection(db, "bookCopies"), where("bookId", "==", bookId));
+  return await getCollectionData(q);
+};
+
+export const deleteBookCopy = async (copyId, bookId) => {
+  const copyRef = doc(db, "bookCopies", copyId);
+  const copySnap = await getDoc(copyRef);
+  
+  if (copySnap.exists()) {
+    const copyData = copySnap.data();
+    if (copyData.status !== 'AVAILABLE') {
+      throw new Error("Không thể xóa bản sao đang được mượn hoặc đang gặp sự cố. Vui lòng thu hồi sách trước.");
+    }
+  }
+
+  await deleteDoc(copyRef);
+  
+  // Tự động giảm số lượng trong đầu sách tương ứng
+  const bookRef = doc(db, "books", bookId);
+  await updateDoc(bookRef, {
+    quantity: increment(-1)
+  });
+};
+
+/**
+ * Tìm bản sao vật lý thông qua mã định danh (Copy ID Label)
+ */
+export const getCopyByLabel = async (copyIdLabel) => {
+  if (!copyIdLabel) return null;
+  const q = query(collection(db, "bookCopies"), where("copyId", "==", copyIdLabel.trim().toUpperCase()));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+};
+
+/**
+ * Tìm một bản sao đang sẵn sàng để cho mượn
+ */
+export const getAvailableCopy = async (bookId) => {
+  const q = query(
+    collection(db, "bookCopies"), 
+    where("bookId", "==", bookId), 
+    where("status", "==", "AVAILABLE")
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+};
+
+/**
+ * Tìm phiếu mượn đang chứa một bản sao cụ thể
+ * Dùng cho tính năng "Trả nhanh bằng mã sách"
+ */
+export const findBorrowRecordByCopyId = async (copyId) => {
+  if (!copyId) return null;
+  
+  // 1. Tìm thông tin bản sao vật lý trước
+  const cleanId = copyId.trim().toUpperCase();
+  const qCopy = query(collection(db, "bookCopies"), where("copyId", "==", cleanId));
+  const snapCopy = await getDocs(qCopy);
+  
+  if (snapCopy.empty) throw new Error(`Không tìm thấy mã sách "${cleanId}" trong hệ thống.`);
+  const copyDoc = snapCopy.docs[0];
+  const copyData = copyDoc.data();
+  
+  // Kiểm tra trạng thái của bản sao (BORROWED là trạng thái chuẩn của bản sao vật lý)
+  if (copyData.status !== 'BORROWED' && copyData.status !== 'BORROWING' && copyData.status !== 'OVERDUE') {
+    throw new Error(`Sách này hiện đang ở trạng thái "${copyData.status}", không có trong phiếu mượn nào đang hoạt động.`);
+  }
+
+  // 2. Tìm phiếu mượn (borrowRecords) đang chứa physicalCopyId này
+  const qRecord = query(
+    collection(db, "borrowRecords"), 
+    where("status", "in", ["BORROWING", "OVERDUE", "PARTIALLY_RETURNED", "PARTIALLY_PICKED_UP"])
+  );
+  
+  const snapRecords = await getDocs(qRecord);
+  let targetRecord = null;
+  let targetBook = null;
+
+  snapRecords.forEach(doc => {
+    const data = doc.data();
+    const books = data.books || [];
+    // Tìm chính xác cuốn sách theo physicalCopyId và chưa trả
+    const foundBook = books.find(b => 
+      b.physicalCopyId === copyDoc.id && 
+      !['RETURNED', 'RETURNED_OVERDUE', 'LOST', 'DAMAGED'].includes(b.status)
+    );
+    if (foundBook) {
+      targetRecord = { id: doc.id, ...data };
+      targetBook = foundBook;
+    }
+  });
+
+  if (!targetRecord) {
+    throw new Error(`Mã sách "${cleanId}" được ghi nhận là Đang mượn nhưng không tìm thấy phiếu mượn tương ứng. Vui lòng kiểm tra lại dữ liệu.`);
+  }
+
+  return { record: targetRecord, book: targetBook };
 };
 
 export const updateBook = async (id, data) => {
   const docRef = doc(db, "books", id);
+  const oldSnap = await getDoc(docRef);
+  
+  if (oldSnap.exists() && data.quantity !== undefined) {
+    const oldData = oldSnap.data();
+    const oldQty = Number(oldData.quantity) || 0;
+    const newQty = Number(data.quantity) || 0;
+    
+    // Nếu tăng số lượng, tự động tạo thêm các bản sao còn thiếu
+    if (newQty > oldQty) {
+      const diff = newQty - oldQty;
+      await addBookCopies(id, diff, data.title || oldData.title, false);
+      console.log(`Auto-created ${diff} additional copies for book: ${id}`);
+    }
+  }
+
   return await updateDoc(docRef, data);
 };
 
@@ -429,21 +586,48 @@ export const createBorrowRecord = async (userId, userName, books, customBorrowDa
       }
     }
 
-    // 2. Thực hiện trừ tồn kho an toàn bằng transaction
-    for (const [bid, count] of Object.entries(bookCounts)) {
-      await decrementBookStock(bid, count);
-    }
+    // 2. Chuyển sang mô hình Asset-based: 
+    // Chúng ta KHÔNG trừ quantity ở đây nữa, vì quantity = tổng số bản sao vật lý.
+    // Việc kiểm tra "còn sách hay không" đã được thực hiện ở bước 1 qua isBookAvailable.
   }
 
-  // Process all books with unique record IDs
-  const booksWithStatus = books.map(b => ({
-    uid: Math.random().toString(36).substring(2, 11) + Date.now(), // Unique identifier for THIS borrowing instance
-    bookId: b.bookId,
-    bookTitle: b.bookTitle,
-    status: initialStatus,
-    returnDate: null,
-    penaltyAmount: 0
-  }));
+  // Process all books with unique record IDs and assign physical copies
+  const booksWithStatus = [];
+  
+  for (const b of books) {
+    let copyId = "N/A";
+    let physicalCopyId = null;
+
+    if (autoDecrement) {
+      const availableCopy = await getAvailableCopy(b.bookId);
+      if (availableCopy) {
+        copyId = availableCopy.copyId;
+        physicalCopyId = availableCopy.id;
+        // Đánh dấu bản sao là đang mượn
+        await updateDoc(doc(db, "bookCopies", physicalCopyId), { 
+          status: 'BORROWED',
+          lastBorrowerId: userId,
+          lastBorrowDate: serverTimestamp()
+        });
+        // Cập nhật số lượng đang mượn trong đầu sách
+        const bookRef = doc(db, "books", b.bookId);
+        await updateDoc(bookRef, { 
+          borrowedCount: increment(1)
+        });
+      }
+    }
+
+    booksWithStatus.push({
+      uid: Math.random().toString(36).substring(2, 11) + Date.now(),
+      bookId: b.bookId,
+      bookTitle: b.bookTitle,
+      copyId: copyId, // Mã định danh cuốn sách vật lý
+      physicalCopyId: physicalCopyId, // Document ID trong collection bookCopies
+      status: initialStatus,
+      returnDate: null,
+      penaltyAmount: 0
+    });
+  }
 
   return await addDoc(collection(db, "borrowRecords"), {
     userId,
@@ -459,21 +643,72 @@ export const createBorrowRecord = async (userId, userName, books, customBorrowDa
   });
 };
 
-export const confirmBorrowPickup = async (recordId) => {
+export const confirmBorrowPickup = async (recordId, manualCopyIds = {}) => {
   const recordRef = doc(db, "borrowRecords", recordId);
   const recordSnap = await getDoc(recordRef);
   
-  if (!recordSnap.exists()) return;
+  if (!recordSnap.exists()) throw new Error("Phiếu mượn không tồn tại.");
   const data = recordSnap.data();
 
   const config = await getLibraryConfig();
   const dueDateObj = calculateSmartDueDate(new Date(), 14, config);
 
-  // Update all books status
-  const updatedBooks = (data.books || []).map(b => ({
-    ...b,
-    status: 'BORROWING'
-  }));
+  // Update all books status and assign physical copies
+  const books = data.books || [];
+  const updatedBooks = [];
+
+  for (const b of books) {
+    let copyId = b.copyId;
+    let physicalCopyId = b.physicalCopyId;
+
+    // Ưu tiên mã được nhập thủ công từ giao diện
+    const manualId = manualCopyIds[b.uid];
+    if (manualId && manualId !== "N/A") {
+      const cleanManualId = manualId.trim().toUpperCase();
+      const q = query(collection(db, "bookCopies"), where("copyId", "==", cleanManualId));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) throw new Error(`Mã sách "${cleanManualId}" không tồn tại trong hệ thống.`);
+      const copyDoc = snap.docs[0];
+      const copyData = copyDoc.data();
+      
+      if (copyData.bookId !== b.bookId) {
+        throw new Error(`Mã sách "${cleanManualId}" không thuộc về đầu sách "${b.bookTitle}".`);
+      }
+      
+      if (copyData.status !== 'AVAILABLE' && physicalCopyId !== copyDoc.id) {
+        throw new Error(`Mã sách "${cleanManualId}" hiện đang ở trạng thái "${copyData.status}", không thể cho mượn.`);
+      }
+
+      copyId = cleanManualId;
+      physicalCopyId = copyDoc.id;
+    }
+
+    // Nếu vẫn chưa có mã (BẮT BUỘC PHẢI CÓ MÃ THỦ CÔNG TỪ ADMIN)
+    if (copyId === "N/A" || !physicalCopyId) {
+      throw new Error(`Bắt buộc phải nhập mã gáy sách cho cuốn "${b.bookTitle}" trước khi xác nhận cho mượn.`);
+    }
+
+    // Đánh dấu bản sao là đang mượn
+    await updateDoc(doc(db, "bookCopies", physicalCopyId), { 
+      status: 'BORROWED',
+      lastBorrowerId: data.userId,
+      lastBorrowDate: serverTimestamp()
+    });
+
+    // Cập nhật số lượng đang mượn trong đầu sách
+    const bookRef = doc(db, "books", b.bookId);
+    await updateDoc(bookRef, { 
+      borrowedCount: increment(1)
+    });
+
+    updatedBooks.push({
+      ...b,
+      copyId,
+      physicalCopyId,
+      status: 'BORROWING'
+    });
+  }
 
   await updateDoc(recordRef, {
     status: 'BORROWING',
@@ -529,7 +764,7 @@ export const pickupBorrowRecord = async (recordId, bookUid) => {
   });
 };
 
-export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", penaltyAmount = 0, isLost = false, damageFee = 0, isDamaged = false) => {
+export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", penaltyAmount = 0, isLost = false, damageFee = 0, isDamaged = false, condition = 'EXCELLENT', conditionNote = "") => {
   const recordRef = doc(db, "borrowRecords", recordId);
   const recordSnap = await getDoc(recordRef);
   if (!recordSnap.exists()) throw new Error("Phiếu mượn không tồn tại");
@@ -564,7 +799,9 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", pen
     returnNote,
     lateFee: Number(penaltyAmount) || 0,
     damageFee: Number(damageFee) || 0,
-    penaltyAmount: (Number(penaltyAmount) || 0) + (Number(damageFee) || 0)
+    penaltyAmount: (Number(penaltyAmount) || 0) + (Number(damageFee) || 0),
+    condition, // Lưu tình trạng lúc trả
+    conditionNote
   };
 
   const allReturned = books.every(b => ['RETURNED', 'RETURNED_OVERDUE', 'LOST', 'DAMAGED'].includes(b.status));
@@ -593,20 +830,42 @@ export const returnBorrowRecord = async (recordId, bookUid, returnNote = "", pen
 
   await updateDoc(recordRef, updates);
 
-  // CẬP NHẬT KHO SÁCH ĐỒNG BỘ
+  // CẬP NHẬT KHO SÁCH VÀ TRẠNG THÁI BẢN SAO
   const bookRef = doc(db, "books", bookItem.bookId);
+  const copyRef = bookItem.physicalCopyId ? doc(db, "bookCopies", bookItem.physicalCopyId) : null;
+
   if (!isLost) {
-    // Nếu không phải bị mất (tức là có trả lại xác sách hỏng hoặc bình thường)
-    // Thì tăng lại quantity vì sách đã về thư viện
-    await updateDoc(bookRef, { quantity: increment(1) });
+    // Nếu không phải bị mất (tức là trả lại sách bình thường hoặc hỏng)
+    // KHÔNG tăng quantity ở đây nữa vì quantity = tổng số bản sao vật lý
     
+    if (copyRef) {
+      await updateDoc(copyRef, { 
+        status: isDamaged ? 'DAMAGED' : 'AVAILABLE',
+        condition: condition, // Cập nhật tình trạng vật lý mới nhất
+        conditionNote: conditionNote || returnNote,
+        lastReturnDate: serverTimestamp()
+      });
+    }
+
+    // Khi trả sách, giảm số lượng đang mượn (borrowedCount)
+    await updateDoc(bookRef, { borrowedCount: increment(-1) });
+
     if (isDamaged) {
-      // Nếu hỏng thì tăng thêm biến đếm hỏng để loại khỏi SL khả dụng
       await updateDoc(bookRef, { damagedCount: increment(1) });
     }
   } else {
-    // Sách bị mất hoàn toàn -> Không trả về kho, chỉ tăng biến đếm mất
-    await updateDoc(bookRef, { lostCount: increment(1) });
+    // Sách bị mất hoàn toàn -> Giảm tổng số lượng sách sở hữu (quantity)
+    await updateDoc(bookRef, { 
+      quantity: increment(-1),
+      lostCount: increment(1),
+      borrowedCount: increment(-1) 
+    });
+    if (copyRef) {
+      await updateDoc(copyRef, { 
+        status: 'LOST',
+        lastReturnDate: serverTimestamp()
+      });
+    }
   }
 
   return { success: true, allReturned };
@@ -900,17 +1159,29 @@ export const getUserQuota = async (userId) => {
 };
 
 export const isBookAvailable = async (bookId, requestedCount = 1) => {
-  const book = await getBook(bookId);
-  if (!book) return false;
-  
-  // Không cho mượn sách nếu sách ở trạng thái hư hỏng hoàn toàn (nếu có trường status)
-  if (book.status === 'Damaged' || book.status === 'Lost') return false;
+  try {
+    const q = query(
+      collection(db, "bookCopies"), 
+      where("bookId", "==", bookId), 
+      where("status", "==", "AVAILABLE")
+    );
+    const snap = await getDocs(q);
+    
+    // Nếu có bản sao khả dụng, ưu tiên dùng dữ liệu này
+    if (!snap.empty) {
+      return snap.size >= requestedCount;
+    }
 
-  // Số lượng khả dụng tính bằng: Tổng SL - SL Hư hỏng
-  const availableCount = (Number(book.quantity) || 0) - (Number(book.damagedCount) || 0);
-  
-  if (availableCount < requestedCount) return false;
-  return true;
+    // Fallback cho dữ liệu cũ (nếu chưa có bản sao nào được tạo)
+    const book = await getBook(bookId);
+    if (!book) return false;
+    if (book.status === 'Damaged' || book.status === 'Lost') return false;
+    const availableCount = (Number(book.quantity) || 0) - (Number(book.damagedCount) || 0);
+    return availableCount >= requestedCount;
+  } catch (error) {
+    console.error("Error checking book availability:", error);
+    return false;
+  }
 };
 
 // ========================
@@ -988,6 +1259,51 @@ export const hasActiveBorrowingsByCategory = async (categoryName) => {
     if (activeCount > 0) return true;
   }
   return false;
+};
+
+/**
+ * Migration script: Khởi tạo bản sao cho các đầu sách cũ chưa có Copy ID
+ */
+export const migrateExistingBooksToCopies = async () => {
+  const books = await getBooks();
+  const results = {
+    totalBooks: books.length,
+    processed: 0,
+    copiesCreated: 0,
+    countsRecalculated: 0,
+    skipped: 0
+  };
+
+  for (const book of books) {
+    let existingCopies = await getBookCopies(book.id);
+    const quantity = Number(book.quantity) || 0;
+    const missingCount = quantity - existingCopies.length;
+
+    // 1. Tạo thêm bản sao nếu thiếu
+    if (missingCount > 0) {
+      await addBookCopies(book.id, missingCount, book.title, false);
+      // Tải lại danh sách bản sao sau khi tạo mới
+      existingCopies = await getBookCopies(book.id);
+      results.processed++;
+      results.copiesCreated += missingCount;
+    } else {
+      results.skipped++;
+    }
+
+    // 2. TỔNG KIỂM KÊ (AUDIT): Tính toán lại các con số thống kê dựa trên bản sao thực tế
+    const borrowedCount = existingCopies.filter(c => c.status === 'BORROWED').length;
+    const damagedCount = existingCopies.filter(c => c.status === 'DAMAGED').length;
+    const lostCount = existingCopies.filter(c => c.status === 'LOST').length;
+
+    await updateDoc(doc(db, "books", book.id), {
+      borrowedCount: borrowedCount,
+      damagedCount: damagedCount,
+      lostCount: lostCount
+    });
+    results.countsRecalculated++;
+  }
+
+  return results;
 };
 
 
